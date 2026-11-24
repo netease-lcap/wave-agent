@@ -104,4 +104,43 @@ describe("skillTool flags", () => {
       expect(result.content).toBe("Success");
     });
   });
+
+  // spec ecosystem/agent-skills「技能里的工具黑名单」
+  describe("tool rules", () => {
+    it("applies both tool lists to the permission manager", async () => {
+      const mockSkill: SkillMetadata = {
+        name: "visible-skill",
+        type: "personal",
+        description: "Visible skill",
+        skillPath: "/path/1",
+        disableModelInvocation: false,
+      };
+
+      vi.spyOn(skillManager, "getSkillMetadata").mockReturnValue(mockSkill);
+      vi.spyOn(skillManager, "executeSkill").mockResolvedValue({
+        content: "Success",
+        allowedTools: ["Bash(git status*)"],
+        disallowedTools: ["Bash(git push*)"],
+      });
+
+      const addTemporaryRules = vi.fn();
+      const addTemporaryDeniedRules = vi.fn();
+
+      const context = {
+        workdir: "/test",
+        taskManager: new TaskManager(new Container(), "test-session"),
+        skillManager,
+        permissionManager: { addTemporaryRules, addTemporaryDeniedRules },
+      };
+
+      const result = await skillTool.execute(
+        { skill_name: "visible-skill" },
+        context as unknown as ToolContext,
+      );
+
+      expect(result.success).toBe(true);
+      expect(addTemporaryRules).toHaveBeenCalledWith(["Bash(git status*)"]);
+      expect(addTemporaryDeniedRules).toHaveBeenCalledWith(["Bash(git push*)"]);
+    });
+  });
 });

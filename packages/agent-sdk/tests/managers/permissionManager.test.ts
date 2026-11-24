@@ -1217,6 +1217,70 @@ describe("PermissionManager", () => {
       });
     });
 
+    // spec ecosystem/agent-skills「技能里的工具黑名单」
+    describe("temporary deny rules (addTemporaryDeniedRules)", () => {
+      it("denies a tool listed in the temporary deny rules", async () => {
+        permissionManager.addTemporaryDeniedRules(["Read"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Read",
+          permissionMode: "default",
+          toolInput: { file_path: "test.txt" },
+        };
+
+        const result = await permissionManager.checkPermission(context);
+
+        expect(result.behavior).toBe("deny");
+        expect(result.message).toContain("explicitly denied by rule: Read");
+      });
+
+      it("denies a tool named in both the allow and the deny list", async () => {
+        permissionManager.addTemporaryRules(["Edit"]);
+        permissionManager.addTemporaryDeniedRules(["Edit"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Edit",
+          permissionMode: "default",
+        };
+
+        const result = await permissionManager.checkPermission(context);
+
+        // Deny is resolved before every allow tier, so `disallowed-tools`
+        // beats `allowed-tools` — the same order Claude Code gets from
+        // alwaysDenyRules being checked before alwaysAllowRules.
+        expect(result.behavior).toBe("deny");
+      });
+
+      it("does not affect tools that are not listed", async () => {
+        permissionManager.addTemporaryDeniedRules(["Edit"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Read",
+          permissionMode: "default",
+          toolInput: { file_path: "test.txt" },
+        };
+
+        const result = await permissionManager.checkPermission(context);
+
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should clear temporary deny rules with clearTemporaryRules", async () => {
+        permissionManager.addTemporaryDeniedRules(["Read"]);
+        permissionManager.clearTemporaryRules();
+
+        const context: ToolPermissionContext = {
+          toolName: "Read",
+          permissionMode: "default",
+          toolInput: { file_path: "test.txt" },
+        };
+
+        const result = await permissionManager.checkPermission(context);
+
+        expect(result.behavior).toBe("allow");
+      });
+    });
+
     describe("instance allowed rules (addInstanceAllowedRule)", () => {
       it("should add the rule to instanceAllowedRules", () => {
         permissionManager.addInstanceAllowedRule("Bash(node *spec-count.js*)");

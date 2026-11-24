@@ -6,6 +6,14 @@
 export interface SkillMetadata {
   name: string;
   description: string;
+  /**
+   * Other names `/…` also accepts for this skill (frontmatter `aliases`).
+   *
+   * Only the slash command answers to them — the menu keeps one row, under
+   * `name`, and the model may only pass `name` to the `Skill` tool (the same
+   * split Claude Code has: aliases live on the command, not on the skill).
+   */
+  aliases?: string[];
   type: "personal" | "project" | "builtin";
   /**
    * Path to the skill **directory** (the folder containing SKILL.md), never
@@ -20,6 +28,16 @@ export interface SkillMetadata {
    */
   skillPath: string;
   allowedTools?: string[];
+  /**
+   * Tools this skill must **not** use while it runs (frontmatter
+   * `disallowed-tools`), in the same rule syntax as `allowedTools`.
+   *
+   * Registered as temporary **deny** rules for the turn, so it beats
+   * `allowedTools` when both name the same tool — deny is checked first, as in
+   * Claude Code, where `allowed-tools` goes to `alwaysAllowRules` and
+   * `disallowed-tools` to `alwaysDenyRules` (two buckets, deny resolved first).
+   */
+  disallowedTools?: string[];
   context?: "fork";
   agent?: string;
   model?: string;
@@ -48,6 +66,17 @@ export interface SkillFrontmatter {
   name: string;
   description: string;
   "allowed-tools"?: string | string[];
+  /** Same shape as `allowed-tools`; wins over it when both name a tool. */
+  "disallowed-tools"?: string | string[];
+  /** Camel-case alias of `disallowed-tools`, as in Claude Code's schema. */
+  disallowedTools?: string | string[];
+  /**
+   * Extra `/…` names for the skill's slash command — a string or a YAML list.
+   * An entry must be a valid skill name (`isValidSkillName`); the invalid ones
+   * are dropped with a warning instead of invalidating the skill, because one
+   * mistyped shorthand should not cost the author their skill.
+   */
+  aliases?: string | string[];
   context?: "fork";
   agent?: string;
   model?: string;

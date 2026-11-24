@@ -69,43 +69,29 @@ export function parseSkillFile(
         : "personal";
 
     // Extract allowed tools
-    let allowedTools: string[] | undefined;
-    const rawAllowedTools = result.frontmatter["allowed-tools"];
-    if (Array.isArray(rawAllowedTools)) {
-      allowedTools = rawAllowedTools.map((t) => String(t).trim());
-    } else if (typeof rawAllowedTools === "string") {
-      allowedTools = rawAllowedTools
-        .split(",")
-        .map((t) => t.trim())
-        .filter((t) => t.length > 0);
-    }
+    const allowedTools = parseToolRules(
+      result.frontmatter["allowed-tools"],
+      "allowed-tools",
+      { skillPath, pluginRoot, warnings: result.warnings },
+    );
 
-    // Resolve directory placeholders here, at the single point every consumer
-    // of `allowedTools` reads from (the temporary rules registered on
-    // invocation, the list handed back to the `Skill` tool, and the rules a
-    // forked subagent inherits). A rule left holding a literal placeholder
-    // never matches anything, so it is dropped and reported instead of being
-    // registered as a no-op (spec ecosystem/agent-skills 场景 4/5).
-    if (allowedTools?.length) {
-      const resolved: string[] = [];
-      for (const rule of allowedTools) {
-        const substituted = substituteDirectoryPlaceholders(rule, {
-          skillPath,
-          pluginRoot,
-        });
-        const unresolved = findUnresolvedDirectoryPlaceholders(substituted);
-        if (unresolved.length > 0) {
-          result.warnings.push(
-            `allowed-tools rule "${rule}" keeps ${unresolved.join(", ")} — ` +
-              `no path to substitute it with, so the rule is not registered ` +
-              `and its command will ask for confirmation`,
-          );
-          continue;
-        }
-        resolved.push(substituted);
-      }
-      allowedTools = resolved;
-    }
+    // `disallowed-tools` is read exactly like `allowed-tools` — same shapes,
+    // same trimming, same placeholder resolution and the same "a rule holding
+    // a literal placeholder never matches anything, so drop it and say so"
+    // discipline. Which side wins when the two lists name the same tool is a
+    // permission question, not a parsing one (see `SkillMetadata.disallowedTools`).
+    //
+    // `disallowedTools` is the camel-case spelling of the same field (Claude
+    // Code's schema carries both, the kebab one documented, this one marked as
+    // its canonical alias), so an author who copies a camel-case example gets
+    // the ban they wrote instead of a silently unregistered rule. The kebab
+    // field wins when both are present, matching CC's normalization.
+    const disallowedTools = parseToolRules(
+      result.frontmatter["disallowed-tools"] ??
+        result.frontmatter.disallowedTools,
+      "disallowed-tools",
+      { skillPath, pluginRoot, warnings: result.warnings },
+    );
 
     // Extract disable-model-invocation
     const disableModelInvocation =
@@ -118,12 +104,20 @@ export function parseSkillFile(
       result.frontmatter["user-invocable"] === true ||
       result.frontmatter["user-invocable"] === "true";
 
+    // `aliases`: other `/…` names for this skill's slash command. A bad entry
+    // is dropped with a warning rather than rejected: the skill itself is fine,
+    // and one mistyped shorthand must not take the skill out of the menu and
+    // the model's list with it.
+    const aliases = parseAliases(result.frontmatter.aliases, result.warnings);
+
     result.skillMetadata = {
       name: result.frontmatter.name,
       description: result.frontmatter.description,
+      ...(aliases && aliases.length > 0 ? { aliases } : {}),
       type: skillType,
       skillPath,
       allowedTools,
+      disallowedTools,
       context: result.frontmatter.context,
       agent: result.frontmatter.agent,
       model: result.frontmatter.model as string | undefined,
@@ -149,6 +143,96 @@ export function parseSkillFile(
     );
     return result;
   }
+}
+
+/**
+ * Read one tool-rule list out of the frontmatter.
+ *
+ * Both `allowed-tools` and `disallowed-tools` go through here so the two can
+ * never drift apart: a YAML list or a comma-separated string, trimmed the same
+ * way, with directory placeholders resolved at this single point every consumer
+ * reads from (the temporary rules registered on invocation, the list handed
+ * back to the `Skill` tool, and the rules a forked subagent inherits).
+ *
+ * Resolution belongs here rather than at each consumer: a rule left holding a
+ * literal placeholder never matches anything, so it is dropped and reported
+ * instead of being registered as a no-op (spec ecosystem/agent-skills 场景 4/5).
+ */
+function parseToolRules(
+  raw: string | string[] | undefined,
+  field: "allowed-tools" | "disallowed-tools",
+  context: { skillPath: string; pluginRoot?: string; warnings: string[] },
+): string[] | undefined {
+  let rules: string[] | undefined;
+  if (Array.isArray(raw)) {
+    rules = raw.map((t) => String(t).trim());
+  } else if (typeof raw === "string") {
+    rules = raw
+      .split(",")
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+  }
+
+  if (!rules?.length) {
+    return rules;
+  }
+
+  const resolved: string[] = [];
+  for (const rule of rules) {
+    const substituted = substituteDirectoryPlaceholders(rule, {
+      skillPath: context.skillPath,
+      pluginRoot: context.pluginRoot,
+    });
+    const unresolved = findUnresolvedDirectoryPlaceholders(substituted);
+    if (unresolved.length > 0) {
+      context.warnings.push(
+        `${field} rule "${rule}" keeps ${unresolved.join(", ")} — ` +
+          `no path to substitute it with, so the rule is not registered ` +
+          `and its command will ask for confirmation`,
+      );
+      continue;
+    }
+    resolved.push(substituted);
+  }
+  return resolved;
+}
+
+/**
+ * Read the `aliases` frontmatter field: a YAML list or a comma-separated
+ * string, same two shapes `allowed-tools` accepts.
+ *
+ * Each entry is held to the same name rule as the skill's own name
+ * (`isValidSkillName`) because an alias becomes a `/…` command verbatim — a
+ * lowercase word with hyphens and nothing else. Invalid, blank and duplicate
+ * entries are dropped one by one with a warning; keeping the rest is the point
+ * (spec ecosystem/agent-skills 场景「写错一个别名不该让整个技能失效」).
+ */
+function parseAliases(
+  raw: string | string[] | undefined,
+  warnings: string[],
+): string[] | undefined {
+  const candidates = Array.isArray(raw)
+    ? raw.map((alias) => String(alias).trim())
+    : typeof raw === "string"
+      ? raw.split(",").map((alias) => alias.trim())
+      : [];
+
+  const aliases: string[] = [];
+  for (const alias of candidates) {
+    if (alias.length === 0) continue;
+    if (!isValidSkillName(alias)) {
+      warnings.push(
+        `aliases entry "${alias}" is not a valid command name (lowercase ` +
+          `letters, numbers and hyphens, at most 64 characters) — it is ` +
+          `ignored and the skill keeps its other names`,
+      );
+      continue;
+    }
+    if (aliases.includes(alias)) continue;
+    aliases.push(alias);
+  }
+
+  return aliases.length > 0 ? aliases : undefined;
 }
 
 /**

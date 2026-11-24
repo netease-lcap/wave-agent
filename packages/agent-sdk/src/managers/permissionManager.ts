@@ -314,6 +314,15 @@ export class PermissionManager {
   private instanceAllowedRules: string[] = [];
   private instanceDeniedRules: string[] = [];
   private temporaryRules: string[] = [];
+  /**
+   * Deny rules that live for one turn, registered by whatever is running now —
+   * today a skill's `disallowed-tools`. The counterpart of `temporaryRules`
+   * (which is the same idea for allow rules) and cleared with it, so a skill's
+   * ban does not outlive the turn that declared it: Claude Code's own wording
+   * for the field is "tools removed from the model while this file is active …
+   * cleared when the user sends the next message".
+   */
+  private temporaryDeniedRules: string[] = [];
   private additionalDirectories: string[] = [];
   private instanceAdditionalDirectories: string[] = [];
   private systemAdditionalDirectories: string[] = [];
@@ -577,10 +586,28 @@ export class PermissionManager {
   }
 
   /**
+   * Add deny rules for the current turn — a skill's `disallowed-tools`.
+   *
+   * The counterpart of {@link addTemporaryRules}, and apart from
+   * `instanceDeniedRules` (a session-level ban from `AgentOptions.disallowedTools`)
+   * for that reason: these must be gone once the turn is over. They are matched
+   * in {@link denyVerdict}, i.e. **before** every allow tier, so a tool named in
+   * both `allowed-tools` and `disallowed-tools` is denied — the same resolution
+   * Claude Code gets by putting the two lists in `alwaysAllowRules` and
+   * `alwaysDenyRules` and checking deny first.
+   */
+  public addTemporaryDeniedRules(rules: string[]): void {
+    this.temporaryDeniedRules = [
+      ...new Set([...this.temporaryDeniedRules, ...rules]),
+    ];
+  }
+
+  /**
    * Clear all temporary rules
    */
   public clearTemporaryRules(): void {
     this.temporaryRules = [];
+    this.temporaryDeniedRules = [];
   }
 
   /**
@@ -1299,7 +1326,11 @@ export class PermissionManager {
           ...this.temporaryRules,
           ...this.allowedRules,
         ],
-        deniedRules: [...this.instanceDeniedRules, ...this.deniedRules],
+        deniedRules: [
+          ...this.instanceDeniedRules,
+          ...this.deniedRules,
+          ...this.temporaryDeniedRules,
+        ],
         isInsideSafeZone: (target) =>
           this.isInsideSafeZone(
             target,
@@ -1530,6 +1561,24 @@ export class PermissionManager {
         decision: "deny",
         message: `Access to tool '${context.toolName}' is explicitly denied by rule: ${rule}`,
         reason: rule,
+        source: "config",
+      };
+    }
+
+    // Last of the deny tiers, and still ahead of every allow tier: this is what
+    // makes a skill's `disallowed-tools` beat its own `allowed-tools`.
+    const temporaryRule = this.temporaryDeniedRules.find((candidate) =>
+      this.matchesRule(context, candidate),
+    );
+    if (temporaryRule) {
+      logger?.warn("Permission denied by temporary rule", {
+        toolName: context.toolName,
+        rule: temporaryRule,
+      });
+      return {
+        decision: "deny",
+        message: `Access to tool '${context.toolName}' is explicitly denied by rule: ${temporaryRule}`,
+        reason: temporaryRule,
         source: "config",
       };
     }

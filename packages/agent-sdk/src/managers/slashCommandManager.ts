@@ -49,6 +49,16 @@ export class SlashCommandManager {
   private commands = new Map<string, SlashCommand>();
   private customCommands = new Map<string, CustomSlashCommand>();
   private skillCommandIds = new Set<string>();
+  /**
+   * Command ids that exist only as an alias of a skill's own name.
+   *
+   * `/shorthand` resolves and runs exactly like `/skill-name` — same handler —
+   * but stays out of `getCommands()`, because the `/` menu is one row per
+   * command: Claude Code resolves an alias to the same command (`findCommand`
+   * in `commands.ts` matches `name` / display name / `aliases`) instead of
+   * adding a second row.
+   */
+  private skillAliasCommandIds = new Set<string>();
   /** Ids registered by plugins, so they can be dropped per-plugin and are not
    * mistaken for disk-sourced custom commands. */
   private pluginCommandIds = new Set<string>();
@@ -258,6 +268,7 @@ export class SlashCommandManager {
       this.unregisterCommand(commandId);
     }
     this.skillCommandIds.clear();
+    this.skillAliasCommandIds.clear();
 
     const skillSourceFor = (skill: SkillMetadata): SkillSource => {
       if (skill.pluginName) return "plugin";
@@ -338,6 +349,15 @@ export class SlashCommandManager {
                     prompt: forkContent,
                     subagent_type: subagentType,
                     model: skill.model,
+                    // A `context: fork` skill's `disallowed-tools` travel into
+                    // the subagent that runs it: the ban belongs to the skill,
+                    // not to the conversation it was started from, and Claude
+                    // Code applies it on the fork path too (`iun` in the
+                    // 2.1.325 bundle layers `alwaysDenyRules` in the same way
+                    // as the inline path).
+                    ...(skill.disallowedTools?.length
+                      ? { disallowedTools: skill.disallowedTools }
+                      : {}),
                   },
                   false,
                   () => {
@@ -462,6 +482,52 @@ export class SlashCommandManager {
       });
     }
 
+    // Aliases (frontmatter `aliases`) answer to `/…` exactly like the skill's
+    // own name — same handler, same source tag, same argument hint — so they
+    // are registered as ordinary commands and resolve everywhere a name does
+    // (`hasCommand`, `executeCommand`, the submitted `/alias args`).
+    //
+    // Two rules, both taken from Claude Code's command table:
+    //
+    // 1. A name that is already taken wins. CC drops an alias that collides
+    //    with a built-in / shipped command name (`T5r` in the 2.1.325 bundle
+    //    builds that reserved set from every builtin and its aliases), and our
+    //    `/` namespace is one flat space: builtin, custom, plugin and mod
+    //    commands plus every skill. Silently taking a name away from something
+    //    the user already has would be worse than not having the alias.
+    // 2. The alias of a skill whose name was not registered (not
+    //    user-invocable) does not exist either — CC keeps `userInvocable` on the
+    //    skill, so aliases never make a hidden skill reachable.
+    //
+    // This runs as a second pass, after every skill's own name is registered,
+    // so an alias can never take the name of a skill that comes later in the
+    // list.
+    for (const skill of skills) {
+      if (skill.userInvocable === false || !skill.aliases?.length) {
+        continue;
+      }
+      const command = this.commands.get(skill.name);
+      if (!command) continue;
+
+      for (const alias of skill.aliases) {
+        if (alias === skill.name || this.skillAliasCommandIds.has(alias)) {
+          continue;
+        }
+        if (this.commands.has(alias)) {
+          logger?.debug(
+            `Skill alias '${alias}' of '${skill.name}' ignored: /${alias} is already taken`,
+          );
+          continue;
+        }
+        this.skillAliasCommandIds.add(alias);
+        // The alias id joins the skill-command set, so the next refresh (or a
+        // plugin reload / config change that re-registers skills) drops it with
+        // its primary command instead of leaking a stale `/alias`.
+        this.skillCommandIds.add(alias);
+        this.registerCommand({ ...command, id: alias, name: alias });
+      }
+    }
+
     logger?.debug(`Registered ${skills.length} skill commands`);
   }
 
@@ -582,6 +648,8 @@ export class SlashCommandManager {
   public listCommandsForMods(): ModCommandInfo[] {
     const rows: ModCommandInfo[] = [];
     for (const command of this.commands.values()) {
+      // Aliases are not rows of their own — the same reasoning as `getCommands`.
+      if (this.skillAliasCommandIds.has(command.id)) continue;
       const modPlugin = this.modCommandPlugins.get(command.name);
       if (modPlugin !== undefined) {
         rows.push({
@@ -723,9 +791,12 @@ export class SlashCommandManager {
    */
   public async getCommands(): Promise<SlashCommand[]> {
     const described = await Promise.all(
-      Array.from(this.commands.values()).map((command) =>
-        this.describeCommand(command),
-      ),
+      Array.from(this.commands.values())
+        // One row per command: a skill's aliases resolve to the same skill, so
+        // listing them would show the same skill twice under two names (CC's
+        // suggestion list is keyed by command for the same reason).
+        .filter((command) => !this.skillAliasCommandIds.has(command.id))
+        .map((command) => this.describeCommand(command)),
     );
     return described.flatMap(({ command, isHidden }) =>
       isHidden === true ? [] : [command],

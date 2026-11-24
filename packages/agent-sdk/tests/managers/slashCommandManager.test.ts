@@ -318,6 +318,21 @@ describe("SlashCommandManager", () => {
       });
     });
 
+    it("falls back to description for the menu row", () => {
+      slashCommandManager.registerSkillCommands([
+        {
+          name: "plain-skill",
+          description: "Only a description",
+          type: "project",
+          skillPath: "/p",
+        },
+      ] as unknown as SkillMetadata[]);
+
+      expect(slashCommandManager.getCommand("plain-skill")?.description).toBe(
+        "Skill: Only a description",
+      );
+    });
+
     it("should tag skill commands with their UI source (personal→user)", () => {
       const skills = [
         {
@@ -435,6 +450,135 @@ describe("SlashCommandManager", () => {
       expect(textBlock.customCommandContent).toContain(
         "> **Command warning**:",
       );
+    });
+
+    // spec ecosystem/agent-skills「给技能起几个短名字」
+    it("registers an alias as a command that runs the same skill", async () => {
+      slashCommandManager.registerSkillCommands([
+        {
+          name: "test-skill",
+          description: "The long form",
+          aliases: ["ts"],
+          type: "project",
+          skillPath: "/p",
+          allowedTools: ["tool1", "tool2"],
+        },
+      ] as unknown as SkillMetadata[]);
+
+      expect(slashCommandManager.hasCommand("ts")).toBe(true);
+      // Same row as the primary name: no second description to maintain.
+      expect(slashCommandManager.getCommand("ts")?.description).toBe(
+        "Skill: The long form",
+      );
+      expect(slashCommandManager.getCommand("ts")?.skillSource).toBe("project");
+      // `/ts args` parses like `/test-skill args`.
+      expect(
+        slashCommandManager.parseAndValidateSlashCommand("/ts an argument"),
+      ).toEqual({ isValid: true, commandId: "ts", args: "an argument" });
+
+      await slashCommandManager.getCommand("ts")?.handler("an argument");
+
+      // Bound to the skill, not to the name that was typed.
+      expect(mockSkillManager.executeSkill).toHaveBeenCalledWith({
+        skill_name: "test-skill",
+        args: "an argument",
+      });
+      expect(aiManager.sendAIMessage).toHaveBeenCalledWith({
+        allowedRules: ["tool1", "tool2"],
+      });
+    });
+
+    it("keeps aliases out of the menu, which has one row per command", async () => {
+      slashCommandManager.registerSkillCommands([
+        {
+          name: "test-skill",
+          description: "The long form",
+          aliases: ["ts"],
+          type: "project",
+          skillPath: "/p",
+        },
+      ] as unknown as SkillMetadata[]);
+
+      const menuIds = (await slashCommandManager.getCommands()).map(
+        (command) => command.id,
+      );
+      expect(menuIds).toContain("test-skill");
+      expect(menuIds).not.toContain("ts");
+
+      const modRowNames = slashCommandManager
+        .listCommandsForMods()
+        .map((row) => row.name);
+      expect(modRowNames).toContain("test-skill");
+      expect(modRowNames).not.toContain("ts");
+    });
+
+    it("leaves an alias alone when another command already took the name", async () => {
+      slashCommandManager.registerSkillCommands([
+        {
+          name: "other-skill",
+          description: "The other one",
+          type: "project",
+          skillPath: "/p",
+        },
+        {
+          name: "test-skill",
+          description: "The long form",
+          aliases: ["other-skill"],
+          type: "project",
+          skillPath: "/p",
+        },
+      ] as unknown as SkillMetadata[]);
+
+      // A name the user already has wins: the alias is dropped, not stolen.
+      await slashCommandManager.getCommand("other-skill")?.handler();
+
+      expect(mockSkillManager.executeSkill).toHaveBeenCalledTimes(1);
+      expect(mockSkillManager.executeSkill).toHaveBeenCalledWith({
+        skill_name: "other-skill",
+        args: undefined,
+      });
+    });
+
+    it("drops an alias when the skill is registered again without it", () => {
+      slashCommandManager.registerSkillCommands([
+        {
+          name: "test-skill",
+          description: "The long form",
+          aliases: ["ts"],
+          type: "project",
+          skillPath: "/p",
+        },
+      ] as unknown as SkillMetadata[]);
+      expect(slashCommandManager.hasCommand("ts")).toBe(true);
+
+      slashCommandManager.registerSkillCommands([
+        {
+          name: "test-skill",
+          description: "The long form",
+          type: "project",
+          skillPath: "/p",
+        },
+      ] as unknown as SkillMetadata[]);
+
+      expect(slashCommandManager.hasCommand("ts")).toBe(false);
+      expect(slashCommandManager.hasCommand("test-skill")).toBe(true);
+    });
+
+    it("does not register the alias of a skill that is not user-invocable", () => {
+      slashCommandManager.registerSkillCommands([
+        {
+          name: "hidden-skill",
+          description: "Not for the user",
+          userInvocable: false,
+          aliases: ["hs"],
+          type: "project",
+          skillPath: "/p",
+        },
+      ] as unknown as SkillMetadata[]);
+
+      // An alias must never make a hidden skill reachable.
+      expect(slashCommandManager.hasCommand("hs")).toBe(false);
+      expect(slashCommandManager.hasCommand("hidden-skill")).toBe(false);
     });
   });
 
