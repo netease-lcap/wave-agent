@@ -86,6 +86,59 @@ describe("REPL tool block", () => {
     expect(output).toBeNull();
   });
 
+  it("keeps the script area the same height while running and after it ends", () => {
+    // 场景 14：脚本区与 Bash 命令行共用同一条基础规则，没有输出那一档（running）
+    // 少了外层卡片也必须一模一样——上限与可用宽度都相同，否则长脚本会在输出到达
+    // 的那一刻重新折行、再跳高一次。
+    const longScript = Array.from(
+      { length: 30 },
+      (_, i) => `const row${i} = await Read({ file_path: "row${i}.ts" });`,
+    ).join("\n");
+    const measure = (root: HTMLElement) => {
+      const input = root.querySelector(".bash-command-input") as HTMLElement;
+      const output = root.querySelector(".bash-command-output") as HTMLElement;
+      const style = getComputedStyle(input);
+      return {
+        maxHeight: style.maxHeight,
+        // 卡片下半截（输出区）与上半截共用同一个上限值，否则一张卡里两种滚动高度。
+        outputMaxHeight: output ? getComputedStyle(output).maxHeight : null,
+        // 可用内容宽度：`clientWidth` 不含边框，而边框两档归属不同（运行中在
+        // 脚本区自己身上、结束后在外层容器上），所以剥掉左右 padding 再比。
+        content:
+          input.clientWidth -
+          parseInt(style.paddingLeft) -
+          parseInt(style.paddingRight),
+        client: input.clientHeight,
+        scroll: input.scrollHeight,
+      };
+    };
+
+    // 宿主会注入 `--vscode-panel-border`，测试环境没有：缺了它整条 `border` 声明
+    // 失效（1px 边框算成 0），比出来的宽度就不反映真机。
+    document.documentElement.style.setProperty("--vscode-panel-border", "#333");
+    try {
+      const whileRunning = measure(
+        renderRepl({ code: longScript, stage: "running" }).container,
+      );
+      const afterEnd = measure(
+        renderRepl({ code: longScript, data: { ok: true, stdout: ["done"] } })
+          .container,
+      );
+
+      // 与 Bash 命令行同一档：`--tool-code-max-height` 一处定义的 120px，两档都命中。
+      expect(whileRunning.maxHeight).toBe("120px");
+      expect(afterEnd.maxHeight).toBe("120px");
+      // 输入区与输出区共用这一个值：一张卡里不该有两种上限。
+      expect(afterEnd.outputMaxHeight).toBe(afterEnd.maxHeight);
+      expect(whileRunning.content).toBe(afterEnd.content);
+      expect(whileRunning.client).toBe(afterEnd.client);
+      // 30 行确实撑破了上限——否则上面几条比的是同一段没被裁的内容，断言没有意义。
+      expect(whileRunning.scroll).toBeGreaterThan(whileRunning.client);
+    } finally {
+      document.documentElement.style.removeProperty("--vscode-panel-border");
+    }
+  });
+
   it("reports a dispatch receipt instead of a result", () => {
     const { output } = renderRepl({
       code: "await sleep(1);",
