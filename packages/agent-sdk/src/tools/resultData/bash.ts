@@ -27,11 +27,12 @@ import {
  * 三处文本口径的偏离（都是既有行为，改了会伤到 `REPL` 的 `` $`cmd` ``，见报告）：
  *
  * - 非零退出：CC 抛 `ShellError`，正文由 `Exit code N` 起头（`:695-716` +
- *   `utils/toolErrors.ts:24-32`）。我方退出码**不进正文**：失败走 `success: false` +
- *   `error: "Command failed with exit code: N"`，`content` 保持「命令自己的输出」，
- *   `$` 就是按这条口径读 `stdout` 的（`src/repl/replRuntime.ts:1217-1244`，改这里必须
- *   同步改那边）；退出码本身落在 `data.exitCode`（宿主的退出码卡片与 `$` 的 exit-1
- *   家族判定读它）。
+ *   `utils/toolErrors.ts:24-32`）。我方退出码**不进正文**：家族内 exit 1（`grep` 无
+ *   匹配之类）算这个命令的答案，走 `success: true` + `data.returnCodeInterpretation`
+ *   （照 CC 的家族表，判定在 `shellExitCode.ts`）；其余非零走 `success: false` +
+ *   `error: "Command failed with exit code: N"`。两种情况 `content` 都保持「命令自己
+ *   的输出」，`$` 就是按这条口径读 `stdout` 的（`src/repl/replRuntime.ts`，改这里
+ *   必须同步改那边）；退出码本身落在 `data.exitCode`（宿主的退出码卡片读它）。
  * - 静默命令：CC 的模型侧是空正文，`(No output)` / `Done` 只在 UI 里合成
  *   （`BashToolResultMessage.tsx:156`）。我方正文留着一句
  *   {@link emptyOutputSentence}，`$` 依赖它（`replRuntime.ts:775`）。
@@ -100,11 +101,17 @@ export interface BashResultData {
   /** 自动转后台时的超时（毫秒），正文里的 `(${timeout / 1000}s)` 用它。 */
   timeoutMs?: number;
   /**
-   * 进程自己的退出码（中断档恒为 130）。正文不读它——非零退出走 `success: false` +
-   * `error`，见文件头的三处偏离——由 `$` 的出口码判定与宿主渲染卡片用（原来是
-   * `ToolResult.metadata.exitCode`）。
+   * 进程自己的退出码（中断档恒为 130）。正文不读它——非零退出的成败与解释见
+   * `success` / `returnCodeInterpretation`，见文件头的三处偏离——由宿主渲染卡片与
+   * `$` 读（原来是 `ToolResult.metadata.exitCode`）。
    */
   exitCode?: number;
+  /**
+   * CC 同名：一个**不算失败**的非零退出码的语义解释（`No matches found` /
+   * `Files differ` / `Condition is false`）。判定在 `tools/shellExitCode.ts`，
+   * `$` 的 `note` 直接读它，不再自己解析命令名。
+   */
+  returnCodeInterpretation?: string;
 }
 
 /**
@@ -253,6 +260,11 @@ export const bashOutputSchema: Record<string, unknown> = {
       type: "number",
       description:
         "Process exit code; absent when it was killed before exiting.",
+    },
+    returnCodeInterpretation: {
+      type: "string",
+      description:
+        "Semantic interpretation for a non-zero exit that is the command's own answer (No matches found, Files differ, Condition is false).",
     },
   },
   required: ["stdout", "interrupted"],

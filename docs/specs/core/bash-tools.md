@@ -29,6 +29,24 @@ order: 20
 
 ---
 
+### 用户故事：非零退出的家族判定（优先级：P1）
+
+作为读工具结果的模型，我希望「`grep` 没找到」这类非零退出不要被报成一次失败的执行，而是一次带解释的答案，以便不必为了区分两者反复回读输出文本。
+
+**优先级原因**：`success` 是回合循环里唯一的机器可读成败信号，而搜索/比较类命令用退出码 1 报「无匹配 / 有差异」是它们的正常作答。对齐 Claude Code：它在工具层把家族内 exit 1 读成 `isError: false` + `returnCodeInterpretation`，家族外的非零照常失败（`packages/agent-sdk/src/tools/shellExitCode.ts`）。
+
+**独立测试**：`tests/tools/shellExitCode.test.ts` 覆盖家族表、`git` 子命令、`&&` 链、管道与引号；`tests/tools/bashTool.test.ts` 有一条端到端用例（`grep` 退 1 → `success: true` + `data.returnCodeInterpretation`）。
+
+**验收场景**：
+
+1. **假设** 命令是 `grep` / `egrep` / `fgrep` / `rg` / `find` / `diff` / `test` / `[` 之一（取命令行里**最后一个命令词**，路径按 basename 读），或是 `git diff` / `git grep`，**当** 它以 **1** 退出时，**则** `success` 必须为 `true`、`error` 为空，`data.exitCode` 仍为 1，`data.returnCodeInterpretation` 给出那句解释（`No matches found` / `Some directories were inaccessible` / `Files differ` / `Condition is false`）。
+2. **假设** 同一家族的命令以**其它**非零码退出（2、130…），**当** 工具返回时，**则** 照旧算失败（`success: false` + `Command failed with exit code: <n>`）——家族只覆盖「退出码恰为 1」这一格。
+3. **假设** 命令不在家族里且以 1 退出，**当** 工具返回时，**则** 照旧算失败。
+4. **假设** 命令是 `&&` 链，**当** 它以 1 退出时，**则** 不得套用家族豁免——链上最后一环才是退出码的主人，它的名字不能当答案。
+5. **假设** 命令是管道，**当** 判定家族时，**则** 只看最后一个命令词（`rg x f | head` 退的是 `head` 的状态）；引号里的 `|` / `&&` 与前置的 `NAME=value` 都算数据。
+
+---
+
 ### 用户故事：超时取值范围与工具说明（优先级：P1）
 
 作为 AI 代理，我希望工具说明与参数 schema 给出**一致且真实**的 timeout 取值范围，以便给长任务设超时时有一个可信的天花板锚点，而不是凭自己的先验去猜。
@@ -242,7 +260,7 @@ order: 20
 - **后台无超时**：当 `run_in_background` 明确为 `true` 时，任何超时（默认或显式）必须被取消——进程无限期运行直到完成或手动停止。
 - **Windows 路径转换**：在 Windows 上使用 Git Bash 时，临时 CWD 文件路径必须从 Windows 路径（`C:\Users\...`）转换为 POSIX 路径（`C:/Users/...`），否则 Bash 会将反斜杠视为转义字符导致路径损坏、临时文件泄漏到项目目录中；反向转换同样必要——`pwd -P` 输出的 POSIX 路径（`/c/Users/...`）必须转换回原生 Windows 路径后再校验与回调。
 - **Git Bash 未安装**：Windows 上未检测到 Git Bash 时，`Bash` 工具不注册，命令改由 `PowerShell` 工具执行（见 [powershell-tool.md](./powershell-tool.md)）——会话实际用哪个 shell 由三态判定给出（`powershell` / `bash` / `none`）。cmd.exe 不再作为任何一条路径的兜底：hook、技能/命令注入、`otelHeadersHelper` 的 cmd.exe 降级都已删除，只有在「没有 Git Bash 且 PowerShell 工具也关掉（或机器上没有 PowerShell）」时才以带安装指引的错误失败。
-- **搜索命令的退出码差异**：内嵌 `grep` 在「只命中被 `.gitignore` 忽略的文件」时退出码是 1（与「没匹配到」同一语义），系统 `grep` 在同一情形下是 0。依赖 `grep -q` 做门禁的脚本（例如部署前检查某个 key 是否泄漏到构建产物）在 Bash 工具里执行与在终端执行可能得到相反结论；工具不为此额外提示，输出与退出码原样透出。
+- **搜索命令的退出码差异**：内嵌 `grep` 在「只命中被 `.gitignore` 忽略的文件」时退出码是 1（与「没匹配到」同一语义），系统 `grep` 在同一情形下是 0。依赖 `grep -q` 做门禁的脚本（例如部署前检查某个 key 是否泄漏到构建产物）在 Bash 工具里执行与在终端执行可能得到相反结论；工具不为此额外提示，输出与退出码原样透出——家族判定只按命令名给出「无匹配」这句 `returnCodeInterpretation`，它不区分「真的没有」与「只命中被忽略的文件」。
 - **Windows 上 `grep` 影子的残留差异**：`ugrep` 的 Windows 构建无法用 `exec -a` 改写 `argv[0]`（Windows 创建进程时 `argv[0]` 恒为可执行文件路径），影子里的 `exec -a grep` 在 Git Bash 上是空操作，`ugrep` 以自身模式运行——BRE 口径由固定注入的 `-G` 保证，输出本就是 `file:line:内容` 形态，`-q`/`-l`/`-v`/`-i`/`-E`/`-c`/`-o`/`-A` 与退出码 0/1/2 实测一致。残留差异两处：路径分隔符可能混用（参数前缀保留正斜杠、子路径为反斜杠，如 `packages/agent-sdk/src\tools\bashTool.ts`），错误消息前缀是 `ugrep:` 而非 `grep:`（解析 stderr 字样的脚本会看到不同文本）。
 - **`find -regex` 的 dialect**：内嵌 `bfs` 固定带 `-regextype findutils-default`，把默认方言对齐成 GNU `find` 的 emacs flavour（`\|` 表示或），因此 `find . -regex '.*\.\(js\|ts\)'` 在两边给出同样的结果；调用方后续再传 `-regextype` 仍以它为准。这份能力来自编译期静态链接的 Oniguruma，随二进制一起分发，不要求用户机器上存在 `libonig`。残留差异只有 alternation 的匹配策略：Oniguruma 取 leftmost-first，POSIX 取 leftmost-longest，当某一分支是另一分支的前缀（`\(ts\|tsx\)`）时结果可能与系统 `find` 不同——把较长的分支写在前面即可，工具不为此改写调用方的模式。
 - **`grep <pattern> <目录>` 不带 `-r`**：`ugrep` 递归是默认行为，因此 `grep needle src/` 会直接给出结果；macOS 的 BSD grep 在同样输入下报 `grep: src: Is a directory` 并返回 2。把它当「必须先加 `-r`」的守卫的脚本，在内嵌实现下会拿到结果而不是错误。

@@ -608,6 +608,38 @@ describe("bashTool", () => {
       expect(result.error).toBe("Command failed with exit code: 1");
     });
 
+    it("reads exit 1 from grep as the command's answer, not a failure", async () => {
+      const mockProcess = {
+        pid: 1234,
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn((event, callback) => {
+          if (event === "exit") {
+            setTimeout(() => callback(1), 20);
+          }
+        }),
+        kill: vi.fn(),
+        killed: false,
+      };
+      mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
+
+      const result = await bashTool.execute(
+        { command: "grep -n needle src" },
+        context,
+      );
+
+      // The code still travels (in `data`), but it reads as the command's own
+      // answer rather than a broken run — the way CC keeps this in the tool as
+      // `returnCodeInterpretation` and lets the caller decide what to make of it.
+      const data = result.data as {
+        exitCode?: number;
+        returnCodeInterpretation?: string;
+      };
+      expect(result.success).toBe(true);
+      expect(result.error).toBeUndefined();
+      expect(data.exitCode).toBe(1);
+      expect(data.returnCodeInterpretation).toBe("No matches found");
+    });
     it("should handle abort signal and persist large output", async () => {
       const largeOutput = "a".repeat(30001);
       const mockProcess = {

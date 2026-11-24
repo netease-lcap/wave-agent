@@ -22,6 +22,7 @@ import {
   renderPowerShellResultData,
   type PowerShellResultData,
 } from "../resultData/powershell.js";
+import { interpretPowerShellExit } from "../shellExitCode.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "../types.js";
 
 // Same valve as the Bash tool: the child's 'exit' event fires before its stdio
@@ -562,13 +563,21 @@ export const powershellTool: ToolPlugin = {
         // `data` first, text from it: the cwd note is its own field (CC keeps it
         // apart as well, `PowerShellTool.tsx:645`) and the empty-output sentence
         // stands in for `stdout`, so the renderer needs no exit code. The exit
-        // code itself rides `data.exitCode` for the host card and `$`'s exit
-        // family check (it used to be `ToolResult.metadata.exitCode`).
+        // code itself rides `data.exitCode` for the host card (it used to be
+        // `ToolResult.metadata.exitCode`).
+        //
+        // Same family rule as `Bash`: exit 1 of `grep` / `where` / `diff` is the
+        // command's answer, and `robocopy`'s 0–7 are too, so neither makes the
+        // call a failure.
+        const verdict = interpretPowerShellExit(command, exitCode);
         const data: PowerShellResultData = {
           stdout:
             combinedOutput || `Command executed with exit code: ${exitCode}`,
           interrupted: false,
           exitCode,
+          ...(verdict.interpretation !== undefined
+            ? { returnCodeInterpretation: verdict.interpretation }
+            : {}),
           ...(cwdMessage ? { stderr: cwdMessage } : {}),
         };
         stashLongOutput(data);
@@ -581,17 +590,16 @@ export const powershellTool: ToolPlugin = {
             : `... +${lines.length - 3} lines\n` + lines.slice(-3).join("\n");
 
         resolve({
-          success: exitCode === 0,
+          success: !verdict.failed,
           content,
           data,
           shortResult: shortResult || undefined,
           // The provider appends the exit probe, so this is the status the
           // command's own process ended with ($LASTEXITCODE when a native
           // program ran) — the same meaning the Bash tool reports.
-          error:
-            exitCode !== 0
-              ? `Command failed with exit code: ${exitCode}`
-              : undefined,
+          error: verdict.failed
+            ? `Command failed with exit code: ${exitCode}`
+            : undefined,
         });
       };
 
