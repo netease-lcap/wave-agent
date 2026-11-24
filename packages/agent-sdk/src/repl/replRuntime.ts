@@ -908,131 +908,6 @@ function exitCodeOf(result: ToolResult): number {
   return result.success ? 0 : 1;
 }
 
-/**
- * The exit code the shell itself reported, or `undefined` when it never ran.
- *
- * The difference matters for the exit-1 exemption below: a denied, refused or
- * blocked call also reads as "failed", and the fallback in `exitCodeOf` would
- * turn that into a 1 that looks like `grep` finding nothing.
- */
-function shellExitCodeOf(result: ToolResult): number | undefined {
-  return exitCodeFromResult(result);
-}
-
-/** Commands whose exit 1 is an answer ("nothing to report"), not a failure. */
-const EXIT_ONE_IS_AN_ANSWER = new Set([
-  "grep",
-  "egrep",
-  "fgrep",
-  "rg",
-  "find",
-  "diff",
-  "test",
-  "[",
-]);
-
-/** `git <sub>` for the two subcommands that answer with exit 1 the same way. */
-const EXIT_ONE_IS_AN_ANSWER_SUBCOMMANDS = new Set(["diff", "grep"]);
-
-/**
- * The words of each command segment, split on the shell's own operators.
- *
- * Quotes are honoured, because a `|` inside them is data: `rg "a|b" src` is one
- * command, and reading it as two would put `b"` where the command name belongs
- * and lose the exemption for a search that simply found nothing.
- */
-function commandSegments(command: string): string[][] {
-  const segments: string[][] = [];
-  let words: string[] = [];
-  let word = "";
-  let quote: '"' | "'" | undefined;
-  const endWord = () => {
-    if (word !== "") {
-      words.push(word);
-      word = "";
-    }
-  };
-  const endSegment = () => {
-    endWord();
-    if (words.length > 0) segments.push(words);
-    words = [];
-  };
-  for (let index = 0; index < command.length; index++) {
-    const char = command[index];
-    if (quote !== undefined) {
-      if (char === quote) quote = undefined;
-      else word += char;
-      continue;
-    }
-    if (char === '"' || char === "'") {
-      quote = char;
-      continue;
-    }
-    if (char === "\\" && index + 1 < command.length) {
-      index += 1;
-      word += command[index];
-      continue;
-    }
-    if (char === " " || char === "\t") {
-      endWord();
-      continue;
-    }
-    if (char === "\n" || char === ";" || char === "&" || char === "|") {
-      endSegment();
-      // `&&` and `||` are one operator; skipping the second char keeps it simple.
-      if (index + 1 < command.length && command[index + 1] === char) index += 1;
-      continue;
-    }
-    word += char;
-  }
-  endSegment();
-  return segments;
-}
-
-/**
- * The last command word of a command line, plus the word after it.
- *
- * "Last" is what the exemption is about: `rg foo` answers 1 when nothing
- * matched, but `rg foo | head` answers with `head`'s status. Leading `NAME=value`
- * assignments are skipped, and a path (`/usr/bin/grep`) is read by its basename.
- */
-function lastCommandWord(
-  command: string,
-): { word: string; next?: string } | undefined {
-  const segments = commandSegments(command);
-  for (let index = segments.length - 1; index >= 0; index--) {
-    const words = segments[index].slice();
-    while (words.length > 0 && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0])) {
-      words.shift();
-    }
-    if (words.length === 0) continue;
-    const word = words[0].split("/").pop() ?? words[0];
-    return words.length > 1 ? { word, next: words[1] } : { word };
-  }
-  return undefined;
-}
-
-/**
- * What to put in `note` when this command's exit 1 is its answer.
- *
- * Returns `undefined` for every other command: the exemption is deliberately one
- * cell wide (this family, this exit code), because widening it would turn real
- * failures into silent empty output.
- */
-function exitOneNote(command: string): string | undefined {
-  const found = lastCommandWord(command);
-  if (!found) return undefined;
-  const isGitSubcommand =
-    found.word === "git" &&
-    found.next !== undefined &&
-    EXIT_ONE_IS_AN_ANSWER_SUBCOMMANDS.has(found.next);
-  if (!isGitSubcommand && !EXIT_ONE_IS_AN_ANSWER.has(found.word)) {
-    return undefined;
-  }
-  const name = isGitSubcommand ? `git ${found.next}` : found.word;
-  return `${name} exits 1 when there is nothing to report (no match, an unreadable directory, files differ, a false test) — that is the command's answer, not a failure`;
-}
-
 /** The text a `$` result shows: stdout, then the tool's own reading of it. */
 function shellDisplayText(
   stdout: string,
@@ -1293,11 +1168,16 @@ async function answerShellCall(
     ? persisted.preview
     : stripEmptyShellSentence(text, result.shortResult, exitCode);
   const stderr = result.success ? "" : (result.error ?? "");
-  // Exit 1 is the answer of a whole family of commands; anything else is a
-  // failure the script has to see. A call that never ran (denied, refused) has no
-  // shell exit code at all, and `shellExitCodeOf` keeps it out of this branch.
-  const note =
-    shellExitCodeOf(result) === 1 ? exitOneNote(commandText) : undefined;
+  // The family table lives in the shell tools now, the way CC keeps it in
+  // `returnCodeInterpretation`: `grep` exiting 1 is the command's answer, so the
+  // tool reports success and hands the reading back as data. `$` only carries it
+  // into `note` — the decision that it is still a non-zero exit (and so still
+  // throws unless `.nothrow()`) is the boundary's, and this is not an exemption
+  // from it (CC's `$` has none either: "throws on a non-zero exit").
+  const interpretation = (
+    result.data as { returnCodeInterpretation?: unknown } | undefined
+  )?.returnCodeInterpretation;
+  const note = typeof interpretation === "string" ? interpretation : undefined;
 
   const answer: Record<string, unknown> = {
     stdout,

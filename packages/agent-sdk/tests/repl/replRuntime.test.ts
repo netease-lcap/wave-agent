@@ -890,90 +890,57 @@ describe("$ — the shell template", () => {
     expect(result.value).toBe("false false");
   });
 
-  it("does not throw when a search command exits 1, and says why in note", async () => {
+  it("throws for a search command that exits 1, and carries the tool's reading", async () => {
+    // The family table lives in the shell tools now, where CC keeps it (as
+    // `returnCodeInterpretation`): `grep` finding nothing is `success: true` with exit
+    // code 1, and \`$\` still throws, because CC's \`$\` "throws on a non-zero exit".
+    // The tool's reading rides along in the message instead of exempting the exit.
     const h = harness(() => ({
-      success: false,
+      success: true,
       content: "",
-      error: "Command failed with exit code: 1",
-      data: { exitCode: 1 },
+      data: {
+        stdout: "",
+        exitCode: 1,
+        returnCodeInterpretation: "No matches found",
+      },
     }));
 
     const result = await runRepl(
       h,
       `
-      const miss = await $\`grep -n needle src\`;
-      self.log(String(miss.exitCode), miss.note.indexOf("grep exits 1") === -1 ? miss.note : "note");
-      const diff = await $\`git diff --stat\`;
-      self.log(diff.note.indexOf("git diff") === -1 ? diff.note : "git");
-      return "carried on";
+      try { await $\`grep -n needle src\`; self.log("no throw"); } catch (e) {
+        self.log(e.name + ":" + e.exitCode, e.message.indexOf("[note] No matches found") === -1 ? "no note" : "note");
+      }
+      const miss = await $\`grep -n needle src\`.nothrow();
+      return String(miss.exitCode) + " " + miss.note;
     `,
     );
 
     expect(result.ok).toBe(true);
-    expect(result.value).toBe("carried on");
-    expect(result.logs).toEqual(["1 note", "git"]);
+    expect(result.logs).toEqual(["ShellError:1 note"]);
+    expect(result.value).toBe("1 No matches found");
   });
 
-  it("still throws for exit 1 outside that family, and for other codes inside it", async () => {
-    const outside = harness(() => ({
-      success: false,
+  it("throws on any non-zero exit, note or not", async () => {
+    const h = harness(() => ({
+      success: true,
       content: "",
-      error: "Command failed with exit code: 1",
-      data: { exitCode: 1 },
+      data: { exitCode: 1, returnCodeInterpretation: "Files differ" },
     }));
 
-    const one = await runRepl(
-      outside,
+    const result = await runRepl(
+      h,
       `
-      for (const run of [$\`exit 1\`, $\`rg x f | head\`]) {
+      for (const run of [$\`git diff --stat\`, $\`exit 1\`]) {
         try { await run; self.log("no throw"); } catch (e) { self.log(e.name + ":" + e.exitCode); }
       }
       return "after";
     `,
     );
 
-    expect(one.logs).toEqual(["ShellError:1", "ShellError:1"]);
-
-    const inside = harness(() => ({
-      success: false,
-      content: "",
-      error: "Command failed with exit code: 2",
-      data: { exitCode: 2 },
-    }));
-
-    const two = await runRepl(
-      inside,
-      `
-      try { await $\`grep x f\`; self.log("no throw"); } catch (e) { self.log(e.name + ":" + e.exitCode); }
-      return "after";
-    `,
-    );
-
-    expect(two.logs).toEqual(["ShellError:2"]);
-  });
-
-  it("reads the command name through quotes and assignments", async () => {
-    // `rg "a|b"` is one command: the `|` is data, not a pipe. And a leading
-    // `NAME=value` is not the command either.
-    const h = harness(() => ({
-      success: false,
-      content: "",
-      error: "Command failed with exit code: 1",
-      data: { exitCode: 1 },
-    }));
-
-    const result = await runRepl(
-      h,
-      `
-      const quoted = await $\`rg "a|b" src\`;
-      const assigned = await $\`FOO=1 rg -n a src\`;
-      self.log(String(quoted.exitCode), assigned.note.indexOf("rg exits 1") === -1 ? assigned.note : "rg");
-      return "after";
-    `,
-    );
-
     expect(result.ok).toBe(true);
-    expect(result.logs).toEqual(["1 rg"]);
+    expect(result.logs).toEqual(["ShellError:1", "ShellError:1"]);
+    expect(result.value).toBe("after");
   });
 
   it("still throws when the call never reached the shell", async () => {

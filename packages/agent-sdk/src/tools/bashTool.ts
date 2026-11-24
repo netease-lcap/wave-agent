@@ -28,6 +28,7 @@ import {
   renderBashResultData,
   type BashResultData,
 } from "./resultData/bash.js";
+import { interpretBashExit } from "./shellExitCode.js";
 import {
   BASH_TOOL_NAME,
   GLOB_TOOL_NAME,
@@ -878,13 +879,19 @@ The working directory persists between commands, but shell state (environment va
             pressure.freeInodes !== undefined)
             ? { diskPressure: { path: tempDir, ...pressure } }
             : {};
+        // 家族内 exit 1（`grep` 无匹配之类）是这个命令的答案，不是失败——照 CC
+        // 的 `returnCodeInterpretation`，判定在工具层做一次，`$` 直接读结论。
+        const verdict = interpretBashExit(command, exitCode);
         const data: BashResultData = {
           stdout: combinedOutput || emptyOutputSentence(exitCode),
           interrupted: false,
           cwdRecovery,
-          // 退出码只进 `data`（正文不读它）：宿主的退出码卡片与 `$` 的 exit-1 家族
-          // 判定都从这里来，原来是 `ToolResult.metadata.exitCode`。
+          // 退出码只进 `data`（正文不读它）：宿主的退出码卡片用它，原来是
+          // `ToolResult.metadata.exitCode`。
           exitCode,
+          ...(verdict.interpretation !== undefined
+            ? { returnCodeInterpretation: verdict.interpretation }
+            : {}),
           ...(tempDirProbe && !tempDirProbe.writable
             ? { tempDir: { path: tempDir, code: tempDirProbe.code } }
             : {}),
@@ -900,14 +907,13 @@ The working directory persists between commands, but shell state (environment va
             : `... +${lines.length - 3} lines\n` + lines.slice(-3).join("\n");
 
         resolve({
-          success: exitCode === 0,
+          success: !verdict.failed,
           data,
           content: renderBashResultData(data),
           shortResult: shortResult || undefined,
-          error:
-            exitCode !== 0
-              ? `Command failed with exit code: ${exitCode}`
-              : undefined,
+          error: verdict.failed
+            ? `Command failed with exit code: ${exitCode}`
+            : undefined,
         });
       };
 

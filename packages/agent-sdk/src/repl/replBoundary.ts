@@ -569,7 +569,14 @@ export const REPL_BOUNDARY_SOURCE = `(() => {
 
     const shellFailure = (out) => {
       const detail = out.stderr ? ": " + out.stderr : "";
-      const error = makeError("ShellError", "Command failed with exit code " + out.exitCode + detail);
+      // The tool's own reading of the code rides along (CC's \`ShellError\` carries
+      // the shell's \`text\`, which ends with \`[exit N] <note>\`): without it the
+      // script sees "failed with exit code 1" and no hint that it was a miss.
+      const note = out.note === undefined ? "" : "\\n[note] " + out.note;
+      const error = makeError(
+        "ShellError",
+        "Command failed with exit code " + out.exitCode + detail + note,
+      );
       error.exitCode = out.exitCode;
       error.stdout = out.stdout;
       error.stderr = out.stderr;
@@ -589,10 +596,12 @@ export const REPL_BOUNDARY_SOURCE = `(() => {
           if (options.cwd !== undefined) call.cwd = options.cwd;
           if (options.env !== undefined) call.env = options.env;
           started = callHost(() => bridge.runShell(command, call), shellOutput).then((out) => {
-            // Three ways a non-zero exit is not a failure: the script asked for it
-            // (\`.nothrow()\`), the host read it as the command's own answer (\`note\`,
-            // e.g. grep finding nothing), or it never finished (still running).
-            if (nothrow || out.note !== undefined) return out;
+            // Two ways a non-zero exit is not a failure: the script asked for it
+            // (\`.nothrow()\`), or the command never finished (still running). The
+            // tool's reading of the code (\`note\`, e.g. grep finding nothing) is
+            // **not** one of them: CC's \`$\` "throws on a non-zero exit, as Bun.$
+            // does", and \`.nothrow()\` is the only exit it offers.
+            if (nothrow) return out;
             if (out.exitCode !== null && out.exitCode !== 0) throw shellFailure(out);
             return out;
           }, (error) => {
