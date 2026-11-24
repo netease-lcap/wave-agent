@@ -1,18 +1,23 @@
 /**
  * 一段工具结果的文本视图（issue #3055 阶段 2）。
  *
- * 阶段 2 之后新转录里只有 `ToolBlock.data`，文本不随块落盘 —— 而 SDK 内部有五个
- * 地方要那份文本：模型侧 tool_result（`convertMessagesForAPI`）、mod 事件的
- * `tool_result`（`modManager`）、导出 markdown（`transcriptArchive`），以及压缩前
- * 抓的两份上下文（`messageManager` 的「最近读过的文件」与「调用过的技能」）。
+ * 新转录的工具块里**两份都有**：`result` 是模型当时读到的那份全文，`data` 是同一份
+ * 结果的结构化骨架（落盘前按工具剥掉了大块载荷，见 `tools/resultData/strip.ts`）。
+ * SDK 内部有五个地方要那段文本：模型侧 tool_result（`convertMessagesForAPI`）、mod
+ * 事件的 `tool_result`（`modManager`）、导出 markdown（`transcriptArchive`），以及
+ * 压缩前抓的两份上下文（`messageManager` 的「最近读过的文件」与「调用过的技能」）。
  * 它们一律走这里，别各自拼 `block.result ?? …`。
  *
- * 顺序是 **`result` 优先、`data` 兜底**，而不是反过来：
+ * 顺序是 **`result` 优先、`data` 兜底**，不要反过来 —— 「`data` 更结构化、所以更新」
+ * 在这里恰恰不成立：
  *
  * - 老转录只有 `result`（阶段 2 之前写下的），它才是模型当时真正看到的那份文本；
- * - 写入侧（`aiManager.executeToolCall`）只在「`data` 重建不出这段文本」时才写
- *   `result` —— 没有渲染器的表外工具（MCP、插件工具）、以及事后追加了提示的分支
- *   （工具参数被截断后恢复）。这两种情况下 `result` 比 `data` 更新。
+ * - 新转录的 `result` 是**全文**，而 `data` 是剥过的骨架（`Read` 的
+ *   `file.content`、`Bash` 的 `stdout` / `stderr` 落盘时已经是空串）。拿 `data`
+ *   现渲，`Read` 会渲成一句「文件是空的」的 warning、`Bash` 会渲成空正文。所以
+ *   只要有 `result` 就必须用它；
+ * - `data` 兜底的场景因此只剩两类：还没有 `result` 的块（测试里手搓的、
+ *   老形态只给 `data` 的），以及本来就没有文本形态、只有 `data` 的结果。
  *
  * 两级都拿不到（`Read` 的图片 / pdf / 二进制档这类本来就没有文本形态的结果）时返回
  * `undefined`：调用方必须按「没有文本」处理，不能当成空输出。
@@ -34,13 +39,14 @@ export function toolBlockText(
 /**
  * 反方向的同一份文本：**交给宿主的块**（issue #3055 阶段 2 · C）。
  *
- * 新转录的工具块只有 `data`、没有 `result`，而四端 UI 仍然只读
- * `ToolBlock.result`——webview 尤其如此，它拿不到渲染器（浏览器 bundle 只允许
- * `wave-agent-sdk/types` 与 `/constants`，由 `check-sdk-surface` 把守）。所以文本
- * 在会话数据离开 agent 进程之前补回去，宿主侧一行都不用改。
+ * 四端 UI 只读 `ToolBlock.result`——webview 尤其如此，它拿不到渲染器（浏览器
+ * bundle 只允许 `wave-agent-sdk/types` 与 `/constants`，由 `check-sdk-surface`
+ * 把守）。新转录已经双写、块里就有 `result`，所以这条补文本的路径现在只剩两类
+ * 历史/边界形状：只有 `data` 的老块（双写之前写下的那种），以及只带 `data`、
+ * 没有文本来源的表外结果。
  *
- * 只补不改：已有 `result` 的老转录、没有渲染器的表外工具（MCP、插件工具）、渲染器
- * 渲不出文本的结果（`Read` 的图片 / pdf / 二进制 / 超 token）原样返回，连对象身份
+ * 只补不改：已有 `result` 的块、没有渲染器的表外工具（MCP、插件工具）、渲染器渲
+ * 不出文本的结果（`Read` 的图片 / pdf / 二进制 / 超 token）原样返回，连对象身份
  * 都不变——所以长会话里绝大多数块是零成本的，也不会因为「补过」而把文本写回转录。
  *
  * 同一块会被反复要（`Agent.messages` 每帧一次），而一份 `data` 可能渲出很长的正文

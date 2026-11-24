@@ -11,10 +11,10 @@ import * as aiService from "../../src/services/aiService.js";
 /**
  * issue #3055 阶段 2：工具结果的**落盘字段**与**模型侧文本**的分工。
  *
- * 口径（`AIManager.executeToolCall`）：`data` 能重建出这段文本时只落 `data`，文本由
- * 读路径（`utils/toolBlockText.ts` → `tools/resultData/` 的渲染器）现场生成；表外
- * 工具（没有渲染器）与「事后追加了提示」的分支必须继续落 `result`，否则那段结果就
- * 没了。这里的期望值是手写字面量，不从渲染器抄。
+ * 口径（`AIManager.executeToolCall`）：**双写** —— `result` 是模型这次读到的全文，
+ * `data` 是同一份结果的骨架（落盘前按工具剥掉大块载荷，`tools/resultData/strip.ts`）。
+ * 只有工具压根没给 `data` 时才只剩 `result`（老形态）。期望值是手写字面量，不从
+ * 渲染器或 strip 的返回值抄。
  */
 
 vi.mock("../../src/utils/globalLogger.js", () => ({
@@ -180,8 +180,8 @@ async function runToolTurn(toolName: string, result: ToolResult, args = "{}") {
   return { toolBlock, modelText: toolMessage?.content };
 }
 
-describe("aiManager: 工具结果只落 data，模型侧文本现场渲染", () => {
-  it("有渲染器的内置工具：只落 data，模型读到渲染结果而不是 content", async () => {
+describe("aiManager: 工具结果 result / data 双写，模型侧文本现场渲染", () => {
+  it("有渲染器的内置工具：result 与 data 双写，模型读到渲染结果而不是 content", async () => {
     const { toolBlock, modelText } = await runToolTurn(
       "Grep",
       {
@@ -202,7 +202,9 @@ describe("aiManager: 工具结果只落 data，模型侧文本现场渲染", () 
       numFiles: 2,
       filenames: ["a.ts", "b.ts"],
     });
-    expect(toolBlock?.result).toBeUndefined();
+    // 正文那一份落 `result`（压缩恢复、宿主 UI、mod 事件都读它），
+    // `data` 同时保留骨架。
+    expect(toolBlock?.result).toBe("Found 2 files\na.ts\nb.ts");
     expect(modelText).toBe("Found 2 files\na.ts\nb.ts");
   });
 
@@ -232,7 +234,7 @@ describe("aiManager: 工具结果只落 data，模型侧文本现场渲染", () 
     expect(modelText).toBe("mcp hit 1\nmcp hit 2");
   });
 
-  it("工具参数被截断后恢复：data 重建不出那句提示，仍落 result", async () => {
+  it("工具参数被截断后恢复：那句提示自然进 result，data 照旧落盘", async () => {
     const { toolBlock, modelText } = await runToolTurn(
       "Grep",
       {
@@ -248,12 +250,76 @@ describe("aiManager: 工具结果只落 data，模型侧文本现场渲染", () 
       '{"pattern":"TODO","path":"src"',
     );
 
-    expect(toolBlock?.data).toBeUndefined();
+    expect(toolBlock?.data).toEqual({
+      mode: "files_with_matches",
+      numFiles: 1,
+      filenames: ["b.ts"],
+    });
     expect(toolBlock?.result).toBe(
       "Found 1 file\nb.ts\n\nTool arguments were truncated (likely exceeded max output tokens). Please reduce your output or split into multiple tool calls.",
     );
     expect(modelText).toBe(
       "Found 1 file\nb.ts\n\nTool arguments were truncated (likely exceeded max output tokens). Please reduce your output or split into multiple tool calls.",
     );
+  });
+
+  it("Bash：result 是全文，data.stdout / stderr 落盘时已被剥空", async () => {
+    const { toolBlock, modelText } = await runToolTurn("Bash", {
+      success: true,
+      // 工具留下的 `content` 不再参与落盘：渲染器从 `data` 生成同一段文本。
+      content: "工具当场写好的那段文本",
+      data: {
+        stdout: "hi from bash",
+        stderr: "Shell cwd was reset to /work/src",
+        exitCode: 0,
+        interrupted: false,
+      },
+    });
+
+    expect(toolBlock?.result).toBe(
+      "Shell cwd was reset to /work/src\nhi from bash",
+    );
+    // `exitCode` 这类短标量必须留在骨架里（宿主卡片与 `$` 都读它）。
+    expect(toolBlock?.data).toEqual({
+      stdout: "",
+      stderr: "",
+      exitCode: 0,
+      interrupted: false,
+    });
+    expect(modelText).toBe("Shell cwd was reset to /work/src\nhi from bash");
+  });
+
+  it("Read：data.file.content 剥成空串，result 仍是带行号的全文", async () => {
+    const { toolBlock, modelText } = await runToolTurn(
+      "Read",
+      {
+        success: true,
+        content: "工具当场写好的那段文本",
+        data: {
+          type: "text",
+          file: {
+            filePath: "/work/src/index.ts",
+            content: "const a = 1;\nconst b = 2;",
+            numLines: 2,
+            startLine: 1,
+            totalLines: 9,
+          },
+        },
+      },
+      '{"file_path":"/work/src/index.ts"}',
+    );
+
+    expect(toolBlock?.result).toBe("1\tconst a = 1;\n2\tconst b = 2;");
+    expect(toolBlock?.data).toEqual({
+      type: "text",
+      file: {
+        filePath: "/work/src/index.ts",
+        content: "",
+        numLines: 2,
+        startLine: 1,
+        totalLines: 9,
+      },
+    });
+    expect(modelText).toBe("1\tconst a = 1;\n2\tconst b = 2;");
   });
 });

@@ -64,8 +64,9 @@ export interface UpdateToolBlockParams {
    */
   nestedToolCalls?: string[];
   /**
-   * 工具结果的结构化本体（`ToolResult.data`）。阶段 2 起新转录只写这个字段，
-   * `result` 退化为读老转录的兼容字段 —— 见 `ToolBlock.data`。
+   * 工具结果的结构化本体（`ToolResult.data`）。新转录与 `result` 双写：`result`
+   * 是全文、这里是剥过大块载荷的骨架（见 `ToolBlock.data` 与
+   * `tools/resultData/strip.ts`）。传 `undefined` 等于「这次不改这一格」。
    */
   data?: unknown;
   /**
