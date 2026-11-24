@@ -42,6 +42,7 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import {
   BASH_TOOL_NAME,
+  REPL_TOOL_NAME,
   SHELL_TOOL_NAMES,
   AGENT_TOOL_NAME,
   LSP_TOOL_NAME,
@@ -546,18 +547,18 @@ const highlightCodeBody = (
 };
 
 /**
- * Bash 命令行的正文：按 shell 语法着色，**不做链接化**。
+ * 一段要进 `dangerouslySetInnerHTML` 的代码：按语言着色后净化。
  *
  * 与围栏代码块共用 `highlightCode`（同一份 hljs 注册表与调色板），但出口不同：
- * 命令里的地址常常是 shell 语法的一部分（引号、管道、重定向目标），链接化既会
- * 切碎高亮结构，也会把「点了没反应」变成意外跳转——命令行刻意不生成 `<a>`
- * （specs/ui/message-rendering-system.md「Bash 工具命令行的语法高亮」场景 5）。
+ * 命令与脚本是**工具块**里的正文，链接化留给输出区（那边的地址是给人点的），
+ * 命令行/脚本里的地址常常是语法的一部分（引号、管道、重定向目标），链接化既会
+ * 切碎高亮结构，也会把「点了没反应」变成意外跳转。
  *
- * 命令来自模型，等价于不可信输入，净化只放行 `span` 与 `class`；语言不可用或
- * 高亮抛错时 `highlightCode` 返回 null，退回转义后的原文（场景 4）。
+ * 内容来自模型，等价于不可信输入，净化只放行 `span` 与 `class`；语言不可用或
+ * 高亮抛错时 `highlightCode` 返回 null，退回转义后的原文。
  */
-const highlightBashCommandBody = (command: string): string => {
-  const html = highlightCode(command, "bash") ?? escapeHtml(command);
+const highlightToolSourceBody = (source: string, language: string): string => {
+  const html = highlightCode(source, language) ?? escapeHtml(source);
   const clean = DOMPurify.sanitize(html, {
     ALLOWED_TAGS: ["span"],
     ALLOWED_ATTR: ["class"],
@@ -567,6 +568,20 @@ const highlightBashCommandBody = (command: string): string => {
   });
   return typeof clean === "string" ? clean : String(clean);
 };
+
+/**
+ * Bash 命令行的正文：按 shell 语法着色，**不做链接化**
+ * （specs/ui/message-rendering-system.md「Bash 工具命令行的语法高亮」场景 5）。
+ */
+const highlightBashCommandBody = (command: string): string =>
+  highlightToolSourceBody(command, "bash");
+
+/**
+ * REPL 脚本的正文：按 JavaScript 语法着色，**不做链接化**
+ * （specs/ui/message-rendering-system.md「REPL 工具块的脚本与输出」场景 2）。
+ */
+const highlightReplCodeBody = (code: string): string =>
+  highlightToolSourceBody(code, "javascript");
 
 /** 代码块复制成功后图标与文案停留多久（spec: 代码块复制按钮场景 5）。 */
 export const CODE_COPY_FEEDBACK_MS = 1500;
@@ -1621,6 +1636,106 @@ export const Message: React.FC<MessageProps> = React.memo(
       return null;
     };
 
+    /**
+     * `REPL` 的结果骨架，读 `ToolBlock.data`（形状由 SDK 的
+     * `tools/resultData/repl.ts` 声明，对齐 CC EvalTool 的 outputSchema）。
+     *
+     * 这里**不**解析 `result` 文本：那份文本是给模型读的 `<repl-output>` 标记，
+     * 元素里装的是任意脚本文本（脚本可以 `self.log("<log>")`），按它反解会把
+     * 「日志」与「结果」切错，而且错得无声——用户不会知道看到的那段是哪一段。
+     * 渲染要的每一段都从 `data` 直接取。
+     */
+    const renderReplIO = (toolBlock: ToolBlock) => {
+      // 脚本来自入参；streaming 阶段参数是半截 JSON，读不出来就落回通用渲染。
+      let code = "";
+      try {
+        const params = toolBlock.parameters
+          ? (JSON.parse(toolBlock.parameters) as Record<string, unknown>)
+          : null;
+        if (params && typeof params === "object") {
+          const raw = params.code;
+          if (typeof raw === "string") code = raw;
+        }
+      } catch {
+        code = "";
+      }
+      if (!code) return null;
+
+      const data =
+        toolBlock.data && typeof toolBlock.data === "object"
+          ? (toolBlock.data as Record<string, unknown>)
+          : null;
+      // 没有 `data` 只可能是 #3062 之前的转录、或没同步产物的宿主。那时结果正文
+      // 里还是 `<repl-output>` 原文，接管就等于把标签打到屏幕上——留给通用渲染。
+      if (!data && toolBlock.stage !== "running") return null;
+
+      const logs = Array.isArray(data?.stdout)
+        ? data.stdout.filter((line): line is string => typeof line === "string")
+        : [];
+      // 一股流一段（`self.log` 的每一条），与 SDK 渲染器同一取法。
+      const logText = logs.join("\n");
+      const rawResult = typeof data?.result === "string" ? data.result : "";
+      // `undefined` 是没有 `return` 的脚本序列化出来的样子，读作「没有返回值」。
+      const resultText =
+        rawResult && rawResult !== "undefined" ? rawResult : "";
+      const dispatched = data?.asyncDispatched === true;
+      const evalId = typeof data?.evalId === "number" ? data.evalId : undefined;
+      const contextReset = data?.contextReset === true;
+
+      const notice = dispatched
+        ? evalId === undefined
+          ? "脚本没有启动"
+          : `已派发 #${evalId}，脚本在后台运行`
+        : contextReset
+          ? "这是一个新的 REPL 上下文，之前脚本的变量与定时器已不在"
+          : "";
+
+      const codeHtml = highlightReplCodeBody(code);
+      const input = (
+        <div className="bash-command-input">
+          <span
+            className="bash-command"
+            dangerouslySetInnerHTML={{ __html: codeHtml }}
+          />
+        </div>
+      );
+
+      if (!logText && !resultText && !notice) return input;
+
+      return (
+        <div
+          className="bash-command-unified repl-block"
+          onClick={handleContentClick}
+        >
+          {input}
+          {/* 输出区的链接化与终端配色沿用 Bash 那条通道：`$` 命令模板的输出真的
+              带 ANSI（specs/core/bash-tools.md「ANSI 颜色代码」），而地址与文件
+              路径是给人点的。 */}
+          <div
+            className="bash-command-output"
+            tabIndex={isDesktopHost() ? 0 : undefined}
+          >
+            {logText && (
+              <div
+                dangerouslySetInnerHTML={{ __html: linkifyAnsiText(logText) }}
+              />
+            )}
+            {resultText && (
+              <div className="repl-result">
+                <span className="repl-result-arrow">=&gt;</span>{" "}
+                <span
+                  dangerouslySetInnerHTML={{
+                    __html: linkifyAnsiText(resultText),
+                  }}
+                />
+              </div>
+            )}
+            {notice && <div className="repl-notice">{notice}</div>}
+          </div>
+        </div>
+      );
+    };
+
     const renderToolBlock = (toolBlock: ToolBlock, index: number) => {
       // Default tool rendering for all tools (including Bash)
       const compactInfo =
@@ -1697,6 +1812,24 @@ export const Message: React.FC<MessageProps> = React.memo(
             <div key={index} className="tool-container">
               {toolHeader}
               {shellContent}
+              {errorContent}
+            </div>
+          );
+        }
+      }
+
+      // `REPL`：脚本与输出挂成与 Bash 相同的卡片（specs/ui/
+      // message-rendering-system.md「REPL 工具块的脚本与输出」）。工具行照常保留，
+      // 卡片只顶掉原来那行参数摘要。**不**并进上面的 `isShellToolName` ——
+      // 那个名单还决定审批弹窗的形态（ConfirmationDialog），而且 `renderShellIO`
+      // 只认 `params.command`，脚本的入参是 `code`。
+      if (toolBlock.name === REPL_TOOL_NAME) {
+        const replContent = renderReplIO(toolBlock);
+        if (replContent) {
+          return (
+            <div key={index} className="tool-container">
+              {toolHeader}
+              {replContent}
               {errorContent}
             </div>
           );
