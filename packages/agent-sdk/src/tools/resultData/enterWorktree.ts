@@ -46,3 +46,34 @@ export function renderEnterWorktreeResultData(
     : "";
   return `Created worktree at ${data.worktreePath}${branchInfo}. The session is now working in the worktree. Use ExitWorktree to leave mid-session, or exit the session to be prompted.${hookNote}`;
 }
+
+/**
+ * `EnterWorktree` 的 `data` 形状（JSON Schema）。
+ *
+ * 用途只有一个：供 REPL 把工具签名渲染成真实返回类型（spec
+ * core/repl-tool.md「公告分档呈现」），模型据此直接写 `const r = await
+ * EnterWorktree(...); r.worktreePath`，不用先探一次。与
+ * {@link EnterWorktreeResultData} 逐字段对应，改一处必须改另一处。
+ */
+export const enterWorktreeOutputSchema: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    worktreePath: {
+      type: "string",
+      description:
+        "Absolute path of the new worktree, now the session's working directory.",
+    },
+    worktreeBranch: {
+      type: "string",
+      description:
+        "Branch created for the worktree; omitted for hook-created worktrees.",
+    },
+    createdViaHook: {
+      type: "boolean",
+      description:
+        "True when a WorktreeCreate hook created the worktree instead of git.",
+    },
+  },
+  required: ["worktreePath", "createdViaHook"],
+  additionalProperties: false,
+};

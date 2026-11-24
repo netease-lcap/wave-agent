@@ -1733,7 +1733,9 @@ export class McpManager {
       // `textContentStr`: that one carries display placeholders ("No content"),
       // and a script has to be able to tell "the tool said nothing" (`null`) from
       // "the tool said 'No content'". Same rule a signature's return type is
-      // rendered from: structured, else text, else null.
+      // rendered from: structured, else text, else null. The text is handed over
+      // raw here; the REPL layer parses it when it is JSON (`replRuntime.ts`
+      // `parseMcpText`), so a flat call still sees exactly what arrived.
       const text = textContent.join("\n");
       const output = result.structuredContent ?? (text === "" ? null : text);
 

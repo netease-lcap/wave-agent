@@ -64,3 +64,43 @@ export interface LspResultData {
 export function renderLspResultData(data: LspResultData): string {
   return data.result;
 }
+
+/**
+ * `LSP` 的 `data` 形状（JSON Schema），供 REPL 把签名渲染成真实返回类型
+ * （spec core/repl-tool.md「公告分档呈现」）。与 {@link LspResultData} 逐字段对应，
+ * 改一处必须改另一处。
+ *
+ * `operation` 用九值 `enum` 渲染成字面量联合，清单直接复用 {@link LSP_OPERATIONS}，
+ * 别另抄一遍。五个字段 execute 都无条件写入——`resultCount` / `fileCount` 是算出来
+ * 的计数（找不到也是 0，不是缺键），故全进 `required`；接口上的 `?` 只对应 CC 的
+ * schema 写法。
+ */
+export const lspOutputSchema: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    operation: {
+      type: "string",
+      enum: LSP_OPERATIONS,
+      description: "The operation this call ran.",
+    },
+    result: {
+      type: "string",
+      description:
+        "The rendered answer — definitions, references, hover text, symbols or call hierarchy.",
+    },
+    filePath: {
+      type: "string",
+      description: "The path as the caller gave it, not resolved to absolute.",
+    },
+    resultCount: {
+      type: "number",
+      description: "How many hits this call found; 0 when nothing matched.",
+    },
+    fileCount: {
+      type: "number",
+      description: "How many distinct files those hits span.",
+    },
+  },
+  required: ["operation", "result", "filePath", "resultCount", "fileCount"],
+  additionalProperties: false,
+};

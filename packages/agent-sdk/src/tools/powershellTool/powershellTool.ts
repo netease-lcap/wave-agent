@@ -18,6 +18,7 @@ import {
 } from "./prompt.js";
 import {
   composePowerShellResultText,
+  powershellOutputSchema,
   renderPowerShellResultData,
   type PowerShellResultData,
 } from "../resultData/powershell.js";
@@ -128,6 +129,7 @@ function stashLongOutput(data: PowerShellResultData): void {
 export const powershellTool: ToolPlugin = {
   name: POWERSHELL_TOOL_NAME,
   searchHint: "run a PowerShell command",
+  outputSchema: powershellOutputSchema,
   isConcurrencySafe: false,
   config: {
     type: "function",

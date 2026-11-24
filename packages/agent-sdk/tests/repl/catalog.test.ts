@@ -295,7 +295,7 @@ describe("renderToolSignature", () => {
         }),
       ),
     ).toBe(
-      ["tools.a({", '  mode?: "fast" | "slow",', "}): Promise<string>"].join(
+      ["tools.a({", '  mode?: "fast" | "slow",', "}): Promise<unknown>"].join(
         "\n",
       ),
     );
@@ -310,7 +310,7 @@ describe("renderToolSignature", () => {
         }),
       ),
     ).toBe(
-      ["tools.b({", "  items?: Array<string>,", "}): Promise<string>"].join(
+      ["tools.b({", "  items?: Array<string>,", "}): Promise<unknown>"].join(
         "\n",
       ),
     );
@@ -321,7 +321,7 @@ describe("renderToolSignature", () => {
           inputSchema: { anyOf: [{ type: "string" }, { type: "number" }] },
         }),
       ),
-    ).toBe("tools.c(string | number): Promise<string>");
+    ).toBe("tools.c(string | number): Promise<unknown>");
   });
 
   it("renders every property of a wide schema", () => {
@@ -448,7 +448,7 @@ describe("renderToolSignature", () => {
         "  legacy?: string,",
         // No description and no tag -> no comment line at all.
         "  plain?: boolean,",
-        "}): Promise<string>",
+        "}): Promise<unknown>",
       ].join("\n"),
     );
   });
@@ -478,7 +478,7 @@ describe("renderToolSignature", () => {
       "   * second line",
       "   */",
       "  p?: string,",
-      "}): Promise<string>",
+      "}): Promise<unknown>",
     ]);
   });
 
@@ -489,7 +489,7 @@ describe("renderToolSignature", () => {
     const line = renderToolSignature(
       entry("gd", { description: "Fetch a URL and extract its text" }),
     );
-    expect(line).toBe("tools.gd(unknown): Promise<string>");
+    expect(line).toBe("tools.gd(unknown): Promise<unknown>");
   });
 
   it("emits a tag even when the field has no description", () => {
@@ -691,15 +691,23 @@ describe("searchTools", () => {
     expect(searchTools(manyNames(3), "zzz")).toEqual([]);
   });
 
-  it("returns hits with exactly three fields and no total", () => {
+  it("returns hits with exactly four fields and no total", () => {
     // `total` belongs to the separate `ToolSearch` tool's result shape, not to the
-    // sandbox global: a capped list is not a count of matches.
+    // sandbox global: a capped list is not a count of matches. The four fields are
+    // name / about / input / output — the return type is what decides whether the
+    // model can write the next step without another round-trip (spec
+    // core/repl-tool.md「在沙箱内搜索工具形状」场景 2).
     const [hit] = searchTools(manyNames(3), "alpha");
-    expect(Object.keys(hit).sort()).toEqual(["about", "input", "name"]);
+    expect(Object.keys(hit).sort()).toEqual([
+      "about",
+      "input",
+      "name",
+      "output",
+    ]);
     expect(searchTools(manyNames(3), "alpha")).not.toHaveProperty("total");
   });
 
-  it("returns the argument type as `input`, and no return type", () => {
+  it("returns the argument type as `input` and the return type as `output`", () => {
     const [hit] = searchTools(
       [
         entry("reader", {
@@ -718,9 +726,10 @@ describe("searchTools", () => {
     );
 
     expect(hit.input).toBe(["{", "  path: string,", "}"].join("\n"));
-    // The return type is reachable through `describeTool`; a hit is not a schema dump.
-    expect(hit.input).not.toContain("Promise");
+    // The return type travels beside the arguments rather than instead of them:
+    // `input` stays the argument object, and `output` is the resolved value.
     expect(hit.input).not.toContain("content");
+    expect(hit.output).toContain("content");
   });
 
   it("cuts `about` to 160 characters and keeps the tool's own words", () => {
@@ -768,6 +777,7 @@ describe("describeTool", () => {
     name: string;
     description: string;
     inputSchema: Record<string, unknown>;
+    output: string;
   } {
     const answer = describeTool(pool, name);
     if ("error" in answer) throw new Error(answer.error);
@@ -791,7 +801,31 @@ describe("describeTool", () => {
       // The tool's own JSON Schema, not a rendering of it: a caller can walk an
       // object, and a string would be an answer it can only read.
       inputSchema: schema,
+      // The return type is the rendered form, because nothing walks or validates it:
+      // the sandbox hands the script `data` as it came. `unknown` when the tool
+      // declared no output schema — never `string`.
+      output: "unknown",
     });
+  });
+
+  it("renders the declared output schema as the return type", () => {
+    const described = descriptionOf(
+      [
+        entry("Glob", {
+          outputSchema: {
+            type: "object",
+            properties: {
+              filenames: { type: "array", items: { type: "string" } },
+            },
+            required: ["filenames"],
+          },
+        }),
+      ],
+      "Glob",
+    );
+    expect(described.output).toBe(
+      ["{", "  filenames: Array<string>,", "}"].join("\n"),
+    );
   });
 
   it("answers an empty object for a tool that declares no schema", () => {

@@ -261,3 +261,182 @@ export function artifactCommentsShortResult(
   const count = `Read ${data.threads.length} comment thread(s)`;
   return awaiting ? `${count} — ${awaiting} awaiting your reply` : count;
 }
+
+/**
+ * `ArtifactComments` 的 `data` 形状（JSON Schema）。
+ *
+ * 用途只有一个：供 REPL 把工具签名渲染成真实返回类型（spec
+ * core/repl-tool.md「公告分档呈现」），模型据此直接写 `const r = await
+ * ArtifactComments(...); r.threads`，不用先探一次。三支用 `anyOf` 表达，判别
+ * 字段是 `action`——与 {@link ArtifactCommentsResultData} 的联合类型一一对应，
+ * 改一处必须改另一处。
+ */
+export const artifactCommentsOutputSchema: Record<string, unknown> = {
+  anyOf: [
+    {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["read"] },
+        url: {
+          type: "string",
+          description: "The artifact URL whose comments were read.",
+        },
+        cursor: {
+          type: "string",
+          description:
+            "Echo of the cursor this read was given; omitted for a full list.",
+        },
+        unresolved_count: {
+          type: "number",
+          description: "Unresolved threads on the whole page.",
+        },
+        threads: {
+          type: "array",
+          description: "Threads in this page, oldest root first.",
+          items: {
+            type: "object",
+            properties: {
+              id: {
+                type: "string",
+                description: "Thread root id, as shown in brackets by a read.",
+              },
+              created_at: {
+                type: "string",
+                description: "Creation timestamp of the thread root.",
+              },
+              resolved: {
+                type: "boolean",
+                description: "True when the thread is resolved.",
+              },
+              claude_activated: {
+                type: "boolean",
+                description: "True when an agent has replied in this thread.",
+              },
+              anchor_label: {
+                type: "string",
+                description: "One-line description of the comment's anchor.",
+              },
+              own: {
+                type: "boolean",
+                enum: [true],
+                description:
+                  "Set when this session started the thread; omitted otherwise.",
+              },
+              root_missing: {
+                type: "boolean",
+                enum: [true],
+                description:
+                  "Set when the thread root is not in this page; omitted otherwise.",
+              },
+              comments: {
+                type: "array",
+                description: "Root comment first, then its replies.",
+                items: {
+                  type: "object",
+                  properties: {
+                    id: { type: "string", description: "Comment id." },
+                    account: {
+                      type: "string",
+                      description: "Display name of the comment's author.",
+                    },
+                    role: {
+                      type: "string",
+                      enum: ["user", "agent"],
+                      description: "Who wrote the comment.",
+                    },
+                    text: {
+                      type: "string",
+                      description:
+                        "Comment body as written; the renderer truncates it.",
+                    },
+                    created_at: {
+                      type: "string",
+                      description: "Comment creation timestamp.",
+                    },
+                    awaiting_reply: {
+                      type: "boolean",
+                      enum: [true],
+                      description:
+                        "Set when the comment is waiting for an agent reply; omitted otherwise.",
+                    },
+                    continues_reply_id: {
+                      type: "string",
+                      description:
+                        "Comment this reply answers; omitted for a root comment.",
+                    },
+                  },
+                  required: ["id", "account", "text"],
+                  additionalProperties: false,
+                },
+              },
+            },
+            required: ["id", "resolved", "claude_activated", "comments"],
+            additionalProperties: false,
+          },
+        },
+        threads_dropped: {
+          type: "boolean",
+          enum: [true],
+          description:
+            "Set when threads exist beyond this page; omitted otherwise.",
+        },
+        next_cursor: {
+          type: "string",
+          description:
+            "Cursor for the next page; present together with threads_dropped.",
+        },
+      },
+      required: ["action", "url", "unresolved_count", "threads"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["reply"] },
+        thread_id: {
+          type: "string",
+          description: "The thread the reply targeted.",
+        },
+        replied: {
+          type: "boolean",
+          description:
+            "False when the target comment already has an agent reply standing.",
+        },
+        comment_id: {
+          type: "string",
+          description:
+            "Id of the posted reply; present only when replied is true.",
+        },
+        standing_reply_id: {
+          type: "string",
+          description:
+            "The agent reply already standing on the target; present when replied is false.",
+        },
+        continues_reply_id: {
+          type: "string",
+          description:
+            "Comment this reply answers; omitted when the thread root was the target.",
+        },
+      },
+      required: ["action", "thread_id", "replied"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["resolve"] },
+        thread_id: {
+          type: "string",
+          description: "The thread that was resolved or reopened.",
+        },
+        thread_resolved: {
+          type: "boolean",
+          description:
+            "True when the thread is now resolved, false when reopened.",
+        },
+      },
+      required: ["action", "thread_id", "thread_resolved"],
+      additionalProperties: false,
+    },
+  ],
+};

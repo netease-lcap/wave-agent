@@ -2,6 +2,7 @@ import { TASK_STOP_TOOL_NAME } from "../constants/tools.js";
 import { ToolContext, ToolPlugin, ToolResult } from "./types.js";
 import {
   renderTaskStopResultData,
+  taskStopOutputSchema,
   type TaskStopResultData,
 } from "./resultData/taskStop.js";
 
@@ -9,6 +10,7 @@ export const taskStopTool: ToolPlugin = {
   name: TASK_STOP_TOOL_NAME,
   defer: true,
   searchHint: "stop a running background task by its id",
+  outputSchema: taskStopOutputSchema,
   config: {
     type: "function",
     function: {

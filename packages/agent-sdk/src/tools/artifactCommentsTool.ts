@@ -16,6 +16,7 @@ import {
   postResolve,
 } from "../services/artifactComments.js";
 import {
+  artifactCommentsOutputSchema,
   artifactCommentsShortResult,
   renderArtifactCommentsResultData,
   type ArtifactCommentsReplyResultData,
@@ -321,6 +322,7 @@ async function resolveAction(
 export const artifactCommentsTool: ToolPlugin = {
   name: ARTIFACT_COMMENTS_TOOL_NAME,
   searchHint: "read and reply to comment threads on a published artifact",
+  outputSchema: artifactCommentsOutputSchema,
   leanPrompt: `Read and answer the review comments on a published artifact page. Every action takes the artifact as \`url\`; \`read\` (+ \`cursor\`) lists the threads and flags the ones \`AWAITING YOUR REPLY\`, \`reply\` (+ \`thread_id\` + \`text\`, and \`continues_reply_id\` naming the flagged comment) answers one, \`resolve\` (+ \`thread_id\` + \`resolved\`) closes or reopens one.
 Watching for new comments isn't available in this session, so none reach it on their own — call \`read\` to read them when the user asks. Replying and resolving ask the user to approve once per page in a session; if declined, do not retry.`,
   defer: true,

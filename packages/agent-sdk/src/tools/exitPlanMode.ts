@@ -4,6 +4,7 @@ import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { EXIT_PLAN_MODE_TOOL_NAME } from "../constants/tools.js";
 import { OPERATION_CANCELLED_BY_USER } from "../types/permissions.js";
 import {
+  exitPlanModeOutputSchema,
   renderExitPlanModeResultData,
   type ExitPlanModeResultData,
 } from "./resultData/exitPlanMode.js";
@@ -28,6 +29,7 @@ export const exitPlanModeTool: ToolPlugin = {
   name: EXIT_PLAN_MODE_TOOL_NAME,
   defer: true,
   searchHint: "present plan for approval and start coding (plan mode only)",
+  outputSchema: exitPlanModeOutputSchema,
   config: {
     type: "function",
     function: {

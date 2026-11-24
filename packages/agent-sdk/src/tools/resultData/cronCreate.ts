@@ -39,3 +39,36 @@ export function renderCronCreateResultData(data: CronCreateResultData): string {
     ? `Scheduled recurring job ${data.id} (${data.humanSchedule}). ${where}. Auto-expires after ${DEFAULT_MAX_AGE_DAYS} days. Use CronDelete to cancel sooner.`
     : `Scheduled one-shot task ${data.id} (${data.humanSchedule}). ${where}. It will fire once then auto-delete.`;
 }
+
+/**
+ * `CronCreate` 的 `data` 形状（JSON Schema），供 REPL 把签名渲染成真实返回类型
+ * （spec core/repl-tool.md「公告分档呈现」）。与 {@link CronCreateResultData} 逐字段
+ * 对应，改一处必须改另一处。
+ *
+ * 四个字段 execute 都无条件写入（入参缺省时 `recurring` 补 `true`、`durable` 补
+ * `false`），所以全进 `required`；接口上 `durable` 标 `?` 只是为老转录里缺键的情况。
+ */
+export const cronCreateOutputSchema: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+      description: "Job id; pass it to CronDelete to cancel the job.",
+    },
+    humanSchedule: {
+      type: "string",
+      description: "The cron expression in plain words.",
+    },
+    recurring: {
+      type: "boolean",
+      description: "True when it fires on every cron match; false = one-shot.",
+    },
+    durable: {
+      type: "boolean",
+      description:
+        "True when the job was persisted to .wave/scheduled_tasks.json.",
+    },
+  },
+  required: ["id", "humanSchedule", "recurring", "durable"],
+  additionalProperties: false,
+};

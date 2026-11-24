@@ -43,3 +43,24 @@ Remember: DO NOT write or edit any files yet. This is a read-only exploration an
 
   return `${data.message}\n\n${instructions}`;
 }
+
+/**
+ * `EnterPlanMode` 的 `data` 形状（JSON Schema）。
+ *
+ * 用途只有一个：供 REPL 把工具签名渲染成真实返回类型（spec
+ * core/repl-tool.md「公告分档呈现」），模型据此直接写 `const r = await
+ * EnterPlanMode(...); r.message`，不用先探一次。与
+ * {@link EnterPlanModeResultData} 逐字段对应，改一处必须改另一处。
+ */
+export const enterPlanModeOutputSchema: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    message: {
+      type: "string",
+      description:
+        "Confirmation that plan mode was entered; the follow-up instructions are appended by the renderer, not stored here.",
+    },
+  },
+  required: ["message"],
+  additionalProperties: false,
+};

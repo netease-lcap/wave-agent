@@ -111,6 +111,17 @@ export interface ToolPlugin {
    * once, in full) usually does not.
    */
   searchHint?: string;
+  /**
+   * JSON Schema for this tool's `ToolResult.data`, written the same way as the
+   * argument `parameters`.
+   *
+   * The sandbox renders it as the return type of the pooled signature (spec
+   * `core/repl-tool.md`「公告分档呈现」): a script that can read the fields off the
+   * type writes the next step without a probe call first. Absent means the
+   * signature says `unknown` — never `string`, because a text return type would
+   * invite the model to call `.split()` on what is actually a plain object.
+   */
+  outputSchema?: Record<string, unknown>;
 }
 
 export interface ToolResult {

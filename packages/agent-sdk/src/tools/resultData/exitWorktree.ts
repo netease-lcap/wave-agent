@@ -84,3 +84,52 @@ export function renderExitWorktreeResultData(
 
   return `Exited and removed worktree at ${data.worktreePath}.${discardNote} Session is now back in ${data.originalCwd}.${hookNote}`;
 }
+
+/**
+ * `ExitWorktree` 的 `data` 形状（JSON Schema）。
+ *
+ * 用途只有一个：供 REPL 把工具签名渲染成真实返回类型（spec
+ * core/repl-tool.md「公告分档呈现」），模型据此直接写 `const r = await
+ * ExitWorktree(...); r.originalCwd`，不用先探一次。与
+ * {@link ExitWorktreeResultData} 逐字段对应，改一处必须改另一处。
+ */
+export const exitWorktreeOutputSchema: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    action: {
+      type: "string",
+      enum: ["keep", "remove"],
+      description:
+        'Which exit ran: the worktree was left on disk ("keep") or deleted ("remove").',
+    },
+    originalCwd: {
+      type: "string",
+      description: "Directory the session returned to.",
+    },
+    worktreePath: {
+      type: "string",
+      description: "Absolute path of the worktree that was exited.",
+    },
+    worktreeBranch: {
+      type: "string",
+      description: "Branch of the exited worktree; omitted when it had none.",
+    },
+    discardedFiles: {
+      type: "number",
+      description:
+        'Uncommitted files discarded; only present for action "remove".',
+    },
+    discardedCommits: {
+      type: "number",
+      description: 'Commits discarded; only present for action "remove".',
+    },
+    removeHook: {
+      type: "string",
+      enum: ["executed", "missing"],
+      description:
+        '"executed" when a WorktreeRemove hook deleted the worktree, "missing" when a hook-based worktree had no hook and was left on disk; omitted for plain git removal and for action "keep".',
+    },
+  },
+  required: ["action", "originalCwd", "worktreePath"],
+  additionalProperties: false,
+};

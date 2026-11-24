@@ -419,6 +419,52 @@ function base64Bytes(chars: number): number {
   return Math.floor((chars * 3) / 4);
 }
 
+/** How deep `stripInlineBase64` walks before it gives up and passes the value on. */
+const MAX_BASE64_STRIP_DEPTH = 4;
+
+/** Fields whose value is bytes rather than text a script could use. */
+const INLINE_BASE64_KEYS = new Set(["base64"]);
+
+/**
+ * Swap inlined base64 in a structured value for the placeholder a text answer
+ * gets.
+ *
+ * `Read` reports an image as `{ type: "image", file: { base64, ... } }` while the
+ * bytes also travel as an attachment, so handing the script the blob would put a
+ * few hundred KB it cannot use into the context for free. Keyed on the field name
+ * rather than on looking base64-ish, so a long `content` or `stdout` is never
+ * touched. Values without such a field come back as the same reference.
+ */
+function stripInlineBase64(value: unknown, depth = 0): unknown {
+  if (
+    depth > MAX_BASE64_STRIP_DEPTH ||
+    value === null ||
+    typeof value !== "object"
+  ) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    let changed = false;
+    const items = value.map((item) => {
+      const stripped = stripInlineBase64(item, depth + 1);
+      if (stripped !== item) changed = true;
+      return stripped;
+    });
+    return changed ? items : value;
+  }
+  let changed = false;
+  const fields: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    const stripped =
+      INLINE_BASE64_KEYS.has(key) && typeof item === "string" && item.length > 0
+        ? placeholderFor(item)
+        : stripInlineBase64(item, depth + 1);
+    if (stripped !== item) changed = true;
+    fields[key] = stripped;
+  }
+  return changed ? fields : value;
+}
+
 function placeholderFor(data: string): string {
   return `[${data.length} base64 chars — ${base64Bytes(data.length)} bytes moved to the REPL result, subject to its per-result cap]`;
 }
@@ -480,12 +526,13 @@ function hoistImages(
  * and its attachments still reach the result.
  */
 function withPlaceholders(value: unknown, notes: string[]): unknown {
-  if (notes.length === 0) return value;
+  const sanitized = stripInlineBase64(value);
+  if (notes.length === 0) return sanitized;
   const text = notes.join("\n");
-  if (value === null || value === undefined) return text;
-  if (typeof value === "string")
-    return value.length === 0 ? text : `${value}\n${text}`;
-  return value;
+  if (sanitized === null || sanitized === undefined) return text;
+  if (typeof sanitized === "string")
+    return sanitized.length === 0 ? text : `${sanitized}\n${text}`;
+  return sanitized;
 }
 
 /** Tool arguments are an object; a bare `null` / `undefined` means "no arguments". */
@@ -604,14 +651,16 @@ async function callBuiltInTool(
     };
   }
   return {
-    // The shell's `cd` note stays in a `tools.Bash` answer: it is one string with
-    // nowhere else to put the news, and it is the same text the flat tool result
-    // shows. Only `$` splits it out into `cwdNote` (see `splitCwdNote`).
-    output: stripEmptyShellSentence(
-      result.content ?? "",
-      result.shortResult,
-      exitCodeOf(result),
-    ),
+    // The script gets the tool's structured `data`, not the text the model reads:
+    // `Glob` hands back `{ numFiles, filenames, truncated }`, so the next step
+    // reads `r.filenames` instead of parsing a listing out of prose. That is the
+    // same shape the pooled signature declares as its return type (spec
+    // `core/repl-tool.md`「公告分档呈现」), and `content` staying host-side is what
+    // keeps the two from disagreeing.
+    //
+    // `null` when a tool declared no data at all — the same answer an MCP call
+    // gives when it has neither `structuredContent` nor text.
+    output: result.data ?? null,
     images: result.images,
   };
 }
@@ -630,6 +679,19 @@ function tryParseJson(text: string): unknown {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * A server that answered with text: when that text is JSON, the parsed value is
+ * what the script wants — the caller reads `r.items` instead of `JSON.parse`-ing
+ * every answer. Claude Code does the same join + parse (`de = Z(ve)` in its REPL
+ * wrapper). Anything that is not JSON stays the text it was, so a plain sentence
+ * is never lost.
+ */
+function parseMcpText(output: unknown): unknown {
+  if (typeof output !== "string") return output;
+  const parsed = tryParseJson(output);
+  return parsed === undefined ? output : parsed;
 }
 
 /** A server that answered with a JSON body: the parsed body is the useful part. */
@@ -684,7 +746,7 @@ async function callMcpTool(
   }
   try {
     const result = await mcpManager.executeMcpTool(name, args, frame.context);
-    return { output: result.output, images: result.images };
+    return { output: parseMcpText(result.output), images: result.images };
   } catch (error) {
     throw annotateMcpFailure(name, error);
   }

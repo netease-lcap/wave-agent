@@ -43,3 +43,56 @@ export interface WebFetchResultData {
 export function renderWebFetchResultData(data: WebFetchResultData): string {
   return data.result;
 }
+
+/**
+ * `WebFetch` 的 `data` 形状（JSON Schema）。
+ *
+ * 用途只有一个：供 REPL 把工具签名渲染成真实返回类型（spec
+ * core/repl-tool.md「公告分档呈现」），模型据此直接写 `const r = await
+ * WebFetch(...); r.result`，不用先探一次。与 {@link WebFetchResultData}
+ * 逐字段对应，改一处必须改另一处。
+ */
+export const webFetchOutputSchema: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    bytes: {
+      type: "number",
+      description:
+        "Size of the fetched content in bytes; for a cross-host redirect, the size of the redirect notice.",
+    },
+    code: { type: "number", description: "HTTP response status code." },
+    codeText: {
+      type: "string",
+      description: 'HTTP status text, e.g. "OK".',
+    },
+    result: {
+      type: "string",
+      description:
+        "The whole model-facing text of this call: the answer, a saved-file note or a redirect notice.",
+    },
+    durationMs: {
+      type: "number",
+      description: "Wall-clock duration of the whole call in milliseconds.",
+    },
+    url: { type: "string", description: "The URL this call fetched." },
+    artifactRead: {
+      type: "object",
+      properties: {
+        slug: {
+          type: "string",
+          description: "Artifact slug the read channel resolved.",
+        },
+        ver: {
+          type: "string",
+          description: "Page version read; omitted when the read carried none.",
+        },
+      },
+      required: ["slug"],
+      additionalProperties: false,
+      description:
+        "Present only when an artifact URL was read through the artifact read channel.",
+    },
+  },
+  required: ["bytes", "code", "codeText", "result", "durationMs", "url"],
+  additionalProperties: false,
+};

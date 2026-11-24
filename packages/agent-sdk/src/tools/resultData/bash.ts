@@ -195,3 +195,66 @@ export function renderBashResultData(data: BashResultData): string {
   // 该落盘但没落成（写不进去）：就地截断，与 `processToolResult` 的兜底同形。
   return body.substring(0, BASH_MAX_OUTPUT_CHARS) + TRUNCATED_WITHOUT_FILE;
 }
+
+/**
+ * `Bash` 的 `data` 形状（JSON Schema），供 REPL 把签名渲染成真实返回类型
+ * （spec core/repl-tool.md「公告分档呈现」）。与 {@link BashResultData} 逐字段对应，
+ * 改一处必须改另一处。`PowerShell` 用的是同一份 `data`，也复用它。
+ *
+ * 正文那三处提示（`cd` 恢复、临时目录不可写、临时卷告急）只在这里留输入，措辞由
+ * 渲染器重建，所以 schema 里是输入字段而不是文案字段。
+ */
+export const bashOutputSchema: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    stdout: {
+      type: "string",
+      description:
+        "Merged output (stdout then stderr); a placeholder sentence when nothing was printed.",
+    },
+    stderr: {
+      type: "string",
+      description:
+        "The tool's own `cd` note only — the command's stderr is inside `stdout`.",
+    },
+    interrupted: { type: "boolean" },
+    interruptedReason: { type: "string" },
+    cwdRecovery: {
+      type: "object",
+      properties: { from: { type: "string" }, to: { type: "string" } },
+      required: ["from", "to"],
+    },
+    tempDir: {
+      type: "object",
+      properties: { path: { type: "string" }, code: { type: "string" } },
+      required: ["path"],
+    },
+    diskPressure: {
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        freeBytes: { type: "number" },
+        freeInodes: { type: "number" },
+      },
+      required: ["path"],
+    },
+    persistedOutputPath: {
+      type: "string",
+      description:
+        "Full output on disk when too large; read it back with Read.",
+    },
+    persistedOutputSize: { type: "number" },
+    backgroundTaskId: { type: "string" },
+    backgroundedByUser: { type: "boolean" },
+    assistantAutoBackgrounded: { type: "boolean" },
+    backgroundOutputPath: { type: "string" },
+    timeoutMs: { type: "number" },
+    exitCode: {
+      type: "number",
+      description:
+        "Process exit code; absent when it was killed before exiting.",
+    },
+  },
+  required: ["stdout", "interrupted"],
+  additionalProperties: false,
+};

@@ -46,3 +46,46 @@ export function renderTaskUpdateResultData(data: TaskUpdateResultData): string {
 
   return content;
 }
+
+/**
+ * `TaskUpdate` 的 `data` 形状（JSON Schema）。
+ *
+ * 用途只有一个：REPL 把工具签名渲染成真实返回类型（spec core/repl-tool.md「公告
+ * 分档呈现」），模型据此直接读 `r.updatedFields` / `r.statusChange?.to`。与
+ * {@link TaskUpdateResultData} 逐字段对应，改一处必须改另一处。
+ *
+ * 成功与失败**不是**判别联合：两侧字段完全重叠（失败只是少了 `statusChange`、
+ * 多了 `error`），所以是同一个对象 + 两个可选字段，判别键就是 `success`。
+ */
+export const taskUpdateOutputSchema: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    success: {
+      type: "boolean",
+      description: "False when the given id has no task.",
+    },
+    taskId: { type: "string", description: "Id this call targeted." },
+    updatedFields: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "Field names this call actually changed, in the order applied; a delete reports `deleted`.",
+    },
+    error: {
+      type: "string",
+      description: "Failure reason; absent on success.",
+    },
+    statusChange: {
+      type: "object",
+      description:
+        "Present only when the status really changed; `to` is `deleted` for a delete.",
+      properties: {
+        from: { type: "string", description: "Status before the update." },
+        to: { type: "string", description: "Status after the update." },
+      },
+      required: ["from", "to"],
+    },
+  },
+  required: ["success", "taskId", "updatedFields"],
+  additionalProperties: false,
+};

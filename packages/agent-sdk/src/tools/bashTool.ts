@@ -21,6 +21,7 @@ import type {
   ToolPromptArgs,
 } from "./types.js";
 import {
+  bashOutputSchema,
   composeBashResultText,
   cwdRecoveryNote,
   emptyOutputSentence,
@@ -155,6 +156,7 @@ function stashLongOutput(data: BashResultData): void {
 export const bashTool: ToolPlugin = {
   name: BASH_TOOL_NAME,
   searchHint: "run a shell command",
+  outputSchema: bashOutputSchema,
   isConcurrencySafe: false,
   config: {
     type: "function",

@@ -120,3 +120,92 @@ export function renderReadTextResultData(data: ReadTextResultData): string {
 export function renderReadResultData(data: ReadResultData): string | undefined {
   return data.type === "text" ? renderReadTextResultData(data) : undefined;
 }
+
+/**
+ * `Read` 的 `data` 形状（JSON Schema），供 REPL 把签名渲染成真实返回类型
+ * （spec core/repl-tool.md「公告分档呈现」）。
+ *
+ * 四档用 `anyOf` 表达，判别字段是 `type`——与 {@link ReadResultData} 的联合类型
+ * 一一对应，改一处必须改另一处。`image` 档的 `base64` 在进入沙箱前会被换成一段
+ * 占位说明（字节随结果附件回去），所以类型上仍是 string，脚本不该指望它是字节。
+ */
+export const readOutputSchema: Record<string, unknown> = {
+  anyOf: [
+    {
+      type: "object",
+      properties: {
+        type: { type: "string", enum: ["text"] },
+        file: {
+          type: "object",
+          properties: {
+            filePath: {
+              type: "string",
+              description: "Resolved absolute path.",
+            },
+            content: {
+              type: "string",
+              description:
+                "The body this call read, without line-number prefixes.",
+            },
+            numLines: { type: "number" },
+            startLine: { type: "number", description: "1-indexed first line." },
+            totalLines: { type: "number" },
+          },
+          required: [
+            "filePath",
+            "content",
+            "numLines",
+            "startLine",
+            "totalLines",
+          ],
+        },
+      },
+      required: ["type", "file"],
+    },
+    {
+      type: "object",
+      properties: {
+        type: { type: "string", enum: ["image"] },
+        file: {
+          type: "object",
+          properties: {
+            base64: {
+              type: "string",
+              description:
+                "Placeholder inside the sandbox — the bytes travel as an attachment.",
+            },
+            type: { type: "string", description: "MIME type." },
+            originalSize: { type: "number" },
+            dimensions: {
+              type: "object",
+              properties: {
+                originalWidth: { type: "number" },
+                originalHeight: { type: "number" },
+                displayWidth: { type: "number" },
+                displayHeight: { type: "number" },
+              },
+            },
+          },
+          required: ["base64", "type", "originalSize"],
+        },
+      },
+      required: ["type", "file"],
+    },
+    {
+      type: "object",
+      properties: {
+        type: { type: "string", enum: ["pdf", "binary"] },
+      },
+      required: ["type"],
+    },
+    {
+      type: "object",
+      properties: {
+        type: { type: "string", enum: ["error_token_limit_exceeded"] },
+        estimatedTokens: { type: "number" },
+        maxTokens: { type: "number" },
+      },
+      required: ["type", "estimatedTokens", "maxTokens"],
+    },
+  ],
+};

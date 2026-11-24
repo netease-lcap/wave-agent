@@ -7,6 +7,7 @@ import { VCS_DIRECTORIES } from "../utils/vcsDirectories.js";
 import { logger } from "../utils/globalLogger.js";
 import {
   cwdRecoveryNote,
+  grepOutputSchema,
   renderGrepResultData,
   type CwdRecovery,
   type GrepOutputMode,
@@ -90,6 +91,7 @@ function buildResultData(
 export const grepTool: ToolPlugin = {
   name: GREP_TOOL_NAME,
   searchHint: "search file contents with regex (ripgrep)",
+  outputSchema: grepOutputSchema,
   config: {
     type: "function",
     function: {

@@ -1198,6 +1198,9 @@ class ToolManager {
         name: tool.name,
         description: tool.config.function.description,
         searchHint: tool.searchHint,
+        // A built-in declares the shape of its own `data`; the sandbox renders it
+        // as the pooled signature's return type. Absent means `unknown`.
+        outputSchema: tool.outputSchema,
         defer: tool.defer,
         alwaysLoad: tool.alwaysLoad,
         inputSchema: tool.config.function.parameters as

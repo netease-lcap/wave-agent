@@ -3,6 +3,7 @@ import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { ENTER_PLAN_MODE_TOOL_NAME } from "../constants/tools.js";
 import { OPERATION_CANCELLED_BY_USER } from "../types/permissions.js";
 import {
+  enterPlanModeOutputSchema,
   renderEnterPlanModeResultData,
   type EnterPlanModeResultData,
 } from "./resultData/enterPlanMode.js";
@@ -20,6 +21,7 @@ export const enterPlanModeTool: ToolPlugin = {
   name: ENTER_PLAN_MODE_TOOL_NAME,
   defer: true,
   searchHint: "switch to plan mode to design an approach before coding",
+  outputSchema: enterPlanModeOutputSchema,
   config: {
     type: "function",
     function: {

@@ -48,3 +48,65 @@ export function renderTaskGetResultData(data: TaskGetResultData): string {
 
   return lines.join("\n");
 }
+
+/**
+ * `TaskGet` 的 `data` 形状（JSON Schema）。
+ *
+ * 用途只有一个：REPL 把工具签名渲染成真实返回类型（spec core/repl-tool.md「公告
+ * 分档呈现」），模型据此直接写 `r.task?.blocks`。与 {@link TaskGetResultData}
+ * 逐字段对应，改一处必须改另一处。
+ *
+ * `task` 的 `null` 档用 `anyOf` 而不是 `type: ["object", "null"]`：后者渲染出来
+ * 只剩 `object | null`，字段全丢，模型还得去探一次。这里没有判别字段（
+ * `null` 与对象互斥），所以任何一侧命中即可。
+ */
+export const taskGetOutputSchema: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    task: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            id: { type: "string", description: "Task id." },
+            subject: { type: "string", description: "Task title." },
+            description: {
+              type: "string",
+              description: "What needs to be done, as stored on the task.",
+            },
+            status: {
+              type: "string",
+              enum: ["pending", "in_progress", "completed", "deleted"],
+              description: "Current task status.",
+            },
+            blocks: {
+              type: "array",
+              items: { type: "string" },
+              description: "Ids of tasks waiting on this one to complete.",
+            },
+            blockedBy: {
+              type: "array",
+              items: { type: "string" },
+              description:
+                "Ids of tasks that must complete before this one can start.",
+            },
+          },
+          required: [
+            "id",
+            "subject",
+            "description",
+            "status",
+            "blocks",
+            "blockedBy",
+          ],
+        },
+        {
+          type: "null",
+          description: "The given id has no task.",
+        },
+      ],
+    },
+  },
+  required: ["task"],
+  additionalProperties: false,
+};

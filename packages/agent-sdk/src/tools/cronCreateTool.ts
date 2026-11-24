@@ -4,6 +4,7 @@ import { cronToHuman } from "../utils/cronToHuman.js";
 import { parseCronExpression } from "../utils/parseCronExpression.js";
 import {
   DEFAULT_MAX_AGE_DAYS,
+  cronCreateOutputSchema,
   renderCronCreateResultData,
   type CronCreateResultData,
 } from "./resultData/cronCreate.js";
@@ -54,6 +55,7 @@ export const cronCreateTool: ToolPlugin = {
   name: CRON_CREATE_TOOL_NAME,
   defer: true,
   searchHint: "schedule a prompt to run repeatedly on a cron schedule",
+  outputSchema: cronCreateOutputSchema,
   config: {
     type: "function",
     function: {

@@ -16,3 +16,20 @@ export interface CronDeleteResultData {
 export function renderCronDeleteResultData(data: CronDeleteResultData): string {
   return `Cancelled job ${data.id}.`;
 }
+
+/**
+ * `CronDelete` 的 `data` 形状（JSON Schema），供 REPL 把签名渲染成真实返回类型
+ * （spec core/repl-tool.md「公告分档呈现」）。与 {@link CronDeleteResultData} 逐字段
+ * 对应，改一处必须改另一处。
+ */
+export const cronDeleteOutputSchema: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+      description: "The job id that was cancelled.",
+    },
+  },
+  required: ["id"],
+  additionalProperties: false,
+};

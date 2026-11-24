@@ -14,6 +14,7 @@ import { EXIT_WORKTREE_TOOL_NAME } from "../constants/tools.js";
 import { logger } from "../utils/globalLogger.js";
 import { executeWorktreeRemoveHook } from "../services/worktreeHooks.js";
 import {
+  exitWorktreeOutputSchema,
   renderExitWorktreeResultData,
   type ExitWorktreeResultData,
 } from "./resultData/exitWorktree.js";
@@ -53,6 +54,7 @@ export const exitWorktreeTool: ToolPlugin = {
   defer: true,
   searchHint:
     "leave a git worktree and go back to the original working directory",
+  outputSchema: exitWorktreeOutputSchema,
   config: {
     type: "function",
     function: {

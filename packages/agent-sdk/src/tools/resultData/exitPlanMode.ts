@@ -31,3 +31,24 @@ export function renderExitPlanModeResultData(
 Your plan has been saved to: ${data.filePath}
 You can refer back to it if needed during implementation.`;
 }
+
+/**
+ * `ExitPlanMode` 的 `data` 形状（JSON Schema）。
+ *
+ * 用途只有一个：供 REPL 把工具签名渲染成真实返回类型（spec
+ * core/repl-tool.md「公告分档呈现」），模型据此直接写 `const r = await
+ * ExitPlanMode(...); r.filePath`，不用先探一次。与
+ * {@link ExitPlanModeResultData} 逐字段对应，改一处必须改另一处。
+ */
+export const exitPlanModeOutputSchema: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    filePath: {
+      type: "string",
+      description:
+        "Absolute path of the approved plan file; the plan body itself is not part of this data.",
+    },
+  },
+  required: ["filePath"],
+  additionalProperties: false,
+};

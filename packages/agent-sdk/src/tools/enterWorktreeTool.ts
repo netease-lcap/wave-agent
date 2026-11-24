@@ -20,6 +20,7 @@ import {
   WorktreeCreateHookError,
 } from "../services/worktreeHooks.js";
 import {
+  enterWorktreeOutputSchema,
   renderEnterWorktreeResultData,
   type EnterWorktreeResultData,
 } from "./resultData/enterWorktree.js";
@@ -92,6 +93,7 @@ export const enterWorktreeTool: ToolPlugin = {
   defer: true,
   searchHint:
     "work in a separate git worktree so the current checkout stays untouched",
+  outputSchema: enterWorktreeOutputSchema,
   config: {
     type: "function",
     function: {

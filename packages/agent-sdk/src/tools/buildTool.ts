@@ -25,6 +25,12 @@ export interface ToolDef {
     context: ToolContext,
   ) => string;
   additionalProperties?: boolean;
+  /**
+   * JSON Schema for what `execute` puts in `ToolResult.data`. Rendered as the
+   * return type of the tool's signature inside the sandbox (`enableRepl`);
+   * omitted means `unknown`.
+   */
+  outputSchema?: Record<string, unknown>;
 }
 
 export function buildTool(def: ToolDef): ToolPlugin {
@@ -57,5 +63,6 @@ export function buildTool(def: ToolDef): ToolPlugin {
     execute: def.execute,
     prompt: promptFn,
     formatCompactParams: def.formatCompactParams,
+    outputSchema: def.outputSchema,
   };
 }

@@ -14,6 +14,7 @@ import { isPathInside } from "../utils/pathSafety.js";
 import { READ_TOOL_NAME } from "../constants/tools.js";
 import { isImageFileExtension } from "../constants/images.js";
 import {
+  readOutputSchema,
   recordReadMemoryMtime,
   renderReadTextResultData,
   type ReadImageResultData,
@@ -168,6 +169,7 @@ async function processImageFile(
 export const readTool: ToolPlugin = {
   name: READ_TOOL_NAME,
   searchHint: "read files, images, PDFs, notebooks",
+  outputSchema: readOutputSchema,
   prompt:
     () => `Reads a file from the local filesystem. You can access any file directly by using this tool.
 Assume this tool is able to read all files on the machine. If the User provides a path to a file assume that path is valid. It is okay to read a file that does not exist; an error will be returned.

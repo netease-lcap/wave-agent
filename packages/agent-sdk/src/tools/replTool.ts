@@ -73,9 +73,10 @@ const SEARCH_ENTRY =
  * and wait for the error to correct it.
  *
  * Rendered, never written out by hand, so it cannot drift from the form the error
- * messages teach or from what the host accepts. Search results carry no return
- * type (`searchTools` answers `name`/`about`/`input` only); the return type of a
- * tool comes from `describeTool`.
+ * messages teach or from what the host accepts. A search hit carries both types
+ * (`name`/`about`/`input`/`output`), and `describeTool` answers the same pair, so
+ * the model can plan the next step from either — the rendered forms come from one
+ * source, the tool `outputSchema` the signature uses.
  */
 const SEARCH_ENTRY_WITH_SIGNATURE = [
   SEARCH_ENTRY,
@@ -125,9 +126,9 @@ Guidelines:
 - Subagents: \`tools[]\` may list tools this agent was not granted. Check \`tools.list()\` before relying on one.
 
 Sandbox API:
-- \`await tools.<name>(args)\` — call a tool with its own arguments object, e.g. \`await tools.Read({ file_path: "x" })\`. The bare global \`await Read({ file_path: "x" })\` is the same call, and a name that is not an identifier takes the bracket form \`await tools["<name>"](args)\`. Arguments are passed through field by field, and the value is the tool's own output. A built-in that fails resolves to \`{ error }\`; an MCP tool that fails throws.
+- \`await tools.<name>(args)\` — call a tool with its own arguments object, e.g. \`await tools.Read({ file_path: "x" })\`. The bare global \`await Read({ file_path: "x" })\` is the same call, and a name that is not an identifier takes the bracket form \`await tools["<name>"](args)\`. Arguments are passed through field by field, and the value is the tool's own output — for a built-in its structured \`data\` (the same object its signature declares as the return type), for an MCP tool its \`structuredContent\` or text (parsed when that text is JSON). The prose a built-in shows you is not part of the value: read a field, not a sentence. A built-in that fails resolves to \`{ error }\`; an MCP tool that fails throws.
 ${SEARCH_ENTRY_WITH_SIGNATURE}
-- \`describeTool(name)\` — one tool's description and argument schema; this is also the only place a tool's return type comes from.
+- \`describeTool(name)\` — one tool's description, its argument JSON Schema and its return type as TypeScript text; \`searchTools\` hits carry the same \`input\`/\`output\` pair.
 - \`tools.list()\` — the tool names actually reachable in this call.
 - \`self.log(...)\` — the lines that end up in the result (\`log(...)\` is the same function).
 - \`running()\` — the background scripts of this context: \`id\`, \`snippet\`, \`ageMs\`, \`state\`, \`settled\`, \`self\`, \`abort()\`.
@@ -309,7 +310,7 @@ export const replTool: ToolPlugin = {
 
   leanPrompt: `Run JavaScript in a long-lived REPL where this session's on-demand tools are globals, composing a whole sequence of calls in one turn instead of one model round-trip per call.
 
-- \`await tools.<name>(args)\` — call a tool with its own arguments object; the bare global \`await <name>(args)\` is the same call, and the value is the tool's own output.
+- \`await tools.<name>(args)\` — call a tool with its own arguments object; the bare global \`await <name>(args)\` is the same call, and the value is the tool's own output (a built-in's \`data\`, an MCP tool's \`structuredContent\` or text, the text parsed when it is JSON).
 ${SEARCH_ENTRY_ONELINE}
 - \`self.log(...)\` — lines that go into the result; \`console.*\` goes to a ring instead (\`console.tail(n)\`), and \`return <value>\` hands a value back.
 - Put every operation in one script, and write a clear, concise description of what it does in 5-10 words.

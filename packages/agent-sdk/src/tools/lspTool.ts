@@ -16,6 +16,7 @@ import type {
 } from "../types/lsp.js";
 import {
   isLspOperation,
+  lspOutputSchema,
   renderLspResultData,
   type LspOperation,
   type LspResultData,
@@ -900,6 +901,7 @@ export const lspTool: ToolPlugin = {
   defer: true,
   searchHint:
     "look up a symbol's definition, references, or hover info in the language server",
+  outputSchema: lspOutputSchema,
   config: {
     type: "function",
     function: {
