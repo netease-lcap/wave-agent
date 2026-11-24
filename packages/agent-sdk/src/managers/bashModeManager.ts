@@ -141,17 +141,27 @@ export class BashModeManager {
           : result.success
             ? 0
             : 1;
-      const resultText = result.success
-        ? result.content
-        : `[exit code: ${exitCode}]` +
-          (result.content ? `\n\n${result.content}` : "");
+      // bash 模式是用户的终端，成败只看退出码（spec `ui/bash-mode.md`「退出码呈现」：
+      // 成功是 exit 0、失败标 `[exit code: N]`）。**不能读 `result.success`**：自
+      // spec `core/bash-tools.md`「退出码不是工具成败」起，命令非零退出也是
+      // `success: true`（解释进 `data.returnCodeInterpretation`），照旧读它会让
+      // `!ls /nonexistent` 既没有退出码标注、又亮绿点。
+      //
+      // 前缀不省：工具自己也会在正文末尾补一行 `Exit code N`（给模型看的，
+      // `resultData/bash.ts`），两条重复一次是刻意的——中断档（超时、abort）的正文
+      // 只有原因句、不带退出码，去掉前缀那一档就看不到 130 了。
+      const failed = exitCode !== 0;
+      const resultText = failed
+        ? `[exit code: ${exitCode}]` +
+          (result.content ? `\n\n${result.content}` : "")
+        : result.content;
       this.messageManager.updateToolBlock({
         id: blockId,
         messageId,
         result: resultText,
         shortResult: result.shortResult,
         stage: "end",
-        success: result.success,
+        success: !failed,
       });
 
       return exitCode;

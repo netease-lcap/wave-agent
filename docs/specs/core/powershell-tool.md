@@ -58,21 +58,21 @@ order: 22
 
 **优先级原因**：退出码是循环里唯一的机器可读成败信号（hook 的 `exit 2`、CI 脚本、`grep` 无匹配都是靠它）。PowerShell 的默认行为是「最后一条语句成功即进程退出 0」，若不额外拼接退出码探针，任何非零退出都会被吞成 0——这属于工具正确性，不是优化。
 
-**独立测试**：在 Windows 上以 PowerShell 会话让模型执行 `cmd /c exit 2`、`Get-ChildItem C:\nope -ErrorAction SilentlyContinue`、`try { Get-ChildItem C:\nope -ErrorAction Stop } catch { $null }` 三种写法，核对工具返回的 `metadata.exitCode` 依次为 2、1、0。
+**独立测试**：在 Windows 上以 PowerShell 会话让模型执行 `cmd /c exit 2`、`Get-ChildItem C:\nope -ErrorAction SilentlyContinue`、`try { Get-ChildItem C:\nope -ErrorAction Stop } catch { $null }` 三种写法，核对工具返回的 `data.exitCode` 依次为 2、1、0。
 
 **验收场景**：
 
 1. **假设** 模型给出一条命令，**当** 工具构造实际执行的命令行时，**则** 必须在命令后追加退出码探针 `$_ec = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } elseif ($?) { 0 } else { 1 }`，最后以 `exit $_ec` 结束（`packages/agent-sdk/src/utils/shell/powershellProvider.ts:84-95`）。
-2. **假设** 命令有输出，**当** 工具返回时，**则** 必须同时返回 stdout 与 stderr 的合并文本、`metadata.exitCode`，并由退出码家族判定决定 `success`（见「非零退出的家族判定与 `robocopy` 的码段」）（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:445-457`、`:510-522`）。
-3. **假设** 退出码非 0 且不属于家族（见「非零退出的家族判定与 `robocopy` 的码段」），**当** 工具返回时，**则** 必须带上 `Command failed with exit code: <n>` 作为错误文本，且 `success` 为 false（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:517-520`）。
+2. **假设** 命令有输出，**当** 工具返回时，**则** 必须同时返回 stdout 与 stderr 的合并文本、`data.exitCode`；`success` 不读退出码（见「退出码不是工具成败与 `robocopy` 的码段」）（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:445-457`、`:510-522`）。
+3. **假设** 退出码非 0 且不属于家族（见「非零退出的家族判定与 `robocopy` 的码段」），**当** 工具返回时，**则** 正文保持命令自己的输出（**不**追加 `Exit code <n>`——Claude Code 的 PowerShell 工具没有这一行，只有 Bash 有）、`data.returnCodeInterpretation` 为兜底句 `Command failed with exit code: <n>`、`data.exitCode` 是真实退出码，`success` 仍为 `true`（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:579-590`）。
 4. **假设** 命令完全没有任何输出，**当** 工具返回时，**则** 结果正文必须退化为 `Command executed with exit code: <n>`，不得返回空正文（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:497-502`）。
 5. **假设** 模型用 `-ErrorAction SilentlyContinue` 吞掉错误输出，**当** 该 cmdlet 失败时，**则** 工具仍必须报退出码 1——错误**输出**被抑制不等于失败被忽略；提示词必须明确告知「要让失败真正无害，须 `-ErrorAction Stop` 并用 `catch { $null }` 吞掉」，且 `catch` 块不得为空（`packages/agent-sdk/src/tools/powershellTool/prompt.ts:166`）。**（无单测覆盖：这条语义只由提示词承载，靠真机验证）**
 6. **假设** 调用方没有给 `timeout`，**当** 前台执行时，**则** 必须使用默认 120000ms（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:137-143`；常量见 `prompt.ts:67`）。
 7. **假设** `timeout` 为非数字或负数，**当** 工具校验入参时，**则** 必须返回 `Timeout must be a non-negative number of milliseconds` 并且不 spawn（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:166-174`）。
 8. **假设** `timeout` 大于 600000，**当** 执行时，**则** 必须按给定值执行，不得被拒绝或截断——上限（600000ms）只写在工具说明与参数描述里，运行时不做上限校验（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:166-168`、`packages/agent-sdk/src/tools/powershellTool/prompt.ts:186`）。
 9. **假设** 命令超时、会话提供了后台任务管理器、且命令还有活干，**当** 到达 `timeout` 时，**则** 必须**不杀**进程：把它交给 `adoptProcess` 转成后台任务，返回 `success: true`、`assistantAutoBackgrounded: true` 与 `backgroundTaskId`，正文为 `Command exceeded the timeout (Ns) and was moved to the background with ID: <id>. It is still running — you will be notified when it completes.`（有输出路径时追加 `Output is being written to: <path>`）——与 Bash 工具的超时转后台同一契约（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:403-439`；是否允许的判据 `:261-265`）。
-10. **假设** 命令的首个词是 `Start-Sleep` / `sleep`（含别名，先归一化再比较），或会话没有后台任务管理器，**当** 超时时，**则** 不得自动转后台，必须终止整棵进程树、返回 `metadata.exitCode: 130`，并带上 `Command timed out after Ns. Consider breaking the command into smaller steps or increasing the timeout.`（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:36-43`、`:441-444`、`:323-341`）。
-11. **假设** 调用方中止了这次执行，**当** 工具收尾时，**则** 必须终止整棵进程树并返回 `metadata.exitCode: 130`——中止是用户的「停下」，不受自动转后台影响（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:393-401`、`:323-341`）。
+10. **假设** 命令的首个词是 `Start-Sleep` / `sleep`（含别名，先归一化再比较），或会话没有后台任务管理器，**当** 超时时，**则** 不得自动转后台，必须终止整棵进程树、返回 `success: false`（中断是失败，`error` 与正文同一句原因）、`data.exitCode: 130` 与 `data.interrupted: true`，并带上 `Command timed out after Ns. Consider breaking the command into smaller steps or increasing the timeout.`（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:36-43`、`:441-444`、`:323-341`）。
+11. **假设** 调用方中止了这次执行，**当** 工具收尾时，**则** 必须终止整棵进程树，返回 `success: false`（同上：中断是失败）、`data.exitCode: 130` 与 `data.interrupted: true`——中止是用户的「停下」，不受自动转后台影响（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:393-401`、`:323-341`）。
 12. **假设** 子进程根本起不来，**当** 工具返回时，**则** 必须返回 `Failed to execute command: <原因>` 而不是抛出（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:288-291`、`:571-586`）。
 13. **假设** 执行一条命令，**当** 构造 spawn 调用时，**则** argv 必须是 `-NoProfile -NonInteractive -NoLogo -Command <命令串>`，并以 `shell: false`、`windowsHide: true`、`stdio: ["ignore","pipe","pipe"]` 启动（`packages/agent-sdk/src/utils/shell/powershellProvider.ts:21-26`、`:131-134`；`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:267-277`）。
 14. **假设** 会话设置了 `settings.json` 的 `env`，**当** 前台命令启动时，**则** 子进程环境必须是进程环境叠加会话环境快照（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:276`；快照来源 `packages/agent-sdk/src/managers/toolManager.ts:761-767`）。
@@ -80,19 +80,21 @@ order: 22
 
 ---
 
-### 用户故事：非零退出的家族判定与 `robocopy` 的码段（优先级：P2）
+### 用户故事：退出码不是工具成败与 `robocopy` 的码段（优先级：P2）
 
-作为读工具结果的模型，我希望 PowerShell 分支与 Bash 用同一套退出码口径，并额外认识 `robocopy` 那种「非零也可能成功」的码段，以便不必为每个工具自建一张对照表。
+作为读工具结果的模型，我希望 PowerShell 分支与 Bash 用同一套退出码口径，并额外认识 `robocopy` 那种「非零也可能成功」的码段，以便不必为每个工具自建一张对照表，也不会把一次命令的失败当成一次没执行成的调用。
 
-**优先级原因**：`success` 是回合循环里唯一的机器可读成败信号。Windows 侧的家族表命令名不同（`findstr` / `where` / `fc`），且 `robocopy` 的 0–7 都是某种程度的成功——照 `exitCode === 0` 一刀切会把它们全报成失败（`packages/agent-sdk/src/tools/shellExitCode.ts`，对齐 Claude Code 的 `rYi` / `sYi`）。
+**优先级原因**：与 Bash 同一条理由——`success` 只回答「这次调用执行成了吗」，退出码是答案的一部分而不是成败信号（`packages/agent-sdk/src/tools/shellExitCode.ts`，码段对齐 Claude Code 的 `rYi` / `sYi`）。Windows 侧的家族表命令名不同（`findstr` / `where` / `fc`），且 `robocopy` 的 0–7 都是某种程度的成功——照 `exitCode === 0` 一刀切会把它们全报成失败。
 
-**独立测试**：`tests/tools/shellExitCode.test.ts` 的 `interpretPowerShellExit` 一组覆盖家族表与 `robocopy` 各码段。
+**独立测试**：`tests/tools/shellExitCode.test.ts` 的 `interpretPowerShellExit` 一组覆盖家族表与 `robocopy` 各码段；`powershellTool` 一组覆盖「非家族非零退出仍交完整 `data`」与「spawn 失败才是 `success: false`」。
 
 **验收场景**：
 
-1. **假设** 命令是 `grep` / `egrep` / `fgrep` / `rg` / `findstr` / `where` / `fc` / `diff` 之一，**当** 它以 1 退出时，**则** `success` 为 `true`，`data.returnCodeInterpretation` 给出解释（`No matches found` / `No matching files found` / `Files differ`）。
-2. **假设** 命令是 `robocopy`，**当** 它以 0–7 退出时，**则** 算成功并给出解释（0 = `No files copied (already in sync)`，含位 1 = `Files copied successfully`，其余 `Robocopy completed (no errors)`）；**当** 它以 8 及以上退出时，**则** 算失败。
-3. **假设** 命令以 1 退出但不在家族里，或是 `&&` 链，**当** 工具返回时，**则** 照旧算失败。
+1. **假设** 命令是 `grep` / `egrep` / `fgrep` / `rg` / `findstr` / `where` / `fc` / `diff` 之一，**当** 它以 1 退出时，**则** `success` 为 `true`，`data.returnCodeInterpretation` 给出解释（`No matches found` / `No matching files found` / `Files differ`），正文不追加 `Exit code`。
+2. **假设** 命令是 `robocopy`，**当** 它以 0–7 退出时，**则** 给出解释（0 = `No files copied (already in sync)`，含位 1 = `Files copied successfully`，其余 `Robocopy completed (no errors)`）；**当** 它以 8 及以上退出时，**则** 解释为兜底句 `Command failed with exit code: <n>`、正文仍是命令自己的输出，`success` 仍为 `true`。
+3. **假设** 命令以非零码退出但不在「家族内 1」这一格（如 `&&` 链的链尾是家族命令，也按链尾判；链尾不是家族命令就落到这一格），**当** 工具返回时，**则** `success` 为 `true`、`data.returnCodeInterpretation` 为兜底句，正文不改（同场景 3 的说明）。
+4. **假设** 命令被超时终止、或调用方中止了这次执行，**当** 工具收尾时，**则** `success` 必须为 `false`（中断是失败，与 Bash 同一条 Claude Code 口径），`data.interrupted: true`、`data.interruptedReason` 与 `data.exitCode: 130` 仍完整交回。
+5. **假设** 命令**根本没跑起来**（入参非法、PowerShell 起不来、spawn 报错），**当** 工具返回时，**则** `success` 为 `false` 并带 `error`。
 
 ---
 

@@ -692,6 +692,9 @@ The working directory persists between commands, but shell state (environment va
             exitCode: 130,
           };
           stashLongOutput(data);
+          // 中断**是**失败：CC 的 mapper 用 `is_error: interrupted`，正文另加
+          // `<error>Command was aborted before completion</error>`。我方的原因句由
+          // 正文给（三种中断各有措辞），`error` 留同一个原因给宿主与 `$`。
           resolve({
             success: false,
             data,
@@ -882,11 +885,21 @@ The working directory persists between commands, but shell state (environment va
         // 家族内 exit 1（`grep` 无匹配之类）是这个命令的答案，不是失败——照 CC
         // 的 `returnCodeInterpretation`，判定在工具层做一次，`$` 直接读结论。
         const verdict = interpretBashExit(command, exitCode);
+        // CC 在工具里就把这一行写进 stdout：先 `(st.stdout||"").trimEnd()`，再
+        // append 一句 `Exit code <n>`，渲染器只管拼。照抄这个分工，`data` 因此自带结论。
+        // 空输出那一格由占位句报退出码，不补。
+        const outputText = combinedOutput.trimEnd();
+        const stdout =
+          outputText === ""
+            ? emptyOutputSentence(exitCode)
+            : verdict.noteExitCode
+              ? `${outputText}\nExit code ${exitCode}`
+              : outputText;
         const data: BashResultData = {
-          stdout: combinedOutput || emptyOutputSentence(exitCode),
+          stdout,
           interrupted: false,
           cwdRecovery,
-          // 退出码只进 `data`（正文不读它）：宿主的退出码卡片用它，原来是
+          // 退出码另在 `data.exitCode`：宿主的退出码卡片与 `$` 读它，原来是
           // `ToolResult.metadata.exitCode`。
           exitCode,
           ...(verdict.interpretation !== undefined
@@ -906,14 +919,13 @@ The working directory persists between commands, but shell state (environment va
             ? lines.join("\n")
             : `... +${lines.length - 3} lines\n` + lines.slice(-3).join("\n");
 
+        // 命令跑起来了：退出码是它的答案，不是这次调用失败（spec
+        // `core/bash-tools.md`「退出码不是工具成败」）。
         resolve({
-          success: !verdict.failed,
+          success: true,
           data,
           content: renderBashResultData(data),
           shortResult: shortResult || undefined,
-          error: verdict.failed
-            ? `Command failed with exit code: ${exitCode}`
-            : undefined,
         });
       };
 

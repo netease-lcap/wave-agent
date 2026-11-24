@@ -22,6 +22,7 @@ import {
   renderPowerShellResultData,
   type PowerShellResultData,
 } from "../resultData/powershell.js";
+import { emptyOutputSentence } from "../resultData/bash.js";
 import { interpretPowerShellExit } from "../shellExitCode.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "../types.js";
 
@@ -379,11 +380,13 @@ export const powershellTool: ToolPlugin = {
           exitCode: 130,
         };
         stashLongOutput(data);
+        // 中断**是**失败（CC 的 mapper 用 `is_error: interrupted`，与 `Bash` 同一口
+        // 径）：原因句在正文里，`error` 留同一个原因给宿主与 `$`。
         resolve({
           success: false,
           content: renderPowerShellResultData(data),
-          error: reason,
           data,
+          error: reason,
         });
       };
 
@@ -569,10 +572,13 @@ export const powershellTool: ToolPlugin = {
         // Same family rule as `Bash`: exit 1 of `grep` / `where` / `diff` is the
         // command's answer, and `robocopy`'s 0–7 are too, so neither makes the
         // call a failure.
+        //
+        // Unlike `Bash`, CC's PowerShell tool never appends `Exit code N` to the
+        // output (`1918-…PowerShellTool.js` only appends the trimmed stdout), so
+        // the exit code shows up in `data.exitCode` and in nothing else.
         const verdict = interpretPowerShellExit(command, exitCode);
         const data: PowerShellResultData = {
-          stdout:
-            combinedOutput || `Command executed with exit code: ${exitCode}`,
+          stdout: combinedOutput.trimEnd() || emptyOutputSentence(exitCode),
           interrupted: false,
           exitCode,
           ...(verdict.interpretation !== undefined
@@ -589,17 +595,14 @@ export const powershellTool: ToolPlugin = {
             ? lines.join("\n")
             : `... +${lines.length - 3} lines\n` + lines.slice(-3).join("\n");
 
+        // Same rule as `Bash` (spec `core/bash-tools.md`「退出码不是工具成败」): the
+        // command ran, so the exit code is its answer — not a failed call. The
+        // reading rides `data.returnCodeInterpretation`.
         resolve({
-          success: !verdict.failed,
+          success: true,
           content,
           data,
           shortResult: shortResult || undefined,
-          // The provider appends the exit probe, so this is the status the
-          // command's own process ended with ($LASTEXITCODE when a native
-          // program ran) — the same meaning the Bash tool reports.
-          error: verdict.failed
-            ? `Command failed with exit code: ${exitCode}`
-            : undefined,
         });
       };
 

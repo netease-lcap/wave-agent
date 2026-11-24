@@ -18,12 +18,13 @@ import {
  *    是**同一口径**（CC 的 Bash 合并 fd；CC 的 PowerShell 分开取，见 `:645` 的
  *    `finalStderr = [result.stderr || '', stderrForShellReset].filter(Boolean).join('\n')`）
  *    —— 两个 shell 工具在 `data` 上保持一致，阶段 2 的读路径才不用按工具名分叉。
- * 2. **退出码不进正文**。只有「命令什么都没打印」时正文才提到它
- *    （`Command executed with exit code: N`），整句话放进 `stdout`，与 `bash.ts`
- *    的 `emptyOutputSentence` 同一处理；真退出码落在 `data.exitCode`（宿主的退出码
- *    卡片读它，原来是 `ToolResult.metadata.exitCode`）。家族内 exit 1 与 `robocopy`
- *    的 0–7 不算失败，解释放 `data.returnCodeInterpretation`，判定在
- *    `tools/shellExitCode.ts`（与 `Bash` 同一张表的口径）。
+ * 2. **退出码不是失败，也不进正文**。命令什么都没打印时，正文只有一句
+ *    `Command executed with exit code: N`（与 `bash.ts` 的 `emptyOutputSentence` 同一
+ *    句）；有输出时正文就是命令自己的输出，非零退出的读法只进
+ *    `data.returnCodeInterpretation`——CC 的 PowerShell 工具**不补** `Exit code N`
+ *    （`1918-…PowerShellTool.js` 只有 `Ne.append(te + bn)`，与 Bash 的
+ *    `be.append(\`Exit code ${code}\`)` 不同）。判定在 `tools/shellExitCode.ts`
+ *    （与 `Bash` 同一张表的口径），`success` 只留给「命令根本没跑起来」。
  * 3. **长输出落盘照旧**。规则还是 `processToolResult` 那一套（正文超上限就整段写进
  *    tool-results 目录、正文换成 `<persisted-output>` 包装），但落盘是副作用，只能
  *    在工具里做（`powershellTool.ts` 的 `stashLongOutput`）；`data` 记下路径与长度，
@@ -43,9 +44,9 @@ import {
  *   因接在后面」（`powershellTool.ts:339-347`），所以原因**不参与**落盘正文，渲染器
  *   照这个顺序拼。
  * - **非零退出**：CC 抛 `ShellError`、正文由 `Exit code N` 起头（`:584` +
- *   `utils/toolErrors.ts`）；我方正文保持「命令自己的输出」，失败走 `success: false`
- *   + `error: "Command failed with exit code: N"` —— 与 `bash.ts` 同一条既有口径
- *   （REPL 的 `` $`cmd` `` 按它读 `stdout`）。
+ *   `utils/toolErrors.ts`）；我方不抛、也不把整份输出换掉，正文保持命令自己的输出
+ *   （空输出时那句占位已经带了退出码），读法进 `data`（REPL 的 `` $`cmd` `` 按它读
+ *   `stdout`）。
  * - **后台回执**：CC 的文案里有 assistant-mode 那句、输出路径由 task id 现算
  *   （`:421-433`）；我方沿用 Bash 工具的措辞，路径由 `BackgroundTaskManager` 给出，
  *   拿不到时退回 `Read tool with task_id=…` 提示。
@@ -94,14 +95,14 @@ export interface PowerShellResultData {
   /** 自动转后台时的超时（毫秒），正文里的 `(${timeout / 1000}s)` 用它。 */
   timeoutMs?: number;
   /**
-   * 进程自己的退出码（中断档恒为 130）。正文不读它（成败与解释见 `success` /
-   * `returnCodeInterpretation`，见上面第 2 条），由宿主渲染卡片与 `$` 读（原来是
-   * `ToolResult.metadata.exitCode`）。
+   * 进程自己的退出码（中断档恒为 130）。非零退出不是失败，也不进正文（空输出时那句
+   * 占位已经带了它）：读法看 {@link returnCodeInterpretation}，此外由宿主渲染卡片与
+   * `$` 读（原来是 `ToolResult.metadata.exitCode`）。
    */
   exitCode?: number;
   /**
-   * CC 同名：一个**不算失败**的非零退出码的语义解释（`No matches found` /
-   * `No matching files found` / `Files differ`，或 `robocopy` 的 0–7 档）。
+   * CC 同名：非零退出的语义解释——家族内 exit 1 / `robocopy` 0–7 的读法，或其余非
+   * 零退出的兜底句 `Command failed with exit code: N`。
    */
   returnCodeInterpretation?: string;
 }
@@ -204,7 +205,7 @@ export const powershellOutputSchema: Record<string, unknown> = {
     returnCodeInterpretation: {
       type: "string",
       description:
-        "Semantic interpretation for a non-zero exit that is the command's own answer (No matches found, Files differ, robocopy 0-7).",
+        "Reading of a non-zero exit: the command's own answer (No matches found, Files differ, robocopy 0-7) or the fallback 'Command failed with exit code: N'. A non-zero exit is the answer, never a failed call.",
     },
   },
   required: ["stdout", "interrupted"],

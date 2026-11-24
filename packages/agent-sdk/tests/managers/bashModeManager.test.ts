@@ -145,6 +145,30 @@ describe("BashModeManager", () => {
       });
     });
 
+    it("reads the failure from the exit code, not from `success`", async () => {
+      // 真的 shell 工具对非零退出报的是 `success: true`（spec core/bash-tools.md
+      // 「退出码不是工具成败」），成败只能从 `data.exitCode` 读。
+      mockExecute.mockResolvedValue({
+        success: true,
+        content: "ls: /nonexistent: No such file or directory\nExit code 1",
+        data: {
+          exitCode: 1,
+          returnCodeInterpretation: "Command failed with exit code: 1",
+        },
+      } as never);
+
+      const exitCode = await bashModeManager.executeCommand("ls /nonexistent");
+
+      expect(exitCode).toBe(1);
+      expect(mockMessageManager.updateToolBlock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          result:
+            "[exit code: 1]\n\nls: /nonexistent: No such file or directory\nExit code 1",
+          success: false,
+        }),
+      );
+    });
+
     it("should prefix the exit code when the command fails", async () => {
       const command = "ls /nonexistent";
       mockExecute.mockResolvedValue({

@@ -74,13 +74,22 @@ describe("bashTool with real shell spawn", () => {
     expect(result.content).toContain("to-stderr");
   });
 
-  it("reports a non-zero exit code as a failure", async () => {
+  it("reads a non-zero exit as the command's answer, not a failed call", async () => {
+    // `printf`（而不是 `echo`）免掉命令自己的尾部换行，正文就能逐字钉住。
     const result = await bashTool.execute(
-      { command: "exit 3" },
+      { command: "printf boom; exit 3" },
       makeContext(workdir),
     );
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("Command failed with exit code: 3");
+    // 命令跑起来了：退出码是它的答案（spec core/bash-tools.md「退出码不是工具成败」）。
+    expect(result.success).toBe(true);
+    expect(result.error).toBeUndefined();
+    expect(result.data).toEqual(
+      expect.objectContaining({
+        exitCode: 3,
+        returnCodeInterpretation: "Command failed with exit code: 3",
+      }),
+    );
+    expect(result.content).toBe("boom\nExit code 3");
   });
 
   it("handles pipes and multi-line output", async () => {

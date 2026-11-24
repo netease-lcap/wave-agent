@@ -30,6 +30,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { fallbackInterpretation } from "../tools/shellExitCode.js";
 import type { ToolContext, ToolResult } from "../tools/types.js";
 import { logger } from "../utils/globalLogger.js";
 import { parsePersistedOutput } from "../utils/toolResultStorage.js";
@@ -852,6 +853,19 @@ function stripEmptyShellSentence(
 }
 
 /**
+ * 工具往 `stdout` 末尾补的那行 `Exit code <n>`（CC 把这一行放在命令输出里）。
+ *
+ * `$` 自己会渲染 `[exit <n>]`，所以工具那份先剥掉，免得同一件事报两遍。
+ */
+const SHELL_EXIT_CODE_LINE = /(?:^|\n)Exit code (\d+)$/;
+
+function stripExitCodeLine(text: string, exitCode: number): string {
+  const match = SHELL_EXIT_CODE_LINE.exec(text);
+  if (!match || Number(match[1]) !== exitCode) return text;
+  return text.slice(0, match.index).trimEnd();
+}
+
+/**
  * The `cd` note `Bash` / `PowerShell` write in front of a result when the command
  * moved the shell out of the session's directory.
  *
@@ -1166,7 +1180,10 @@ async function answerShellCall(
   const exitCode = exitCodeOf(result);
   const stdout = persisted
     ? persisted.preview
-    : stripEmptyShellSentence(text, result.shortResult, exitCode);
+    : stripExitCodeLine(
+        stripEmptyShellSentence(text, result.shortResult, exitCode),
+        exitCode,
+      );
   const stderr = result.success ? "" : (result.error ?? "");
   // The family table lives in the shell tools now, the way CC keeps it in
   // `returnCodeInterpretation`: `grep` exiting 1 is the command's answer, so the
@@ -1177,7 +1194,13 @@ async function answerShellCall(
   const interpretation = (
     result.data as { returnCodeInterpretation?: unknown } | undefined
   )?.returnCodeInterpretation;
-  const note = typeof interpretation === "string" ? interpretation : undefined;
+  // 兜底句不重复：`[exit N]` 已经在 `output` 里，`note` 只留家族/码段那句语义读法
+  // （`No matches found` 之类）。
+  const note =
+    typeof interpretation === "string" &&
+    interpretation !== fallbackInterpretation(exitCode)
+      ? interpretation
+      : undefined;
 
   const answer: Record<string, unknown> = {
     stdout,

@@ -203,9 +203,11 @@ describe("bashTool", () => {
 
       const result = await bashTool.execute({ command: "cp a b" }, context);
 
-      expect(result.success).toBe(false);
+      // 非零退出不是这次调用失败（spec core/bash-tools.md「退出码不是工具成败」）。
+      expect(result.success).toBe(true);
       expect(result.content).toContain("Disk nearly full");
       expect(result.content).toContain("1 MB free");
+      expect(result.content).toContain("Exit code 1");
     });
 
     it("stays quiet about disk pressure when the volume is healthy", async () => {
@@ -230,7 +232,7 @@ describe("bashTool", () => {
 
       const result = await bashTool.execute({ command: "false" }, context);
 
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(true);
       expect(result.content).not.toContain("Disk nearly full");
       expect(result.content).not.toContain("inodes");
     });
@@ -321,7 +323,8 @@ describe("bashTool", () => {
 
       expect(progress).toEqual([]);
       expect(result.success).toBe(true);
-      expect(result.content).toBe("line 1\nline 2\n");
+      // 尾部空白照 CC（`(st.stdout || "").trimEnd()`）去掉。
+      expect(result.content).toBe("line 1\nline 2");
     });
 
     it("never hands a live stdin to the command (fd0 is /dev/null)", async () => {
@@ -571,7 +574,7 @@ describe("bashTool", () => {
       await expectRejected(-1);
     });
 
-    it("should handle command failure", async () => {
+    it("treats a non-zero exit as the command's answer and notes the code", async () => {
       const mockProcess = {
         pid: 1234,
         stdout: {
@@ -602,10 +605,10 @@ describe("bashTool", () => {
         context,
       );
 
-      expect(result.success).toBe(false);
-      expect(result.content).toBe("\nerror message");
+      expect(result.success).toBe(true);
+      expect(result.error).toBeUndefined();
+      expect(result.content).toBe("\nerror message\nExit code 1");
       expect(result.shortResult).toBe("error message");
-      expect(result.error).toBe("Command failed with exit code: 1");
     });
 
     it("reads exit 1 from grep as the command's answer, not a failure", async () => {
@@ -640,6 +643,43 @@ describe("bashTool", () => {
       expect(data.exitCode).toBe(1);
       expect(data.returnCodeInterpretation).toBe("No matches found");
     });
+
+    it("keeps the body free of `Exit code N` when the family table explains it", async () => {
+      // `diff` 把差异打印出来、然后以 1 退出：正文就是差异本身（渲染器只在兜底解释
+      // 那一档补 `Exit code N`），读法由 `data.returnCodeInterpretation` 说。
+      const mockProcess = {
+        pid: 1234,
+        stdout: {
+          on: vi.fn((event, callback) => {
+            if (event === "data") {
+              setTimeout(() => callback(Buffer.from("1c1\n< a\n---\n> b")), 10);
+            }
+          }),
+        },
+        stderr: { on: vi.fn() },
+        on: vi.fn((event, callback) => {
+          if (event === "exit") {
+            setTimeout(() => callback(1), 20);
+          }
+        }),
+        kill: vi.fn(),
+        killed: false,
+      };
+      mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
+
+      const result = await bashTool.execute(
+        { command: "diff a.txt b.txt" },
+        context,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toBe("1c1\n< a\n---\n> b");
+      expect(
+        (result.data as { returnCodeInterpretation?: string })
+          .returnCodeInterpretation,
+      ).toBe("Files differ");
+    });
+
     it("should handle abort signal and persist large output", async () => {
       const largeOutput = "a".repeat(30001);
       const mockProcess = {
@@ -683,6 +723,7 @@ describe("bashTool", () => {
 
       const result = await promise;
 
+      // 中断是失败（CC 的 `is_error: interrupted`），`error` 与正文同一句原因。
       expect(result.success).toBe(false);
       expect(result.error).toBe("Command execution was aborted");
       expect(result.content).toContain("<persisted-output>");

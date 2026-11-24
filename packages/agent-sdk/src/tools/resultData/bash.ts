@@ -26,13 +26,13 @@ import {
  *
  * 三处文本口径的偏离（都是既有行为，改了会伤到 `REPL` 的 `` $`cmd` ``，见报告）：
  *
- * - 非零退出：CC 抛 `ShellError`，正文由 `Exit code N` 起头（`:695-716` +
- *   `utils/toolErrors.ts:24-32`）。我方退出码**不进正文**：家族内 exit 1（`grep` 无
- *   匹配之类）算这个命令的答案，走 `success: true` + `data.returnCodeInterpretation`
- *   （照 CC 的家族表，判定在 `shellExitCode.ts`）；其余非零走 `success: false` +
- *   `error: "Command failed with exit code: N"`。两种情况 `content` 都保持「命令自己
- *   的输出」，`$` 就是按这条口径读 `stdout` 的（`src/repl/replRuntime.ts`，改这里
- *   必须同步改那边）；退出码本身落在 `data.exitCode`（宿主的退出码卡片读它）。
+ * - 非零退出：照 CC 的口径分层，**不算失败**（`success` 只留给「命令根本没跑起
+ *   来」）。家族内 exit 1（`grep` 无匹配之类）与 `robocopy` 的 0–7 是命令自己的答
+ *   案，解释进 `data.returnCodeInterpretation`；家族内 2 起与非家族的任何非零码，
+ *   由**工具**在 `data.stdout` 末尾补一行 `Exit code N`（CC 也是工具里
+ *   `be.append(\`Exit code ${code}\`)`，渲染器不参与）。判定在
+ *   `shellExitCode.ts`；`$` 按同一份 `data` 读 `stdout`（`src/repl/replRuntime.ts`，
+ *   改这里必须同步改那边）。
  * - 静默命令：CC 的模型侧是空正文，`(No output)` / `Done` 只在 UI 里合成
  *   （`BashToolResultMessage.tsx:156`）。我方正文留着一句
  *   {@link emptyOutputSentence}，`$` 依赖它（`replRuntime.ts:775`）。
@@ -43,8 +43,8 @@ import {
 /**
  * 命令什么都没打印时，工具补的那句话。
  *
- * 它是空输出时正文的全部；`data.stdout` 承载这段文本，渲染器因此不需要退出码
- * （退出码另在 `data.exitCode`，沿用 CC「不往正文里塞退出码」的口径）。
+ * 它是空输出时正文的全部，退出码已经在里面，所以工具不再往 `stdout` 末尾补
+ * `Exit code N`。`PowerShell` 也用这一句（它没有自己的一份）。
  */
 export function emptyOutputSentence(exitCode: number): string {
   return `Command executed with exit code: ${exitCode}`;
@@ -57,7 +57,8 @@ const TRUNCATED_WITHOUT_FILE =
 export interface BashResultData {
   /**
    * 合并后的命令输出（stdout 在前、stderr 在后，用 `\n` 拼），CC 的同名字段。
-   * 命令什么都没打印时这里是 {@link emptyOutputSentence} 那句话。
+   * 命令什么都没打印时这里是 {@link emptyOutputSentence} 那句话；非零退出且「这一格
+   * 要标注」时末尾多一行 `Exit code N`（由工具写入，照 CC 把它放进 `stdout`）。
    */
   stdout: string;
   /**
@@ -101,15 +102,17 @@ export interface BashResultData {
   /** 自动转后台时的超时（毫秒），正文里的 `(${timeout / 1000}s)` 用它。 */
   timeoutMs?: number;
   /**
-   * 进程自己的退出码（中断档恒为 130）。正文不读它——非零退出的成败与解释见
-   * `success` / `returnCodeInterpretation`，见文件头的三处偏离——由宿主渲染卡片与
-   * `$` 读（原来是 `ToolResult.metadata.exitCode`）。
+   * 进程自己的退出码（中断档恒为 130）。非零退出**不是失败**：解释看
+   * {@link returnCodeInterpretation}，要标注时那行 `Exit code N` 已经在
+   * {@link stdout} 里。此外由宿主渲染卡片与 `$` 读（原来是
+   * `ToolResult.metadata.exitCode`）。
    */
   exitCode?: number;
   /**
-   * CC 同名：一个**不算失败**的非零退出码的语义解释（`No matches found` /
-   * `Files differ` / `Condition is false`）。判定在 `tools/shellExitCode.ts`，
-   * `$` 的 `note` 直接读它，不再自己解析命令名。
+   * CC 同名：非零退出的语义解释——家族内 exit 1 / `robocopy` 0–7 的读法，或家族外/
+   * 码段外的兜底句 `Command failed with exit code: N`。家族内 2 起照 CC 的 `fU`
+   * **没有**解释句。判定在 `tools/shellExitCode.ts`，`$` 的 `note` 直接读它（兜底句
+   * 不重复进 note），不再自己解析命令名。
    */
   returnCodeInterpretation?: string;
 }
@@ -264,7 +267,7 @@ export const bashOutputSchema: Record<string, unknown> = {
     returnCodeInterpretation: {
       type: "string",
       description:
-        "Semantic interpretation for a non-zero exit that is the command's own answer (No matches found, Files differ, Condition is false).",
+        "Reading of a non-zero exit: the command's own answer (No matches found, Files differ, Condition is false) or the fallback 'Command failed with exit code: N'. A non-zero exit is the answer, never a failed call.",
     },
   },
   required: ["stdout", "interrupted"],
