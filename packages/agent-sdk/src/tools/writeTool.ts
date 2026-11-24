@@ -6,6 +6,10 @@ import { atomicWriteFile } from "../utils/atomicWrite.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
 import { READ_TOOL_NAME } from "../constants/tools.js";
+import {
+  renderWriteResultData,
+  type WriteResultData,
+} from "./resultData/write.js";
 
 /**
  * File Write Tool Plugin
@@ -134,11 +138,22 @@ When to use: creating a new file, or fully replacing one you've already ${READ_T
         }
       }
 
-      // Check if overwriting existing file but content is the same
+      // Check if overwriting existing file but content is the same. CC has no
+      // such path (it rewrites and reports an update), but skipping a no-op
+      // write is worth keeping — same shape and text as a real update, so the
+      // model still gets the CC answer.
       if (isExistingFile && originalContent === content) {
+        // 一个字节都没变：`+0 −0`，`wave.lines.changed` 也就不涨。
+        const data: WriteResultData = {
+          type: "update",
+          filePath: resolvedPath,
+          linesAdded: 0,
+          linesRemoved: 0,
+        };
         return {
           success: true,
-          content: `File ${filePath} already has the same content, no changes needed`,
+          data,
+          content: renderWriteResultData(data),
           shortResult: "No changes needed",
           filePath: resolvedPath,
         };
@@ -231,24 +246,29 @@ When to use: creating a new file, or fully replacing one you've already ${READ_T
 
       const shortResult = isExistingFile ? "File overwritten" : "File created";
 
+      // Line delta for the `wave.lines.changed` metric and the host's `+N −M`:
+      // it rides `data`, so the result shape carries it instead of
+      // `ToolResult.metadata`.
       const lines = content.split("\n").length;
-      const chars = content.length;
-      const detailedContent = `${shortResult} (${lines} lines, ${chars} characters)`;
+      const linesRemoved = isExistingFile
+        ? originalContent.split("\n").length
+        : 0;
+      const data: WriteResultData = {
+        type: isExistingFile ? "update" : "create",
+        filePath: resolvedPath,
+        linesAdded: lines,
+        linesRemoved,
+      };
 
       logger.debug(`Write tool: ${shortResult}`);
 
       return {
         success: true,
-        content: detailedContent,
+        data,
+        content: renderWriteResultData(data),
         shortResult,
         filePath: resolvedPath,
         startLineNumber: 1,
-        // Line delta for the `wave.lines.changed` metric: a new file adds its
-        // own lines and removes none; an overwrite replaces what was there.
-        metadata: {
-          linesAdded: lines,
-          linesRemoved: isExistingFile ? originalContent.split("\n").length : 0,
-        },
       };
     } catch (error) {
       const errorMessage =

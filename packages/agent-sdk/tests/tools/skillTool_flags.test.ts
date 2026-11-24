@@ -101,6 +101,11 @@ describe("skillTool flags", () => {
       );
 
       expect(result.success).toBe(true);
+      expect(result.data).toStrictEqual({
+        success: true,
+        commandName: "visible-skill",
+        content: "Success",
+      });
       expect(result.content).toBe("Success");
     });
   });

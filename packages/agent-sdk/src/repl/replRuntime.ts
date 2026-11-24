@@ -123,8 +123,12 @@ export interface ReplRunResult {
   /** Calls a permission rule, a hook or the call limit refused. */
   refusedCalls?: string[];
   images: Array<{ data: string; mediaType?: string }>;
-  /** Set = this call answered with a receipt instead of a result; `N` is the `evalId`. */
-  dispatched?: number;
+  /**
+   * Set = this call answered with a receipt instead of a result (the script is
+   * running in the background, or the call was refused before it started).
+   * Same name as CC's `asyncDispatched`; the id, when there is one, is `evalId`.
+   */
+  asyncDispatched?: true;
   /** True when the context was discarded as poisoned; `error` says so. */
   contextReset?: boolean;
 }
@@ -825,11 +829,26 @@ function splitCwdNote(
   };
 }
 
+/**
+ * The exit code a shell result carries, or `undefined` when it carries none.
+ *
+ * `data.exitCode` is the authority (each shell tool puts its code there);
+ * `metadata` is only read for a transcript or mod recorded before issue #3055
+ * phase 2 moved the short scalars into `data`.
+ */
+function exitCodeFromResult(result: ToolResult): number | undefined {
+  const data = result.data as { exitCode?: unknown } | undefined;
+  if (data && typeof data.exitCode === "number") return data.exitCode;
+  const metadata = result.metadata as { exitCode?: unknown } | undefined;
+  return metadata && typeof metadata.exitCode === "number"
+    ? metadata.exitCode
+    : undefined;
+}
+
 /** The exit code a Bash result carries, with a sane fallback for a missing one. */
 function exitCodeOf(result: ToolResult): number {
-  const metadata = result.metadata as { exitCode?: unknown } | undefined;
-  if (metadata && typeof metadata.exitCode === "number")
-    return metadata.exitCode;
+  const exitCode = exitCodeFromResult(result);
+  if (exitCode !== undefined) return exitCode;
   return result.success ? 0 : 1;
 }
 
@@ -841,10 +860,7 @@ function exitCodeOf(result: ToolResult): number {
  * turn that into a 1 that looks like `grep` finding nothing.
  */
 function shellExitCodeOf(result: ToolResult): number | undefined {
-  const metadata = result.metadata as { exitCode?: unknown } | undefined;
-  return metadata && typeof metadata.exitCode === "number"
-    ? metadata.exitCode
-    : undefined;
+  return exitCodeFromResult(result);
 }
 
 /** Commands whose exit 1 is an answer ("nothing to report"), not a failure. */
@@ -1482,7 +1498,7 @@ function sendDispatchReceipt(frame: ReplFrame): void {
   frame.resolve?.({
     ok: true,
     evalId: frame.id,
-    dispatched: frame.id,
+    asyncDispatched: true,
     // Everything the script collects from here on travels with the event, so the
     // receipt carries only what a reader needs to correlate it with the call.
     logs: [],
@@ -1534,20 +1550,16 @@ function completeFromError(frame: ReplFrame, error: unknown): void {
  * The refusal a script gets when the context already has too many in flight.
  *
  * It keeps the *receipt* shape on purpose (spec「并发上限时拒绝而不是排队」): the
- * model has to recognise this as "that lane answered, nothing started", and the
- * `(dispatched #N)` form is the one it already reads as an answer from the async
- * lane. `ok: false` is what makes the renderer print the reason instead of
- * "already running".
+ * model has to recognise this as "that lane answered, nothing started". CC's
+ * refusal carries `asyncDispatched: true` with no `evalId` and no
+ * `(dispatched #N)` line, so this one does the same: nothing was started, so
+ * there is no number to wait on. `ok: false` is what makes the renderer print
+ * the reason.
  */
-function concurrencyRefusal(
-  running: number,
-  snippet: string,
-  evalId: number,
-): ReplRunResult {
+function concurrencyRefusal(running: number, snippet: string): ReplRunResult {
   return {
     ok: false,
-    evalId,
-    dispatched: evalId,
+    asyncDispatched: true,
     error:
       `REPL concurrency limit reached: ${running} script(s) from this context are still in flight ` +
       `(limit ${REPL_ASYNC_CONCURRENCY_LIMIT}). 已达并发上限，先用 Poll 等它们 settle. ` +
@@ -1565,8 +1577,9 @@ function concurrencyRefusal(
  * Never rejects. The three shapes it can answer with:
  *
  * - the script's own result, when it finishes inside the wait window;
- * - `{ ok: true, dispatched: N }`, when the window closed first (or `detach`
- *   asked for it): the script keeps running and its result arrives as an event;
+ * - `{ ok: true, asyncDispatched: true, evalId: N }`, when the window closed
+ *   first (or `detach` asked for it): the script keeps running and its result
+ *   arrives as an event;
  * - `{ ok: false, error }` for everything else — a throw, a budget, an abort, a
  *   watchdog, a refusal.
  */
@@ -1576,11 +1589,9 @@ export function runReplScript(options: RunReplOptions): Promise<ReplRunResult> {
   const snippet = snippetOf(code);
   const live = activeCount(key);
   if (live >= REPL_ASYNC_CONCURRENCY_LIMIT) {
-    // The refused call still consumes a number: the receipt the model reads and
-    // the number a later script gets must never be the same one.
-    const refusedId = nextEvalId;
-    nextEvalId += 1;
-    return Promise.resolve(concurrencyRefusal(live, snippet, refusedId));
+    // No number is consumed: the refusal never starts a script, so there is no
+    // id to hand back and none to keep unique (CC's refusal has no `evalId`).
+    return Promise.resolve(concurrencyRefusal(live, snippet));
   }
 
   const frame: ReplFrame = {

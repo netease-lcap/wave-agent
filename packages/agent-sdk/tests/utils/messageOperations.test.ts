@@ -700,6 +700,100 @@ describe("updateToolBlockInMessage with messageId", () => {
   });
 });
 
+describe("updateToolBlockInMessage: 只落 data 的新形态（issue #3055 阶段 2）", () => {
+  it("更新已有块时写入 data，且不碰 result", () => {
+    const initialMessages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "assistant",
+        blocks: [
+          {
+            type: "tool",
+            id: "tool-1",
+            name: "Grep",
+            parameters: '{"pattern":"TODO"}',
+            stage: "running",
+          },
+        ],
+        timestamp: expect.any(String),
+      },
+    ];
+
+    const { messages: result } = updateToolBlockInMessage({
+      messages: initialMessages,
+      id: "tool-1",
+      stage: "end",
+      data: { mode: "files_with_matches", numFiles: 1, filenames: ["a.ts"] },
+    });
+
+    const block = result[0].blocks[0] as ToolBlock;
+    expect(block.data).toEqual({
+      mode: "files_with_matches",
+      numFiles: 1,
+      filenames: ["a.ts"],
+    });
+    expect("result" in block).toBe(false);
+  });
+
+  it("新建块时不塞空串 result —— 空串会让读路径跳过渲染器", () => {
+    const initialMessages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "assistant",
+        blocks: [{ type: "text", content: "looking" }],
+        timestamp: expect.any(String),
+      },
+    ];
+
+    const { messages: result } = updateToolBlockInMessage({
+      messages: initialMessages,
+      id: "tool-1",
+      name: "Grep",
+      parameters: '{"pattern":"TODO"}',
+      stage: "end",
+      data: { mode: "files_with_matches", numFiles: 0, filenames: [] },
+    });
+
+    const block = result[0].blocks[1] as ToolBlock;
+    expect(block.data).toEqual({
+      mode: "files_with_matches",
+      numFiles: 0,
+      filenames: [],
+    });
+    expect("result" in block).toBe(false);
+  });
+
+  it("表外工具仍按老形态落 result", () => {
+    const initialMessages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "assistant",
+        blocks: [
+          {
+            type: "tool",
+            id: "tool-1",
+            name: "mcp__demo__search",
+            parameters: "{}",
+            stage: "running",
+          },
+        ],
+        timestamp: expect.any(String),
+      },
+    ];
+
+    const { messages: result } = updateToolBlockInMessage({
+      messages: initialMessages,
+      id: "tool-1",
+      stage: "end",
+      result: "mcp hit",
+    });
+
+    const block = result[0].blocks[0] as ToolBlock;
+    expect(block.result).toBe("mcp hit");
+    expect("data" in block).toBe(false);
+  });
+});
+
 describe("cloneMessage", () => {
   it("should clone a basic message", () => {
     const message: Message = {

@@ -1,5 +1,6 @@
 import type { Message, Usage } from "../types/index.js";
 import { estimateTokens } from "./tokenEstimate.js";
+import { toolBlockText } from "./toolBlockText.js";
 
 /**
  * Extract the latest total tokens from the last message with usage data.
@@ -118,14 +119,18 @@ export function roughTokenCountForMessages(messages: Message[]): number {
         case "compact":
           total += estimateTokens(block.content);
           break;
-        case "tool":
+        case "tool": {
           if (block.parameters) {
             total += estimateTokens(block.parameters, "json");
           }
-          if (block.result) {
-            total += estimateTokens(block.result);
+          // 阶段 2 起新转录里没有 `result`，文本要按渲染器从 `data` 重建后再计
+          // —— 少算这一段会让上下文占用偏低，压缩迟迟不触发。
+          const text = toolBlockText(block);
+          if (text) {
+            total += estimateTokens(text);
           }
           break;
+        }
         case "task_notification":
           total += estimateTokens(block.summary);
           break;

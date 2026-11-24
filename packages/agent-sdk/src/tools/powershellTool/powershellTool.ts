@@ -6,7 +6,7 @@ import { spawnHidden } from "../../utils/execFileHidden.js";
 import { getShellProvider } from "../../utils/shell/resolveProvider.js";
 import { WindowsStreamDecoder } from "../../utils/encoding.js";
 import { terminateChildProcessTree } from "../../utils/terminateProcessTree.js";
-import { processToolResult } from "../../utils/toolResultStorage.js";
+import { persistToolResult } from "../../utils/toolResultStorage.js";
 import { probeTempDir, resolveTempDir } from "../../utils/tempDir.js";
 import { BASH_MAX_OUTPUT_CHARS } from "../../constants/toolLimits.js";
 import { POWERSHELL_TOOL_NAME, READ_TOOL_NAME } from "../../constants/tools.js";
@@ -16,6 +16,11 @@ import {
   POWERSHELL_MAX_TIMEOUT_MS,
   powershellPrompt,
 } from "./prompt.js";
+import {
+  composePowerShellResultText,
+  renderPowerShellResultData,
+  type PowerShellResultData,
+} from "../resultData/powershell.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "../types.js";
 
 // Same valve as the Bash tool: the child's 'exit' event fires before its stdio
@@ -83,6 +88,27 @@ function readTrackedCwd(cwdFilePath: string): string | undefined {
  */
 function oneLineLabel(text: string): string {
   return text.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Long output goes to disk, exactly as the Bash tool does it: the whole body is
+ * written into the tool-results directory, `data` keeps the path and the length,
+ * and the text the model sees is the `<persisted-output>` wrapper the renderer
+ * builds from those two (CC's `persistedOutputPath` / `persistedOutputSize`,
+ * `PowerShellTool.tsx:251-252`).
+ *
+ * The write is a side effect and belongs here; the wording belongs to
+ * `renderPowerShellResultData`. `data.stdout` keeps just enough to derive the
+ * preview (first 2048 characters) — the rest is in the file.
+ */
+function stashLongOutput(data: PowerShellResultData): void {
+  const body = composePowerShellResultText(data);
+  if (body.length <= BASH_MAX_OUTPUT_CHARS) return;
+  const filePath = persistToolResult(body, "powershell");
+  if (!filePath) return;
+  data.persistedOutputPath = filePath;
+  data.persistedOutputSize = body.length;
+  data.stdout = data.stdout.slice(0, BASH_MAX_OUTPUT_CHARS);
 }
 
 /**
@@ -243,14 +269,18 @@ export const powershellTool: ToolPlugin = {
       );
       const task = backgroundTaskManager.getTask(taskId);
       const outputPath = task?.outputPath;
-      const backgroundMsg = outputPath
-        ? `Command running in background with ID: ${taskId}. Output is being written to: ${outputPath}`
-        : `Command running in background with ID: ${taskId}. Use ${READ_TOOL_NAME} tool with task_id="${taskId}" to read the output.`;
+      const data: PowerShellResultData = {
+        stdout: "",
+        interrupted: false,
+        backgroundTaskId: taskId,
+        ...(outputPath ? { backgroundOutputPath: outputPath } : {}),
+      };
       return {
         success: true,
-        content: backgroundMsg,
+        content: renderPowerShellResultData(data),
         shortResult: `Background process ${taskId} started${outputPath ? ` → ${outputPath}` : ""}`,
         backgroundTaskId: taskId,
+        data,
       };
     }
 
@@ -336,16 +366,21 @@ export const powershellTool: ToolPlugin = {
         terminateChildProcessTree(child);
         cleanupTempFile();
 
-        const processedOutput = processToolResult(
-          describeOutput(),
-          BASH_MAX_OUTPUT_CHARS,
-          "powershell",
-        );
+        // `data` first, text from it: whatever the buffers held when the command
+        // was cut off, plus the reason as the sentence the model reads.
+        const data: PowerShellResultData = {
+          stdout: describeOutput(),
+          interrupted: true,
+          interruptedReason: reason,
+          // 中断档的退出码；正文不读它（见 resultData/powershell.ts）。
+          exitCode: 130,
+        };
+        stashLongOutput(data);
         resolve({
           success: false,
-          content: processedOutput ? `${processedOutput}\n\n${reason}` : reason,
+          content: renderPowerShellResultData(data),
           error: reason,
-          metadata: { exitCode: 130 },
+          data,
         });
       };
 
@@ -388,12 +423,20 @@ export const powershellTool: ToolPlugin = {
             );
             const task = backgroundTaskManager.getTask(taskId);
             const outputPath = task?.outputPath;
+            const data: PowerShellResultData = {
+              stdout: "",
+              interrupted: false,
+              backgroundTaskId: taskId,
+              backgroundedByUser: true,
+              ...(outputPath ? { backgroundOutputPath: outputPath } : {}),
+            };
             resolve({
               success: true,
-              content: `Command was manually backgrounded by user with ID: ${taskId}.${outputPath ? ` Output is being written to: ${outputPath}` : ""}`,
+              content: renderPowerShellResultData(data),
               shortResult: `Process ${taskId} backgrounded`,
               backgroundedByUser: true,
               backgroundTaskId: taskId,
+              data,
             });
           },
         });
@@ -437,12 +480,21 @@ export const powershellTool: ToolPlugin = {
             logger.info(
               `[PowerShell] Command timed out after ${timeout}ms, auto-backgrounded as ${taskId}`,
             );
+            const autoBackgroundData: PowerShellResultData = {
+              stdout: "",
+              interrupted: false,
+              backgroundTaskId: taskId,
+              assistantAutoBackgrounded: true,
+              ...(outputPath ? { backgroundOutputPath: outputPath } : {}),
+              timeoutMs: timeout,
+            };
             resolve({
               success: true,
-              content: `Command exceeded the timeout (${timeout / 1000}s) and was moved to the background with ID: ${taskId}. It is still running — you will be notified when it completes.${outputPath ? ` Output is being written to: ${outputPath}` : ""}`,
+              content: renderPowerShellResultData(autoBackgroundData),
               shortResult: `Process ${taskId} auto-backgrounded`,
               assistantAutoBackgrounded: true,
               backgroundTaskId: taskId,
+              data: autoBackgroundData,
             });
             return;
           }
@@ -505,12 +557,20 @@ export const powershellTool: ToolPlugin = {
           }
         }
 
-        const content = processToolResult(
-          (cwdMessage ? cwdMessage + "\n" : "") +
-            (combinedOutput || `Command executed with exit code: ${exitCode}`),
-          BASH_MAX_OUTPUT_CHARS,
-          "powershell",
-        );
+        // `data` first, text from it: the cwd note is its own field (CC keeps it
+        // apart as well, `PowerShellTool.tsx:645`) and the empty-output sentence
+        // stands in for `stdout`, so the renderer needs no exit code. The exit
+        // code itself rides `data.exitCode` for the host card and `$`'s exit
+        // family check (it used to be `ToolResult.metadata.exitCode`).
+        const data: PowerShellResultData = {
+          stdout:
+            combinedOutput || `Command executed with exit code: ${exitCode}`,
+          interrupted: false,
+          exitCode,
+          ...(cwdMessage ? { stderr: cwdMessage } : {}),
+        };
+        stashLongOutput(data);
+        const content = renderPowerShellResultData(data);
 
         const lines = combinedOutput.trim().split("\n");
         const shortResult =
@@ -521,6 +581,7 @@ export const powershellTool: ToolPlugin = {
         resolve({
           success: exitCode === 0,
           content,
+          data,
           shortResult: shortResult || undefined,
           // The provider appends the exit probe, so this is the status the
           // command's own process ended with ($LASTEXITCODE when a native
@@ -529,7 +590,6 @@ export const powershellTool: ToolPlugin = {
             exitCode !== 0
               ? `Command failed with exit code: ${exitCode}`
               : undefined,
-          metadata: { exitCode },
         });
       };
 

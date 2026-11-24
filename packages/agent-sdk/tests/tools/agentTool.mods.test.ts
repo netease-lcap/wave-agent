@@ -193,7 +193,10 @@ describe("Agent 工具与 agent.offer / agent.spawn", () => {
     const result = await call(plain);
 
     expect(result.success).toBe(true);
-    expect(result.content).toBe("subagent answer");
+    // 报告正文在前，agentId/usage 尾部由渲染器现场生成。
+    expect(result.content).toMatch(
+      /^subagent answer\nagentId: sub-1\n<usage>total_tokens: 0\ntool_uses: 0\nduration_ms: \d+<\/usage>$/,
+    );
     expect(
       vi.mocked(context.modManager!.dispatchAgentOffer),
     ).not.toHaveBeenCalled();

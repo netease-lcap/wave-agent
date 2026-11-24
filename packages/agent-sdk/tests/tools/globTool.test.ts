@@ -85,8 +85,12 @@ describe("globTool", () => {
     expect(result.success).toBe(true);
     expect(result.content).toBe("src/index.ts\nsrc/utils.ts");
     expect(result.shortResult).toBe("Found 2 files");
-    expect(result.metadata?.numFiles).toBe(2);
-    expect(result.metadata?.truncated).toBe(false);
+    expect(result.data).toEqual({
+      durationMs: expect.any(Number),
+      numFiles: 2,
+      filenames: [path.join("src", "index.ts"), path.join("src", "utils.ts")],
+      truncated: false,
+    });
   });
 
   it("walks the workdir with ripgrep and the Claude Code defaults", async () => {
@@ -161,8 +165,8 @@ describe("globTool", () => {
     const result = await run({ pattern: "**/*.nope" });
 
     expect(result.success).toBe(true);
-    expect(result.content).toBe("No files match the pattern");
-    expect(result.shortResult).toBe("No matches found");
+    expect(result.content).toBe("No files found");
+    expect(result.shortResult).toBe("No files found");
   });
 
   it("truncates at `limit` and says so", async () => {
@@ -179,8 +183,14 @@ describe("globTool", () => {
       "(Results are truncated. Consider using a more specific path or pattern.)",
     );
     expect(result.shortResult).toBe("Found 150 files (showing first 100)");
-    expect(result.metadata?.numFiles).toBe(150);
-    expect(result.metadata?.truncated).toBe(true);
+    // `numFiles` counts what was handed over (CC takes `filenames.length`), so
+    // the truncation itself is only visible through `truncated`.
+    expect(result.data).toEqual({
+      durationMs: expect.any(Number),
+      numFiles: 100,
+      filenames: expect.arrayContaining(["file0.ts", "file99.ts"]),
+      truncated: true,
+    });
   });
 
   it("honours a custom limit", async () => {

@@ -1,14 +1,13 @@
 import { KB_GET_DOC_TOOL_NAME } from "../../constants/tools.js";
 import type { ToolContext, ToolPlugin, ToolResult } from "../types.js";
-import { fetchKbDoc, type KbDoc } from "../../services/knowledgeBaseApi.js";
+import { fetchKbDoc } from "../../services/knowledgeBaseApi.js";
+import { formatDocSummary, readText } from "./kbFormatting.js";
 import {
-  KB_UNAUTHORIZED,
-  formatDegraded,
-  formatDocSummary,
-  formatLocation,
-  readCaptions,
-  readText,
-} from "./kbFormatting.js";
+  renderKbGetDocFailureResultData,
+  renderKbGetDocResultData,
+  type KbGetDocFailureResultData,
+  type KbGetDocTextResultData,
+} from "../resultData/kbGetDoc.js";
 
 const KB_GET_DOC_DESCRIPTION =
   "Read one knowledge-base chunk in full, by the chunk_id shown on each kb_search hit. " +
@@ -17,21 +16,6 @@ const KB_GET_DOC_DESCRIPTION =
   "A 404 means the chunk no longer exists or is outside what this account may see: search again rather than retrying the same id.";
 
 const KB_GET_DOC_LEAN_PROMPT = `Read one knowledge-base chunk in full by its chunk_id (as returned by kb_search) — complete text with document title, section path and page. A 404 means the chunk was deleted or is not visible to this account.`;
-
-/** `员工手册 · 假期制度 > 婚假（第 3 页）` plus the ids and parser notes under it. */
-function formatDocHeader(doc: KbDoc, requestedChunkId: string): string[] {
-  const lines = [formatLocation(doc)];
-  const ids = [`chunk_id=${readText(doc.chunkId) || requestedChunkId}`];
-  const docId = readText(doc.docId);
-  if (docId) ids.push(`doc_id=${docId}`);
-  lines.push(ids.join("  "));
-
-  const degraded = formatDegraded(doc.degraded);
-  if (degraded) lines.push(degraded);
-  const captions = readCaptions(doc.imageCaptions);
-  if (captions.length > 0) lines.push(`图片说明：${captions.join(" / ")}`);
-  return lines;
-}
 
 export const kbGetDocTool: ToolPlugin = {
   name: KB_GET_DOC_TOOL_NAME,
@@ -78,22 +62,53 @@ export const kbGetDocTool: ToolPlugin = {
       abortSignal: context.abortSignal,
     });
     if (outcome.kind === "unauthorized") {
-      return { success: false, content: KB_UNAUTHORIZED };
+      const data: KbGetDocFailureResultData = { status: "unauthorized" };
+      return {
+        success: false,
+        data,
+        content: renderKbGetDocFailureResultData(data),
+      };
     }
     if (outcome.kind === "not_found") {
-      return { success: false, content: "这个片段不存在或已删除" };
+      const data: KbGetDocFailureResultData = { status: "not_found" };
+      return {
+        success: false,
+        data,
+        content: renderKbGetDocFailureResultData(data),
+      };
     }
     if (outcome.kind === "error") {
-      return { success: false, content: `知识库取全文失败：${outcome.error}` };
+      const data: KbGetDocFailureResultData = {
+        status: "error",
+        error: outcome.error,
+      };
+      return {
+        success: false,
+        data,
+        content: renderKbGetDocFailureResultData(data),
+      };
     }
 
     const doc = outcome.value;
     const body = doc.content.trim();
-    const lines = formatDocHeader(doc, chunkId);
-    lines.push("", body);
+    const data: KbGetDocTextResultData = {
+      status: "ok",
+      // 正文头部打印的那个 id：服务端回了就用它的，否则用入参这个。
+      chunkId: readText(doc.chunkId) || chunkId,
+      docId: doc.docId,
+      title: doc.title,
+      sectionPath: doc.sectionPath,
+      page: doc.page,
+      degraded: doc.degraded,
+      imageCaptions: doc.imageCaptions,
+      // 文档全文只在 `data` 里（阶段 2 口径），头部与正文的拼装归渲染器。
+      content: body,
+      chars: body.length,
+    };
     return {
       success: true,
-      content: lines.join("\n"),
+      data,
+      content: renderKbGetDocResultData(data),
       shortResult: formatDocSummary(doc, body),
     };
   },

@@ -375,13 +375,22 @@ describe("artifactTool", () => {
       expect(result.shortResult).toBe(
         "Published doc.md → https://server.test/code/artifact/abc",
       );
-      // Hosts render the publish as a card from this metadata: URL for the
-      // 「在浏览器中打开」 action, title/version for the two text lines.
-      expect(result.metadata).toEqual({
-        artifactUrl: "https://server.test/code/artifact/abc",
+      // Hosts render the publish as a card from this data: `url` for the
+      // 「在浏览器中打开」 action, `artifactTitle`/`version` for the two text
+      // lines. `metadata` is no longer filled (issue #3055 阶段 2).
+      expect(result.data).toEqual({
+        action: "publish",
+        url: "https://server.test/code/artifact/abc",
+        version: "v1",
+        path: "doc.md",
+        title: "Doc",
         artifactTitle: "Doc",
-        artifactVersion: "v1",
+        sharing: [
+          "Sharing: private — only you can open it, other people cannot open the link until it is shared.",
+          "You cannot change sharing; that is done from the page's Share menu.",
+        ].join("\n"),
       });
+      expect(result.metadata).toBeUndefined();
 
       const [deployUrl, init] = fetchMock.mock.calls[0];
       expect(deployUrl).toBe(`${SERVER_URL}/api/frame/deploy/direct`);

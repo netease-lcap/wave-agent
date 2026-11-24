@@ -35,10 +35,12 @@ describe("cronCreateTool", () => {
       );
 
       expect(result.success).toBe(true);
-      const content = JSON.parse(result.content);
-      expect(content.id).toBe("abc123");
-      expect(content.humanSchedule).toBe("Every 5 minutes");
-      expect(content.recurring).toBe(true);
+      // 正文由 `data` 渲染而来（`resultData/cronCreate.ts`），不再是 JSON.stringify。
+      expect(result.data).toMatchObject({
+        id: "abc123",
+        humanSchedule: "Every 5 minutes",
+        recurring: true,
+      });
       expect(result.shortResult).toContain("Scheduled recurring job abc123");
       expect(result.shortResult).toContain("Every 5 minutes");
       expect(result.shortResult).toContain("Auto-expires after 7 days");
@@ -63,10 +65,11 @@ describe("cronCreateTool", () => {
       );
 
       expect(result.success).toBe(true);
-      const content = JSON.parse(result.content);
-      expect(content.id).toBe("def456");
-      expect(content.humanSchedule).toBe("Every day at 2:30 PM");
-      expect(content.recurring).toBe(false);
+      expect(result.data).toMatchObject({
+        id: "def456",
+        humanSchedule: "Every day at 2:30 PM",
+        recurring: false,
+      });
       expect(result.shortResult).toContain("Scheduled one-shot task def456");
       expect(result.shortResult).toContain("fire once then auto-delete");
     });

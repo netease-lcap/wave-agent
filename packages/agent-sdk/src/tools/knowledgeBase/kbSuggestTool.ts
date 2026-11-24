@@ -1,7 +1,10 @@
 import { KB_SUGGEST_TOOL_NAME } from "../../constants/tools.js";
 import type { ToolContext, ToolPlugin, ToolResult } from "../types.js";
 import { suggestKbTerms } from "../../services/knowledgeBaseApi.js";
-import { KB_UNAUTHORIZED } from "./kbFormatting.js";
+import {
+  renderKbSuggestResultData,
+  type KbSuggestResultData,
+} from "../resultData/kbSuggest.js";
 
 const KB_SUGGEST_DESCRIPTION =
   "List terms that actually occur in the enterprise knowledge base and look like the one you pass. " +
@@ -53,34 +56,37 @@ export const kbSuggestTool: ToolPlugin = {
       abortSignal: context.abortSignal,
     });
     if (outcome.kind === "unauthorized") {
-      return { success: false, content: KB_UNAUTHORIZED };
+      const data: KbSuggestResultData = { status: "unauthorized" };
+      return { success: false, data, content: renderKbSuggestResultData(data) };
     }
     if (outcome.kind === "not_found") {
-      return {
-        success: false,
-        content: "知识库相近词接口不可用，请确认服务端已部署知识库",
-      };
+      const data: KbSuggestResultData = { status: "unavailable" };
+      return { success: false, data, content: renderKbSuggestResultData(data) };
     }
     if (outcome.kind === "error") {
-      return {
-        success: false,
-        content: `知识库相近词查询失败：${outcome.error}`,
+      const data: KbSuggestResultData = {
+        status: "error",
+        error: outcome.error,
       };
+      return { success: false, data, content: renderKbSuggestResultData(data) };
     }
 
     const terms = outcome.value.terms;
+    const data: KbSuggestResultData = { status: "ok", term, terms };
     if (terms.length === 0) {
       // Same rule as an empty search: nothing to re-word with is a finding, not
       // a failure — the model should search with its own wording.
       return {
         success: true,
-        content: `没有找到「${term}」的相近词`,
+        data,
+        content: renderKbSuggestResultData(data),
         shortResult: "没有相近词",
       };
     }
     return {
       success: true,
-      content: `「${term}」的相近词：${terms.join(" · ")}`,
+      data,
+      content: renderKbSuggestResultData(data),
       shortResult: `相近词 ${terms.length} 个`,
     };
   },

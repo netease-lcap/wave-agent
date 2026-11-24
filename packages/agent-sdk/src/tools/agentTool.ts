@@ -1,6 +1,17 @@
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { EXPLORE_SUBAGENT_TYPE } from "../constants/subagents.js";
-import { AGENT_TOOL_NAME } from "../constants/tools.js";
+import {
+  AGENT_TOOL_NAME,
+  BASH_TOOL_NAME,
+  READ_TOOL_NAME,
+} from "../constants/tools.js";
+import type { SubagentInstance } from "../managers/subagentManager.js";
+import {
+  renderAgentCompletedText,
+  renderAgentResultData,
+  type AgentAsyncLaunchedResultData,
+  type AgentCompletedResultData,
+} from "./resultData/agent.js";
 import type { Message, ReasoningBlock, TextBlock } from "../types/messaging.js";
 import {
   countToolBlocks,
@@ -30,6 +41,27 @@ function findActiveStreamingBlock(
     }
   }
   return undefined;
+}
+
+/**
+ * Worktree 的路径与分支。CC 把它们挂进结果 `data`（`AgentTool.tsx:1342` 读
+ * `worktreePath` / `worktreeBranch`）；我方带变更计数的整段报告由
+ * `SubagentManager` 折进正文，这里只取定位用的两个标量。
+ */
+function agentWorktreeFields(instance: SubagentInstance): {
+  worktreePath?: string;
+  worktreeBranch?: string;
+} {
+  const session = instance.worktree?.session;
+  if (!session) return {};
+  return {
+    worktreePath: session.worktreePath,
+    // Hook-based worktrees carry an empty branch — leave the key out rather
+    // than reporting a branch that does not exist.
+    ...(session.worktreeBranch
+      ? { worktreeBranch: session.worktreeBranch }
+      : {}),
+  };
 }
 
 /**
@@ -245,6 +277,16 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
         }
       }
 
+      // CC 的 `AgentTool.tsx:753`：调用方手里有没有能把输出文件读回来的工具，
+      // 决定后台结果里给不给 `output_file` 那几行。
+      const canReadOutputFile =
+        context.toolManager
+          ?.list()
+          .some(
+            (tool) =>
+              tool.name === READ_TOOL_NAME || tool.name === BASH_TOOL_NAME,
+          ) ?? false;
+
       return new Promise<ToolResult>((resolve) => {
         void (async () => {
           /** Whether the chain's tail ran: a hook answering without `next` started none. */
@@ -257,6 +299,7 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
            */
           const spawn = async (spawnEvent: unknown): Promise<unknown> => {
             dispatched = true;
+            const startedAt = Date.now();
             const rewritten =
               typeof spawnEvent === "object" && spawnEvent !== null
                 ? (spawnEvent as Record<string, unknown>)
@@ -355,11 +398,21 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
                   const taskId = await subagentManager.backgroundInstance(
                     instance.subagentId,
                   );
-                  const task = context.backgroundTaskManager?.getTask(taskId);
-                  const outputPath = task?.outputPath;
+                  const outputPath =
+                    context.backgroundTaskManager?.getTask(taskId)?.outputPath;
+                  // 用户把一次前台运行转后台：CC 这条路径交回的就是异步档
+                  // （`AgentTool.tsx:1039-1051`），所以与直接后台启动同形同文。
+                  const data: AgentAsyncLaunchedResultData = {
+                    status: "async_launched",
+                    agentId: taskId,
+                    description: finalDescription,
+                    outputFile: outputPath,
+                    canReadOutputFile,
+                  };
                   resolve({
                     success: true,
-                    content: `Agent backgrounded with ID: ${taskId}.${outputPath ? ` Real-time output: ${outputPath}` : ""}`,
+                    data,
+                    content: renderAgentResultData(data),
                     shortResult: "Agent backgrounded",
                     backgroundedByUser: true,
                     backgroundTaskId: taskId,
@@ -381,19 +434,19 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
               }
 
               if (run_in_background) {
-                const task = context.backgroundTaskManager?.getTask(result);
-                const outputPath = task?.outputPath;
-                const backgroundMsg = [
-                  `Agent started in background with ID: ${result}.`,
-                  `The agent is working in the background. You will be notified automatically when it completes.`,
-                  `Do not duplicate this agent's work — avoid working with the same files or topics it is using.`,
-                  outputPath
-                    ? `output_file: ${outputPath}`
-                    : `Briefly tell the user what you launched and end your response.`,
-                ].join("\n");
+                const outputPath =
+                  context.backgroundTaskManager?.getTask(result)?.outputPath;
+                const data: AgentAsyncLaunchedResultData = {
+                  status: "async_launched",
+                  agentId: result,
+                  description: finalDescription,
+                  outputFile: outputPath,
+                  canReadOutputFile,
+                };
                 resolve({
                   success: true,
-                  content: backgroundMsg,
+                  data,
+                  content: renderAgentResultData(data),
                   shortResult: `Agent started in background: ${result}${outputPath ? ` → ${outputPath}` : ""}`,
                   // 后台子 agent 与后台 shell / Workflow 一样，工具行要能把人接回
                   // 任务面（spec task-background-execution.md「从工具行进入后台
@@ -411,9 +464,23 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
               const toolCount = countToolBlocks(messages);
               const summary = formatToolTokenSummary(toolCount, tokens);
 
+              const data: AgentCompletedResultData = {
+                status: "completed",
+                agentId: instance.subagentId,
+                agentType: configuration.name,
+                content: result,
+                totalToolUseCount: toolCount,
+                totalDurationMs: Date.now() - startedAt,
+                totalTokens: tokens,
+                ...agentWorktreeFields(instance),
+              };
+
               resolve({
                 success: true,
-                content: result,
+                data,
+                // 报告正文只在 `data.content`（CC 的 `data.content` 同义）：文本由渲染器
+                // 从 `data` 现场生成，所以这里不是手写的文本字面量。
+                content: renderAgentCompletedText(data),
                 shortResult: `Agent completed${summary ? ` ${summary}` : ""}`,
               });
             } catch (error) {
@@ -471,9 +538,24 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
                   // Same terminal as the completed path above: the caller has its
                   // answer, so the instance graph can be released.
                   subagentManager.cleanupInstance(instance.subagentId);
+                  // 与成功档同形：CC 对「出错但有产出」也回 `completed`
+                  // （`AgentTool.tsx:1223-1260`），父模型只看得到那段产出。
+                  const data: AgentCompletedResultData = {
+                    status: "completed",
+                    agentId: instance.subagentId,
+                    agentType: configuration.name,
+                    content: resultContent,
+                    totalToolUseCount: countToolBlocks(
+                      instance.messageManager.getMessages(),
+                    ),
+                    totalDurationMs: Date.now() - startedAt,
+                    totalTokens: instance.messageManager.getLatestTotalTokens(),
+                    ...agentWorktreeFields(instance),
+                  };
                   resolve({
                     success: true,
-                    content: resultContent,
+                    data,
+                    content: renderAgentCompletedText(data),
                     shortResult: "Agent completed",
                   });
                 } else {

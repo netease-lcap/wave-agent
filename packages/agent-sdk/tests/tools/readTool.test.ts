@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { readTool } from "@/tools/readTool.js";
 import { TaskManager } from "@/services/taskManager.js";
-import { open, readFile, stat } from "fs/promises";
+import { readFile, stat } from "fs/promises";
 import type { ToolContext } from "@/tools/types.js";
 import type { MessageManager } from "@/managers/messageManager.js";
 import { Container } from "@/utils/container.js";
@@ -10,7 +10,6 @@ import { Container } from "@/utils/container.js";
 vi.mock("fs/promises", () => ({
   readFile: vi.fn(),
   stat: vi.fn(),
-  open: vi.fn(),
 }));
 
 // Mock messageOperations for image conversion
@@ -67,29 +66,6 @@ Multi-byte: café naïve résumé`,
 
 const mockReadFile = vi.mocked(readFile);
 const mockStat = vi.mocked(stat);
-const mockOpen = vi.mocked(open);
-
-/**
- * Serve head reads (the byte-cap path) from the mocked file contents: the
- * reader asks for a prefix of the file and gets exactly that many bytes back.
- */
-function mockHeadReads() {
-  mockOpen.mockImplementation(async (path) => {
-    const content = mockFiles[path as string];
-    if (content === undefined) {
-      throw new Error(`ENOENT: no such file or directory, open '${path}'`);
-    }
-    const bytes = Buffer.from(content, "utf-8");
-    return {
-      read: async (buffer: Buffer, _offset: number, length: number) => {
-        const head = bytes.subarray(0, length);
-        head.copy(buffer, 0);
-        return { bytesRead: head.length, buffer };
-      },
-      close: async () => {},
-    } as unknown as Awaited<ReturnType<typeof open>>;
-  });
-}
 
 describe("readTool", () => {
   beforeEach(() => {
@@ -118,8 +94,6 @@ describe("readTool", () => {
         mtime: { getTime: () => 1000 },
       } as unknown as Awaited<ReturnType<typeof stat>>;
     });
-
-    mockHeadReads();
   });
 
   afterEach(() => {
@@ -148,12 +122,20 @@ describe("readTool", () => {
     const result = await readTool.execute({ file_path: filePath }, testContext);
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("File:");
-    expect(result.content).toContain("Total lines: 5");
-    expect(result.content).toContain("     1\tLine 1");
-    expect(result.content).toContain("     2\tLine 2");
-    expect(result.content).toContain("     5\tLine 5");
+    expect(result.content).toContain("1\tLine 1");
+    expect(result.content).toContain("2\tLine 2");
+    expect(result.content).toContain("5\tLine 5");
     expect(result.shortResult).toBe("Read 5 lines");
+    expect(result.data).toEqual({
+      type: "text",
+      file: {
+        filePath,
+        content: mockFiles[filePath],
+        numLines: 5,
+        startLine: 1,
+        totalLines: 5,
+      },
+    });
   });
 
   it("should read file with absolute path", async () => {
@@ -177,11 +159,12 @@ describe("readTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("Lines 10-14 of 50");
-    expect(result.content).toContain("    10\tLine 10");
-    expect(result.content).toContain("    14\tLine 14");
+    expect(result.content).toContain("10\tLine 10");
+    expect(result.content).toContain("14\tLine 14");
     expect(result.content).not.toContain("Line 9");
     expect(result.content).not.toContain("Line 15");
+    // No header and no tail notice: the body is line numbers + content only.
+    expect(result.content.split("\n")[0]).toBe("10\tLine 10");
   });
 
   it("should read file with limit", async () => {
@@ -195,9 +178,8 @@ describe("readTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("Lines 1-10 of 50");
-    expect(result.content).toContain("     1\tLine 1");
-    expect(result.content).toContain("    10\tLine 10");
+    expect(result.content).toContain("1\tLine 1");
+    expect(result.content).toContain("10\tLine 10");
     expect(result.content).not.toContain("Line 11");
   });
 
@@ -206,8 +188,8 @@ describe("readTool", () => {
     const result = await readTool.execute({ file_path: filePath }, testContext);
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain(
-      "System reminder: This file exists but has empty contents.",
+    expect(result.content).toBe(
+      "<system-reminder>Warning: the file exists but the contents are empty.</system-reminder>",
     );
     expect(result.shortResult).toBe("Empty file");
   });
@@ -227,11 +209,10 @@ describe("readTool", () => {
     const result = await readTool.execute({ file_path: filePath }, testContext);
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("Lines 1-2000 of 3000");
-    expect(result.content).toContain("     1\tLine 1");
-    expect(result.content).toContain("  2000\tLine 2000");
-    expect(result.content).toContain("... 1000 more lines not shown");
-    expect(result.shortResult).toBe("Read 2000 lines (truncated)");
+    expect(result.content).toContain("1\tLine 1");
+    expect(result.content).toContain("2000\tLine 2000");
+    expect(result.content).not.toContain("Line 2001");
+    expect(result.shortResult).toBe("Read 2000 lines");
   });
 
   it("should read from specific offset in large file", async () => {
@@ -246,9 +227,8 @@ describe("readTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("Lines 2500-2599 of 3000");
-    expect(result.content).toContain("  2500\tLine 2500");
-    expect(result.content).toContain("  2599\tLine 2599");
+    expect(result.content).toContain("2500\tLine 2500");
+    expect(result.content).toContain("2599\tLine 2599");
   });
 
   it("should handle relative paths", async () => {
@@ -298,7 +278,7 @@ describe("readTool", () => {
     );
   });
 
-  it("should return error for invalid offset", async () => {
+  it("warns instead of erroring when the offset is past the end", async () => {
     const filePath = "/test/workdir/small.txt";
     const result = await readTool.execute(
       {
@@ -308,8 +288,10 @@ describe("readTool", () => {
       testContext,
     );
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("Start line 100 exceeds total lines");
+    expect(result.success).toBe(true);
+    expect(result.content).toBe(
+      "<system-reminder>Warning: the file exists but is shorter than the provided offset (100). The file has 5 lines.</system-reminder>",
+    );
   });
 
   it("should adjust end line if it exceeds file length", async () => {
@@ -324,9 +306,7 @@ describe("readTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("Lines 3-5 of 5");
-    expect(result.content).toContain("     3\tLine 3");
-    expect(result.content).toContain("     5\tLine 5");
+    expect(result.content).toBe("3\tLine 3\n4\tLine 4\n5\tLine 5");
   });
 
   it("should format compact parameters correctly", () => {
@@ -383,10 +363,10 @@ describe("readTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("    45\tLine 45");
-    expect(result.content).toContain("    50\tLine 50");
+    expect(result.content).toContain("45\tLine 45");
+    expect(result.content).toContain("50\tLine 50");
     // Ensure line number format is correctly aligned
-    expect(result.content).toMatch(/\s+\d+\t/);
+    expect(result.content).toMatch(/^\d+\t/m);
   });
 
   it("should handle binary-like content gracefully", async () => {
@@ -686,7 +666,7 @@ describe("readTool", () => {
   });
 
   describe("Edge Cases", () => {
-    it("should truncate a single line that cannot fit the token budget", async () => {
+    it("refuses a file over the token budget instead of truncating", async () => {
       const largeContent = "a".repeat(150 * 1024); // 150KB single line
       mockReadFile.mockResolvedValue(largeContent);
 
@@ -696,12 +676,18 @@ describe("readTool", () => {
       );
 
       // 150KB / 4 bytesPerToken = ~38400 tokens, over the default 25000 cap:
-      // the read returns a partial view instead of failing, so the model never
-      // has to route around Read with `sed`/`head` in Bash.
-      expect(result.success).toBe(true);
-      expect(result.content).toContain("[Truncated: PARTIAL view —");
-      expect(result.content).toContain("cannot be paged by line");
-      expect(result.metadata?.truncatedByTokenCap).toBe(true);
+      // CC throws here instead of handing back a partial page, and the error
+      // tells the model how to page.
+      expect(result.success).toBe(false);
+      expect(result.error).toContain(
+        "exceeds maximum allowed tokens (25000). Use offset and limit parameters",
+      );
+      expect(result.data).toEqual(
+        expect.objectContaining({
+          type: "error_token_limit_exceeded",
+          maxTokens: 25000,
+        }),
+      );
     });
 
     it("should be able to read lines beyond the first 100KB", async () => {
@@ -728,7 +714,7 @@ describe("readTool", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.content).toContain("  2600\tLine 2600");
+      expect(result.content).toContain("2600\tLine 2600");
     });
 
     it("should handle non-Error objects in catch block", async () => {
@@ -762,7 +748,7 @@ describe("readTool", () => {
         { ...testContext, readFileState },
       );
       expect(result1.success).toBe(true);
-      expect(result1.metadata?.type).toBe("text");
+      expect(result1.data).toEqual(expect.objectContaining({ type: "text" }));
       expect(readFileState.has(filePath)).toBe(true);
 
       // Second read of the same range — the model gets the content again, not a
@@ -772,7 +758,7 @@ describe("readTool", () => {
         { ...testContext, readFileState },
       );
       expect(result2.success).toBe(true);
-      expect(result2.metadata?.type).toBe("text");
+      expect(result2.data).toEqual(expect.objectContaining({ type: "text" }));
       expect(result2.content).toContain("Line 10");
     });
 
@@ -795,7 +781,7 @@ describe("readTool", () => {
         { ...testContext, readFileState },
       );
       expect(result1.success).toBe(true);
-      expect(result1.metadata?.type).toBe("text");
+      expect(result1.data).toEqual(expect.objectContaining({ type: "text" }));
 
       // Second full read — unchanged file, still the full content
       const result2 = await readTool.execute(
@@ -803,7 +789,7 @@ describe("readTool", () => {
         { ...testContext, readFileState },
       );
       expect(result2.success).toBe(true);
-      expect(result2.metadata?.type).toBe("text");
+      expect(result2.data).toEqual(expect.objectContaining({ type: "text" }));
       expect(result2.content).toContain("Line 5");
     });
 
@@ -833,11 +819,11 @@ describe("readTool", () => {
         { ...testContext, readFileState },
       );
       expect(result2.success).toBe(true);
-      expect(result2.metadata?.type).toBe("text");
+      expect(result2.data).toEqual(expect.objectContaining({ type: "text" }));
       expect(result2.content).toContain("Line 10");
     });
 
-    it("pages past the byte cap instead of failing", async () => {
+    it("refuses a read past the byte cap and points at offset/limit", async () => {
       const filePath = "/test/workdir/small.txt";
       const fileReadingLimits = { maxSizeBytes: 10, maxTokens: 100 };
 
@@ -846,12 +832,12 @@ describe("readTool", () => {
         { ...testContext, fileReadingLimits },
       );
 
-      // Only the 10-byte head is read, and the result says so rather than
-      // telling the model to go use Bash.
-      expect(result.success).toBe(true);
-      expect(result.metadata?.type).toBe("text");
-      expect(result.content).toContain("[Truncated: PARTIAL view —");
-      expect(result.content).toContain("read cap");
+      // CC throws on the total file size rather than handing back a head slice
+      // the model would mistake for the whole file.
+      expect(result.success).toBe(false);
+      expect(result.error).toBe(
+        "File content (34 bytes) exceeds maximum allowed size (10 bytes). Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file.",
+      );
     });
 
     it("serves an explicit range from the whole file, not the head", async () => {
@@ -867,7 +853,7 @@ describe("readTool", () => {
       // not turn it into a head-only page.
       expect(result.success).toBe(true);
       expect(result.content).toContain("Line 10");
-      expect(result.content).not.toContain("read cap");
+      expect(result.content).not.toContain("exceeds maximum allowed");
     });
   });
 
@@ -901,7 +887,8 @@ describe("readTool", () => {
       expect(result.content).toContain(
         "Verify against current code before asserting as fact.</system-reminder>",
       );
-      expect(result.content).toContain("File: ");
+      // The note sits in front of the numbered body, which carries no header.
+      expect(result.content).toContain("\n1\t# User role");
     });
 
     it("leaves a memory from today or yesterday unannotated", async () => {
@@ -919,7 +906,7 @@ describe("readTool", () => {
 
       expect(today.content).not.toContain("<system-reminder>");
       expect(yesterday.content).not.toContain("<system-reminder>");
-      expect(yesterday.content.startsWith("File: ")).toBe(true);
+      expect(yesterday.content.startsWith("1\t# User role")).toBe(true);
     });
 
     it("leaves files outside the memory directory unannotated", async () => {
@@ -1062,7 +1049,7 @@ describe("readTool", () => {
 
       // A repeat read is a real read now: content comes back, and the probe
       // runs again (the manager's own pending set dedups the injection).
-      expect(second.metadata?.type).toBe("text");
+      expect(second.data).toEqual(expect.objectContaining({ type: "text" }));
       expect(second.content).toContain("Line 1");
       expect(triggerNestedMemory).toHaveBeenCalledWith(filePath);
     });

@@ -4,32 +4,14 @@ import { resolvePath } from "../utils/path.js";
 import {
   classifyDeliverablePath,
   fileNameOfPath,
-  isBlockedExecutablePath,
-  type DeliverableKind,
 } from "../constants/deliverableFiles.js";
 import { SEND_USER_FILE_TOOL_NAME } from "../constants/tools.js";
+import {
+  renderSendUserFileResultData,
+  type SendUserFileAttachmentData,
+  type SendUserFileResultData,
+} from "./resultData/sendUserFile.js";
 import type { ToolContext, ToolPlugin, ToolResult } from "./types.js";
-
-/** One entry of the structured result the hosts render (see `ToolBlock.metadata`). */
-export interface DeliveredFile {
-  /** Absolute path — the base every host resolves the click against. */
-  path: string;
-  /** Base name, the label the message shows. */
-  name: string;
-  /** Which click route this file gets. */
-  kind: DeliverableKind;
-}
-
-export interface DeliveredFilesMetadata {
-  files: DeliveredFile[];
-  caption?: string;
-}
-
-const KIND_LABELS: Record<DeliverableKind, string> = {
-  text: "text",
-  image: "image",
-  other: "file",
-};
 
 /**
  * `SendUserFile` — the "here is the finished thing" move.
@@ -105,7 +87,7 @@ Deliver files to the user through this tool — do not just mention a path in yo
         ? args.caption.trim()
         : undefined;
 
-    const delivered: DeliveredFile[] = [];
+    const delivered: SendUserFileAttachmentData[] = [];
     const seen = new Set<string>();
     const problems: string[] = [];
 
@@ -128,10 +110,13 @@ Deliver files to the user through this tool — do not just mention a path in yo
         continue;
       }
 
+      const kind = classifyDeliverablePath(absolute);
       delivered.push({
         path: absolute,
+        size: stats.size,
+        isImage: kind === "image",
         name: fileNameOfPath(absolute),
-        kind: classifyDeliverablePath(absolute),
+        kind,
       });
     }
 
@@ -146,27 +131,19 @@ Deliver files to the user through this tool — do not just mention a path in yo
       };
     }
 
-    const metadata: DeliveredFilesMetadata = { files: delivered, caption };
+    const data: SendUserFileResultData = {
+      ...(caption ? { caption } : {}),
+      attachments: delivered,
+    };
 
     return {
       success: true,
-      content: [
-        `Delivered ${delivered.length} file${delivered.length === 1 ? "" : "s"} to the user:`,
-        ...delivered.map(
-          (file) => `- ${file.path} (${KIND_LABELS[file.kind]})`,
-        ),
-        caption ? `Caption: ${caption}` : "",
-        delivered.some((file) => isBlockedExecutablePath(file.path))
-          ? "Executables are shown but never opened."
-          : "",
-      ]
-        .filter(Boolean)
-        .join("\n"),
+      content: renderSendUserFileResultData(data),
       shortResult:
         delivered.length === 1
           ? delivered[0].name
           : `${delivered.length} files`,
-      metadata: { ...metadata },
+      data,
     };
   },
 };

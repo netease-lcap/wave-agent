@@ -5,6 +5,8 @@ import {
   fixtureConfirmation,
   fixturePowerShellConfirmation,
   fixtureQueuedMessage,
+  fixtureToolBlockMessage,
+  fixtureDataOnlyToolBlockMessage,
 } from "./index.js";
 
 describe("fixtures factory", () => {
@@ -122,6 +124,27 @@ describe("fixtures factory", () => {
     expect(
       fixtures.earlierMessages([], "p2", { anchorLost: true }).anchorLost,
     ).toBe(true);
+  });
+
+  it("工具结果消息的两代形状都留了样例（老：result；新：只有 data）", () => {
+    const legacy = fixtureToolBlockMessage();
+    const block = legacy.blocks[0];
+    expect(block.type).toBe("tool");
+    if (block.type !== "tool") throw new Error("unreachable");
+    // 老转录：文本就在 `result` 里，没有 `data`。
+    expect(block.result).toBe("hi");
+    expect(block.data).toBeUndefined();
+
+    const dataOnly = fixtureDataOnlyToolBlockMessage();
+    const dataBlock = dataOnly.blocks[0];
+    if (dataBlock.type !== "tool") throw new Error("unreachable");
+    // 新转录（issue #3055 阶段 2 · C）：只有 `data`，文本由宿主补回来。
+    expect(dataBlock.data).toEqual({
+      stdout: "hi",
+      exitCode: 0,
+      interrupted: false,
+    });
+    expect(dataBlock.result).toBeUndefined();
   });
 
   it("nested value helpers carry realistic defaults", () => {

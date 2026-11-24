@@ -55,6 +55,15 @@ describe("skillTool model override", () => {
     );
 
     expect(result.success).toBe(true);
+    // forked 分支的 `data` 照 CC 的 forked schema：`model` 只出现在 inline schema
+    // 里，所以这里没有它（技能声明的 model 通过 createInstance 生效）。
+    expect(result.data).toStrictEqual({
+      success: true,
+      commandName: "test-skill",
+      status: "forked",
+      agentId: "test-id",
+      result: "Task result",
+    });
     expect(mockSubagentManager.createInstance).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({

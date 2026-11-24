@@ -11,7 +11,7 @@ order: 166
 > 对齐 `@anthropic-ai/claude-code@2.1.325` 的内建 `SendUserFile` 工具：模型干完活（写完报告、截完图、构建出产物）时，用一个专门的工具把这些文件"交付"给用户，而不是只在回复正文里提一嘴文件名。
 > **简化决定（2026-11-23 拍板）**：CC 那一版很重——它要把文件**上传**成附件对象（`attachments` / `file_uuid` / 缩放缩略图 / `path_validated`）、有 `display: render|attach` 决定前端内联渲染还是下载卡、有 `status: normal|proactive` 表达"用户没要但我现在得给你看"、桌面端还有一整套 `device_stage_files → device_commit_files` 落盘协议与会话文件清单面板。wave 只做其中一件：**工具结果在消息里渲染成每个文件一张可点击卡片**，点击行为复用已有的三档（文本 / 图片 / 其它）。
 > 三档的依据来自 CC 两端取证：VS Code 插件**不调系统默认程序**（`openTextDocument` → `showTextDocument` 失败再 `vscode.open`，再失败才 toast），桌面端**调系统默认程序**（扩展名黑名单 + 同意对话框后 `shell.openPath` / `showItemInFolder`）。wave 照这个分工：插件端走 VS Code 自己的打开链，桌面端走系统 opener。
-> 实现落点（四处，缺一处行为就断）：分类与黑名单在 SDK `constants/deliverableFiles.ts`（唯一实现，工具/宿主/webview 共用）；工具本体 `tools/sendUserFileTool.ts`；消息渲染 `webview/components/Message.tsx` 的 `SendUserFile` 分支（结构化数据经 `ToolBlock.metadata` 下发，解析在 `utils/deliveredFiles.ts`）；宿主侧闸门在 desktop `handleOpenPath` 与 VS Code `handleOpenFile`。
+> 实现落点（四处，缺一处行为就断）：分类与黑名单在 SDK `constants/deliverableFiles.ts`（唯一实现，工具/宿主/webview 共用）；工具本体 `tools/sendUserFileTool.ts`；消息渲染 `webview/components/Message.tsx` 的 `SendUserFile` 分支（结构化数据经 `ToolBlock.data.attachments` 下发 —— 形状对齐 Claude Code `SendUserFile` 的 outputSchema，解析在 `utils/deliveredFiles.ts`，老转录的 `ToolBlock.metadata.files` 仍作兜底）；宿主侧闸门在 desktop `handleOpenPath` 与 VS Code `handleOpenFile`。
 > 范围：新增一个只读工具 + 消息里的一处渲染。**不做**文件上传、附件对象、`display` / `status` 参数、远端可见性提示（CC 的 `rendered_locally`：`NOT delivered to Remote Control viewers`）、桌面端文件清单面板、缩略图生成、点击以外的任何自动动作（工具执行不得自动拉起系统程序）。
 
 ## 用户场景与测试 _（必填）_

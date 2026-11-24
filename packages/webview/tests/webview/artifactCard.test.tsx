@@ -25,6 +25,7 @@ vi.mock("mermaid", () => ({
 
 interface BlockOptions {
   stage?: "streaming" | "end";
+  data?: unknown;
   metadata?: Record<string, unknown>;
   compactParams?: string;
   shortResult?: string;
@@ -33,6 +34,7 @@ interface BlockOptions {
 
 const artifactMessage = ({
   stage = "end",
+  data,
   metadata,
   compactParams = "pages/index.html → https://codechat.test/code/artifact/abc",
   shortResult = "Published pages/index.html → https://codechat.test/code/artifact/abc",
@@ -56,6 +58,7 @@ const artifactMessage = ({
         }),
         compactParams,
         shortResult,
+        data,
         metadata,
       },
     ],
@@ -77,6 +80,14 @@ const PUBLISHED_METADATA = {
   artifactUrl: "https://codechat.test/code/artifact/abc",
   artifactTitle: "运营活动原型",
   artifactVersion: "3",
+};
+
+/** 阶段 2 之后工具只写 `data`（issue #3055）：`url` / `version` 与正文同级。 */
+const PUBLISHED_DATA = {
+  action: "publish",
+  url: "https://codechat.test/code/artifact/abc",
+  artifactTitle: "运营活动原型",
+  version: "3",
 };
 
 describe("artifact 卡片", () => {
@@ -127,6 +138,30 @@ describe("artifact 卡片", () => {
       screen.getByText("https://codechat.test/code/artifact/abc"),
     ).toBeInTheDocument();
     expect(screen.getByText("已发布")).toBeInTheDocument();
+  });
+
+  it("新格式（工具只写 data）→ 卡片从 data 读 url / 标题 / 版本", () => {
+    const { vscode } = renderArtifact({ data: PUBLISHED_DATA });
+
+    expect(screen.getByTestId("artifact-card")).toBeInTheDocument();
+    expect(screen.getByText("运营活动原型")).toBeInTheDocument();
+    expect(screen.getByText("已发布 · v3")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("artifact-card-open"));
+    expect(vscode.postMessage).toHaveBeenCalledWith({
+      command: "openExternal",
+      url: "https://codechat.test/code/artifact/abc",
+    });
+  });
+
+  it("data 与老 metadata 同时存在时 data 优先", () => {
+    renderArtifact({
+      data: { ...PUBLISHED_DATA, artifactTitle: "新标题" },
+      metadata: PUBLISHED_METADATA,
+    });
+
+    expect(screen.getByText("新标题")).toBeInTheDocument();
+    expect(screen.queryByText("运营活动原型")).not.toBeInTheDocument();
   });
 
   it("没有 metadata（list / read / 评论等 action）保持文本渲染，不出卡片", () => {

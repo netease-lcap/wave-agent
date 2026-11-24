@@ -132,12 +132,18 @@ export class BashModeManager {
         },
       );
 
+      // `data.exitCode` 是权威（shell 工具写在那里）；`metadata` 只给阶段 2
+      // 之前录下的结果回退。
+      const dataExitCode = (result.data as { exitCode?: unknown } | undefined)
+        ?.exitCode;
       const exitCode =
-        typeof result.metadata?.exitCode === "number"
-          ? result.metadata.exitCode
-          : result.success
-            ? 0
-            : 1;
+        typeof dataExitCode === "number"
+          ? dataExitCode
+          : typeof result.metadata?.exitCode === "number"
+            ? result.metadata.exitCode
+            : result.success
+              ? 0
+              : 1;
       const resultText = result.success
         ? result.content
         : `[exit code: ${exitCode}]` +

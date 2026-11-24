@@ -14,6 +14,12 @@ import type {
   LspCallHierarchyIncomingCall as CallHierarchyIncomingCall,
   LspCallHierarchyOutgoingCall as CallHierarchyOutgoingCall,
 } from "../types/lsp.js";
+import {
+  isLspOperation,
+  renderLspResultData,
+  type LspOperation,
+  type LspResultData,
+} from "./resultData/lsp.js";
 
 export const MAX_RESULTS = 1000;
 export const MAX_FILES = 100;
@@ -682,6 +688,211 @@ function formatOutgoingCallsResult(
 }
 
 /**
+ * Converts a LocationLink to a Location (CC `LSPTool.ts:620-631`).
+ */
+function toLocation(item: Location | LocationLink): Location {
+  return isLocationLink(item) ? locationLinkToLocation(item) : item;
+}
+
+/**
+ * Counts symbols including their nested children (CC `LSPTool.ts:515-526`).
+ */
+function countSymbols(symbols: DocumentSymbol[]): number {
+  let count = symbols.length;
+  for (const symbol of symbols) {
+    if (symbol.children && symbol.children.length > 0) {
+      count += countSymbols(symbol.children);
+    }
+  }
+  return count;
+}
+
+/**
+ * Counts how many distinct files a location list spans (CC `LSPTool.ts:528-533`).
+ */
+function countUniqueFiles(locations: Location[]): number {
+  return new Set(locations.map((loc) => loc.uri)).size;
+}
+
+/**
+ * Counts distinct URIs, skipping the ones a malformed server answer left out.
+ * CC keeps one copy per call-hierarchy shape (`LSPTool.ts:831-860`); one
+ * generic helper covers all three here.
+ */
+function countUniqueUris(uris: Array<string | undefined>): number {
+  return new Set(uris.filter((uri): uri is string => Boolean(uri))).size;
+}
+
+/** Where the request was aimed; the no-result messages quote it back. */
+interface LspRequestPosition {
+  filePath: string;
+  line: number;
+  character: number;
+}
+
+interface FormattedLspResult {
+  formatted: string;
+  resultCount: number;
+  fileCount: number;
+}
+
+/**
+ * Formats the raw server answer and counts it in one pass: the text goes to
+ * `data.result`, the two counts to `data.resultCount` / `data.fileCount`.
+ *
+ * Shape follows CC's `formatResult` (`LSPTool.ts:636-829`) — the text still
+ * comes from the `format*` helpers above, while the counts are recomputed here
+ * per CC's own rules (CC derives them in the same way, separately from the text).
+ */
+function formatLspResult(
+  operation: LspOperation,
+  result: unknown,
+  position: LspRequestPosition,
+  workdir?: string,
+): FormattedLspResult {
+  const { filePath, line, character } = position;
+
+  switch (operation) {
+    case "goToDefinition":
+    case "goToImplementation": {
+      // A single Location, an array of them, or LocationLinks: normalize first
+      // so the count is right either way (CC `:642-678` / `:755-792`).
+      const rawResults: Array<Location | LocationLink> = Array.isArray(result)
+        ? result
+        : result
+          ? [result as Location | LocationLink]
+          : [];
+      const validLocations = rawResults
+        .map(toLocation)
+        .filter((loc) => loc && loc.uri);
+      return {
+        formatted: formatGoToDefinitionResult(
+          result as
+            | Location
+            | Location[]
+            | LocationLink
+            | LocationLink[]
+            | null,
+          filePath,
+          line,
+          character,
+          operation,
+          workdir,
+        ),
+        resultCount: validLocations.length,
+        fileCount: countUniqueFiles(validLocations),
+      };
+    }
+    case "findReferences": {
+      const locations: Location[] = Array.isArray(result) ? result : [];
+      const validLocations = locations.filter((loc) => loc && loc.uri);
+      return {
+        formatted: formatFindReferencesResult(
+          result as Location[] | null,
+          filePath,
+          line,
+          character,
+          workdir,
+        ),
+        resultCount: validLocations.length,
+        fileCount: countUniqueFiles(validLocations),
+      };
+    }
+    case "hover": {
+      const hover = result as Hover | null;
+      return {
+        formatted: formatHoverResult(hover, filePath, line, character, workdir),
+        // One hit in one file (CC `:700-706`).
+        resultCount: hover ? 1 : 0,
+        fileCount: hover ? 1 : 0,
+      };
+    }
+    case "documentSymbol": {
+      const symbols: Array<DocumentSymbol | SymbolInformation> = Array.isArray(
+        result,
+      )
+        ? result
+        : [];
+      // Two shapes (CC `:707-725`): DocumentSymbol carries `range` and nests its
+      // children, SymbolInformation is flat.
+      const isDocumentSymbol =
+        symbols.length > 0 && symbols[0] && "range" in symbols[0];
+      return {
+        formatted: formatDocumentSymbolResult(
+          result as DocumentSymbol[] | SymbolInformation[] | null,
+          workdir,
+        ),
+        resultCount: isDocumentSymbol
+          ? countSymbols(symbols as DocumentSymbol[])
+          : symbols.length,
+        fileCount: symbols.length > 0 ? 1 : 0,
+      };
+    }
+    case "workspaceSymbol": {
+      const symbols: SymbolInformation[] = Array.isArray(result) ? result : [];
+      const validSymbols = symbols.filter(
+        (sym) => sym && sym.location && sym.location.uri,
+      );
+      return {
+        formatted: formatWorkspaceSymbolResult(
+          result as SymbolInformation[] | null,
+          workdir,
+        ),
+        resultCount: validSymbols.length,
+        fileCount: countUniqueFiles(validSymbols.map((sym) => sym.location)),
+      };
+    }
+    case "prepareCallHierarchy": {
+      const items: CallHierarchyItem[] = Array.isArray(result) ? result : [];
+      return {
+        formatted: formatPrepareCallHierarchyResult(
+          result as CallHierarchyItem[] | null,
+          filePath,
+          line,
+          character,
+          workdir,
+        ),
+        resultCount: items.length,
+        fileCount:
+          items.length > 0 ? countUniqueUris(items.map((item) => item.uri)) : 0,
+      };
+    }
+    case "incomingCalls": {
+      const calls: CallHierarchyIncomingCall[] = Array.isArray(result)
+        ? result
+        : [];
+      return {
+        formatted: formatIncomingCallsResult(
+          result as CallHierarchyIncomingCall[] | null,
+          workdir,
+        ),
+        resultCount: calls.length,
+        fileCount:
+          calls.length > 0
+            ? countUniqueUris(calls.map((call) => call.from?.uri))
+            : 0,
+      };
+    }
+    case "outgoingCalls": {
+      const calls: CallHierarchyOutgoingCall[] = Array.isArray(result)
+        ? result
+        : [];
+      return {
+        formatted: formatOutgoingCallsResult(
+          result as CallHierarchyOutgoingCall[] | null,
+          workdir,
+        ),
+        resultCount: calls.length,
+        fileCount:
+          calls.length > 0
+            ? countUniqueUris(calls.map((call) => call.to?.uri))
+            : 0,
+      };
+    }
+  }
+}
+
+/**
  * LSP tool plugin - interact with LSP servers for code intelligence
  */
 export const lspTool: ToolPlugin = {
@@ -789,83 +1000,36 @@ All operations require \`filePath\`, plus \`line\` and \`character\` (both 1-bas
         };
       }
 
-      const rawResult = JSON.parse(result.content);
-      let formattedContent: string;
-      switch (operation) {
-        case "goToDefinition":
-        case "goToImplementation":
-          formattedContent = formatGoToDefinitionResult(
-            rawResult as
-              | Location
-              | Location[]
-              | LocationLink
-              | LocationLink[]
-              | null,
-            filePath,
-            line,
-            character,
-            operation,
-            context.workdir,
-          );
-          break;
-        case "findReferences":
-          formattedContent = formatFindReferencesResult(
-            rawResult as Location[] | null,
-            filePath,
-            line,
-            character,
-            context.workdir,
-          );
-          break;
-        case "hover":
-          formattedContent = formatHoverResult(
-            rawResult as Hover | null,
-            filePath,
-            line,
-            character,
-            context.workdir,
-          );
-          break;
-        case "documentSymbol":
-          formattedContent = formatDocumentSymbolResult(
-            rawResult as DocumentSymbol[] | SymbolInformation[] | null,
-            context.workdir,
-          );
-          break;
-        case "workspaceSymbol":
-          formattedContent = formatWorkspaceSymbolResult(
-            rawResult as SymbolInformation[] | null,
-            context.workdir,
-          );
-          break;
-        case "prepareCallHierarchy":
-          formattedContent = formatPrepareCallHierarchyResult(
-            rawResult as CallHierarchyItem[] | null,
-            filePath,
-            line,
-            character,
-            context.workdir,
-          );
-          break;
-        case "incomingCalls":
-          formattedContent = formatIncomingCallsResult(
-            rawResult as CallHierarchyIncomingCall[] | null,
-            context.workdir,
-          );
-          break;
-        case "outgoingCalls":
-          formattedContent = formatOutgoingCallsResult(
-            rawResult as CallHierarchyOutgoingCall[] | null,
-            context.workdir,
-          );
-          break;
-        default:
-          formattedContent = JSON.stringify(rawResult, null, 2);
+      const rawResult: unknown = JSON.parse(result.content);
+
+      if (!isLspOperation(operation)) {
+        // 九个 operation 之外没有对应的 `data` 形状（CC 的枚举同样只有九个），
+        // 保留原来的原始 JSON 兜底，不编一个假 data。
+        return {
+          success: true,
+          content: JSON.stringify(rawResult, null, 2),
+        };
       }
+
+      const { formatted, resultCount, fileCount } = formatLspResult(
+        operation,
+        rawResult,
+        { filePath, line, character },
+        context.workdir,
+      );
+
+      const data: LspResultData = {
+        operation,
+        result: formatted,
+        filePath,
+        resultCount,
+        fileCount,
+      };
 
       return {
         success: true,
-        content: formattedContent,
+        data,
+        content: renderLspResultData(data),
       };
     } catch (error) {
       return {

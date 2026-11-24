@@ -131,6 +131,72 @@ describe("convertMessagesForAPI", () => {
     );
   });
 
+  it("renders a data-only tool block with the tool's own renderer (issue #3055 阶段 2)", async () => {
+    const messages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "assistant",
+        blocks: [
+          {
+            type: "tool",
+            id: "tool-1",
+            name: "Grep",
+            parameters: '{"pattern":"TODO"}',
+            data: {
+              mode: "files_with_matches",
+              numFiles: 2,
+              filenames: ["a.ts", "b.ts"],
+            },
+            stage: "end",
+          },
+        ],
+        timestamp: new Date().toISOString(),
+      },
+    ];
+
+    const apiMessages = await convertMessagesForAPI(messages);
+
+    // 顺序是 [assistant(带 tool_calls), tool]：结果消息排在提问之后。
+    expect(apiMessages[1]).toMatchObject({
+      role: "tool",
+      tool_call_id: "tool-1",
+      content: "Found 2 files\na.ts\nb.ts",
+    });
+  });
+
+  it("prefers a stored result over the renderer (老转录 / 事后追加过提示的块)", async () => {
+    const messages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "assistant",
+        blocks: [
+          {
+            type: "tool",
+            id: "tool-1",
+            name: "Grep",
+            parameters: '{"pattern":"TODO"}',
+            result:
+              "Found 2 files\na.ts\nb.ts\n\nTool arguments were truncated",
+            data: {
+              mode: "files_with_matches",
+              numFiles: 2,
+              filenames: ["a.ts", "b.ts"],
+            },
+            stage: "end",
+          },
+        ],
+        timestamp: new Date().toISOString(),
+      },
+    ];
+
+    const apiMessages = await convertMessagesForAPI(messages);
+
+    expect(apiMessages[1]).toMatchObject({
+      role: "tool",
+      content: "Found 2 files\na.ts\nb.ts\n\nTool arguments were truncated",
+    });
+  });
+
   it("should include tool block result in API conversion", async () => {
     const messages: Message[] = [
       {

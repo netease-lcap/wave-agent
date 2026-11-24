@@ -147,8 +147,19 @@ describe("Agent Tool Integration with Built-in Subagents", () => {
         undefined,
       );
 
+      // Explore 是一次性内置代理：报告后面不带 agentId/usage 尾部，正文就是报告本身。
       expect(result).toEqual({
         success: true,
+        data: {
+          status: "completed",
+          agentId: "test-id",
+          agentType: "Explore",
+          totalToolUseCount: 0,
+          totalDurationMs: expect.any(Number),
+          totalTokens: 0,
+          // 子代理报告的全文（阶段 2 起正文只在 `data.content` 里）。
+          content: "Search completed successfully",
+        },
         content: "Search completed successfully",
         shortResult: "Agent completed",
       });
@@ -204,7 +215,9 @@ describe("Agent Tool Integration with Built-in Subagents", () => {
         "general-purpose",
       );
       expect(result.success).toBe(true);
-      expect(result.content).toBe("Research completed");
+      expect(result.content).toMatch(
+        /^Research completed\nagentId: gp-test-id\n<usage>total_tokens: 0\ntool_uses: 0\nduration_ms: \d+<\/usage>$/,
+      );
       expect(result.shortResult).toBe("Agent completed");
     });
 
@@ -317,8 +330,19 @@ describe("Agent Tool Integration with Built-in Subagents", () => {
         undefined,
       );
 
+      // Plan 与 Explore 同属一次性内置代理，同样跳过尾部。
       expect(result).toEqual({
         success: true,
+        data: {
+          status: "completed",
+          agentId: "plan-test-id",
+          agentType: "Plan",
+          totalToolUseCount: 0,
+          totalDurationMs: expect.any(Number),
+          totalTokens: 0,
+          content:
+            "Plan completed successfully\n\n### Critical Files for Implementation\n- src/main.ts",
+        },
         content:
           "Plan completed successfully\n\n### Critical Files for Implementation\n- src/main.ts",
         shortResult: "Agent completed",

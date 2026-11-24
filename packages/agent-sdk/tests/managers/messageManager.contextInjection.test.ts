@@ -183,6 +183,46 @@ describe("MessageManager context injection and file reads", () => {
     expect(fileReads[0].content).toBe(readResultContent);
   });
 
+  it("should track file read contents from a data-only read block (阶段 2)", () => {
+    // 新转录里没有 `result`：正文在 `data.file.content`，文本由渲染器现场重建
+    // （`行号<TAB>正文`，不带页眉）。
+    const msgs = [
+      {
+        id: "msg-1",
+        role: "user",
+        blocks: [{ type: "text" as const, content: "read a file" }],
+      },
+      {
+        id: "msg-2",
+        role: "assistant",
+        blocks: [
+          {
+            type: "tool" as const,
+            name: "Read",
+            stage: "end" as const,
+            parameters: JSON.stringify({ file_path: "src/index.ts" }),
+            data: {
+              type: "text",
+              file: {
+                filePath: "/work/src/index.ts",
+                content: "const a = 1;\nconst b = 2;",
+                numLines: 2,
+                startLine: 1,
+                totalLines: 2,
+              },
+            },
+          },
+        ],
+      },
+    ];
+
+    messageManager.setMessages(msgs as unknown as Message[]);
+    const fileReads = messageManager.getRecentFileReads(5);
+    expect(fileReads).toHaveLength(1);
+    expect(fileReads[0].path).toBe("src/index.ts");
+    expect(fileReads[0].content).toBe("1\tconst a = 1;\n2\tconst b = 2;");
+  });
+
   it("should not track read tool blocks that are not finalized", () => {
     const msgs = [
       {

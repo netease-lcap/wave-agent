@@ -19,6 +19,10 @@ import {
   hasWorktreeCreateHook,
   WorktreeCreateHookError,
 } from "../services/worktreeHooks.js";
+import {
+  renderEnterWorktreeResultData,
+  type EnterWorktreeResultData,
+} from "./resultData/enterWorktree.js";
 
 /**
  * One-line diagnosis of a failed `WorktreeCreate` hook, for the tool's `error`
@@ -184,9 +188,15 @@ export const enterWorktreeTool: ToolPlugin = {
           aiManager.setWorkspaceRoot(worktreePath);
         }
 
+        const data: EnterWorktreeResultData = {
+          worktreePath,
+          createdViaHook: true,
+        };
+
         return {
           success: true,
-          content: `Created worktree at ${worktreePath}. The session is now working in the worktree. Use ExitWorktree to leave mid-session, or exit the session to be prompted. WorktreeCreate hooks were executed.`,
+          data,
+          content: renderEnterWorktreeResultData(data),
         };
       } catch (error) {
         return {
@@ -246,13 +256,18 @@ export const enterWorktreeTool: ToolPlugin = {
       aiManager.setWorkspaceRoot(worktreeInfo.path);
     }
 
-    const branchInfo = worktreeInfo.branch
-      ? ` on branch ${worktreeInfo.branch}`
-      : "";
+    // 正文由 `data` 现场渲染（CC `EnterWorktreeTool.ts:112-118` 同样只给标量，
+    // 路径就是会话接下来「会动」的那个 currentWorkdir）。
+    const data: EnterWorktreeResultData = {
+      worktreePath: worktreeInfo.path,
+      worktreeBranch: worktreeInfo.branch || undefined,
+      createdViaHook: false,
+    };
 
     return {
       success: true,
-      content: `Created worktree at ${worktreeInfo.path}${branchInfo}. The session is now working in the worktree. Use ExitWorktree to leave mid-session, or exit the session to be prompted.`,
+      data,
+      content: renderEnterWorktreeResultData(data),
     };
   },
 };

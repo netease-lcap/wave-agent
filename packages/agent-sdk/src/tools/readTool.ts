@@ -1,10 +1,9 @@
-import { open, readFile, stat } from "fs/promises";
+import { readFile, stat } from "fs/promises";
 import { extname } from "path";
 import { createHash } from "crypto";
 import { logger } from "../utils/globalLogger.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
-import { formatLineNumberPrefix } from "../utils/stringUtils.js";
 import { estimateTokens } from "../utils/tokenEstimate.js";
 import {
   isBinaryDocument,
@@ -12,9 +11,16 @@ import {
 } from "../utils/fileFormat.js";
 import { convertImageToBase64 } from "../utils/messageOperations.js";
 import { isPathInside } from "../utils/pathSafety.js";
-import { memoryFreshnessNote } from "../utils/memoryAge.js";
 import { READ_TOOL_NAME } from "../constants/tools.js";
 import { isImageFileExtension } from "../constants/images.js";
+import {
+  recordReadMemoryMtime,
+  renderReadTextResultData,
+  type ReadImageResultData,
+  type ReadTextResultData,
+  type ReadTokenLimitResultData,
+  type ReadUnreadableResultData,
+} from "./resultData/read.js";
 
 /**
  * Whether a path names an image file this tool can attach.
@@ -24,6 +30,16 @@ import { isImageFileExtension } from "../constants/images.js";
  */
 function isImageFile(filePath: string): boolean {
   return isImageFileExtension(extname(filePath).toLowerCase().substring(1));
+}
+
+/** `1234 bytes` / `1.2KB` / `3MB`, same ladder as Claude Code's `formatFileSize`. */
+function formatFileSize(sizeInBytes: number): string {
+  if (sizeInBytes < 1024) return `${sizeInBytes} bytes`;
+  const kb = sizeInBytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(1).replace(/\.0$/, "")}KB`;
+  const mb = kb / 1024;
+  if (mb < 1024) return `${mb.toFixed(1).replace(/\.0$/, "")}MB`;
+  return `${(mb / 1024).toFixed(1).replace(/\.0$/, "")}GB`;
 }
 
 /**
@@ -110,8 +126,20 @@ async function processImageFile(
     // Extract base64 data from data URL (remove data:image/type;base64, prefix)
     const base64Data = imageDataUrl.split(",")[1] || "";
 
+    const data: ReadImageResultData = {
+      type: "image",
+      file: {
+        base64: base64Data,
+        type: mimeType,
+        originalSize: (await stat(actualFilePath)).size,
+      },
+    };
+
     return {
       success: true,
+      data,
+      // CC 把图片渲成一个 image block、不带文本；我方的 tool_result 走「文本 +
+      // images[]」，所以这里仍给一行说明。这是本工具唯一与 CC 渲染不一致的分支。
       content: `Image file processed: ${getDisplayPath(filePath, context.workdir)}\nFormat: ${mimeType}\nSize: Available for AI processing`,
       shortResult: `Image processed (${mimeType})`,
       images: [
@@ -124,10 +152,6 @@ async function processImageFile(
           path: actualFilePath,
         },
       ],
-      metadata: {
-        type: "image",
-        mimeType,
-      },
     };
   } catch (error) {
     return {
@@ -135,30 +159,6 @@ async function processImageFile(
       content: "",
       error: `Failed to process image: ${error instanceof Error ? error.message : String(error)}`,
     };
-  }
-}
-
-/**
- * Read at most `maxBytes` from the head of a file.
- *
- * Only the byte cap uses this: a file past the cap is paged instead of being
- * refused, and paging the head never has to pull a whole multi-hundred-megabyte
- * file into memory.
- */
-async function readFileHead(
-  filePath: string,
-  maxBytes: number,
-): Promise<string> {
-  const handle = await open(filePath, "r");
-  try {
-    const buffer = Buffer.alloc(maxBytes);
-    const { bytesRead } = await handle.read(buffer, 0, maxBytes, 0);
-    const text = buffer.subarray(0, bytesRead).toString("utf-8");
-    // A cut mid-character leaves a replacement char behind; drop it rather than
-    // handing the model a mangled last line.
-    return text.endsWith("\uFFFD") ? text.slice(0, -1) : text;
-  } finally {
-    await handle.close();
   }
 }
 
@@ -244,13 +244,16 @@ Usage:
     // Check for binary document formats
     if (isBinaryDocument(filePath)) {
       const isPdf = filePath.toLowerCase().endsWith(".pdf");
+      // 读不了的文件也交一份 `data`（只有判别键）：宿主卡片按它分两种提示，
+      // 原来是 `ToolResult.metadata.type`。
+      const data: ReadUnreadableResultData = {
+        type: isPdf ? "pdf" : "binary",
+      };
       return {
         success: false,
+        data,
         content: "",
         error: getBinaryDocumentError(filePath),
-        metadata: {
-          type: isPdf ? "pdf" : "binary",
-        },
       };
     }
 
@@ -287,24 +290,22 @@ Usage:
 
       const stats = await stat(actualFilePath);
 
-      // Resource limits. Past the byte cap the read is *paged*, not refused:
-      // an error here is what taught the model that Read cannot give content
-      // and to go around it with `sed`/`cat` in Bash (see fs-tools spec,
-      // 边界情况 · 大文件). Only the head is pulled into memory.
+      // Resource limits, aligned with Claude Code: a read without an explicit
+      // `limit` past the byte cap is refused and the model is told to page with
+      // offset/limit, instead of handing back a head-only slice it would mistake
+      // for the whole file.
       const maxSizeBytes =
         context.fileReadingLimits?.maxSizeBytes ?? 0.25 * 1024 * 1024; // Default 256KB
-      const sizeCapped =
-        stats.size > maxSizeBytes &&
-        offset === undefined &&
-        limit === undefined;
-      const fileContent = sizeCapped
-        ? await readFileHead(actualFilePath, maxSizeBytes)
-        : await readFile(actualFilePath, "utf-8");
+      if (stats.size > maxSizeBytes && limit === undefined) {
+        return {
+          success: false,
+          content: "",
+          error: `File content (${formatFileSize(stats.size)}) exceeds maximum allowed size (${formatFileSize(maxSizeBytes)}). Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file.`,
+        };
+      }
+      const fileContent = await readFile(actualFilePath, "utf-8");
 
-      // Update readFileState. A size-capped read only saw the head, so it is
-      // not recorded at all: its hash and content would be mistaken for the
-      // whole file by Write's staleness check and by the external-change diff.
-      if (context.readFileState && !sizeCapped) {
+      if (context.readFileState) {
         const hash = createHash("sha256").update(fileContent).digest("hex");
         context.readFileState.set(actualFilePath, {
           mtime: stats.mtime.getTime(),
@@ -328,184 +329,96 @@ Usage:
       context.messageManager?.triggerNestedMemory(actualFilePath);
       context.messageManager?.triggerSkillDiscovery(actualFilePath);
 
-      // Check if file is empty
-      if (fileContent.length === 0) {
-        logger.warn(`File ${filePath} exists but has empty contents`);
+      const allLines = fileContent.split("\n");
+      const availableLines = allLines.length;
+      const startLine = typeof offset === "number" ? Math.max(1, offset) : 1;
+
+      // Empty file, or an offset past the end: CC answers with an empty body plus
+      // a warning that says why, instead of an error the model has to interpret.
+      if (fileContent.length === 0 || startLine > availableLines) {
+        if (fileContent.length === 0) {
+          logger.warn(`File ${filePath} exists but has empty contents`);
+        }
+        const data: ReadTextResultData = {
+          type: "text",
+          file: {
+            filePath: actualFilePath,
+            content: "",
+            numLines: 0,
+            startLine,
+            totalLines: fileContent.length === 0 ? 0 : availableLines,
+          },
+        };
         return {
           success: true,
-          content: "System reminder: This file exists but has empty contents.",
-          shortResult: "Empty file",
-          metadata: {
-            type: "text",
-            isEmpty: true,
-          },
+          data,
+          content: renderReadTextResultData(data),
+          shortResult:
+            fileContent.length === 0
+              ? "Empty file"
+              : `Start line ${startLine} past EOF`,
         };
       }
 
-      const allLines = fileContent.split("\n");
-      // Lines this read can address. A size-capped read only holds the head, so
-      // the file's real line count is unknown — `totalLines` stays undefined and
-      // the notice says "past the read cap" instead of naming a total.
-      const availableLines = allLines.length;
-      const totalLines = sizeCapped ? undefined : availableLines;
-
-      // Handle offset and limit
-      let startLine = typeof offset === "number" ? Math.max(1, offset) : 1;
-      let endLine = Math.min(
+      const endLine = Math.min(
         availableLines,
         startLine + (typeof limit === "number" ? limit : 2000) - 1,
       );
+      const numLines = endLine - startLine + 1;
+      const content = allLines
+        .slice(startLine - 1, startLine - 1 + numLines)
+        .join("\n");
 
-      // Validate line number range
-      if (startLine > availableLines) {
-        return {
-          success: false,
-          content: "",
-          error: sizeCapped
-            ? `Start line ${startLine} is past the ${Math.floor(maxSizeBytes / 1024)}KB head this read covers (${availableLines} lines). Retry with a smaller offset.`
-            : `Start line ${startLine} exceeds total lines ${availableLines}`,
-        };
-      }
-
-      // Format output (cat -n format, with line numbers)
-      const formatLines = (count: number): string =>
-        allLines
-          .slice(startLine - 1, startLine - 1 + count)
-          .map(
-            (line, index) =>
-              `${formatLineNumberPrefix(startLine + index)}${line}`,
-          )
-          .join("\n");
-
-      let keptLines = endLine - startLine + 1;
-      let formattedContent = formatLines(keptLines);
-
-      // Token budget: estimate tokens, then truncate the page to fit rather
-      // than failing. Failing a plain read is what pushed the model to route
-      // around Read with `sed`/`head` in Bash — a page that says how to
-      // continue is both more useful and more honest.
+      // Token budget: CC refuses instead of truncating (`validateContentTokens`
+      // throws `MaxFileReadTokenExceededError`), so there is no partial-page
+      // notice and nothing to say how to continue — the model pages itself with
+      // offset/limit.
       const maxTokens = context.fileReadingLimits?.maxTokens ?? 25000; // Default 25000 tokens
       const ext = extname(actualFilePath).toLowerCase().slice(1);
-      const tokenBudget = Math.floor(maxTokens * 0.85);
-      const explicitPage =
-        typeof offset === "number" || typeof limit === "number";
-      let estimatedTokens = estimateTokens(formattedContent, ext);
-      let truncatedByTokenCap = false;
-      let veryLongLine = false;
-
-      if (estimatedTokens > maxTokens && explicitPage) {
+      const estimatedTokens = estimateTokens(content, ext);
+      if (estimatedTokens > maxTokens) {
+        // 被拒的这次也带 `data`（只有诊断数）：宿主卡片据此说清「多少 token、
+        // 上限多少」，原来是 `ToolResult.metadata`。
+        const limitData: ReadTokenLimitResultData = {
+          type: "error_token_limit_exceeded",
+          estimatedTokens,
+          maxTokens,
+        };
         return {
           success: false,
+          data: limitData,
           content: "",
-          error: `File content (~${estimatedTokens.toLocaleString()} tokens) exceeds maximum allowed tokens (${maxTokens.toLocaleString()}). Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file.`,
-          metadata: {
-            type: "error_token_limit_exceeded",
-            estimatedTokens,
-            maxTokens,
-          },
+          error: `File content (${estimatedTokens} tokens) exceeds maximum allowed tokens (${maxTokens}). Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file.`,
         };
       }
 
-      if (estimatedTokens > maxTokens) {
-        truncatedByTokenCap = true;
-        // Start near the budget and walk down while the estimate stays over it:
-        // the estimate is content-dependent, so a single arithmetic hop can
-        // land on the wrong side.
-        keptLines = Math.max(
-          1,
-          Math.min(
-            keptLines,
-            Math.floor((keptLines * tokenBudget) / estimatedTokens),
-          ),
-        );
-        for (let attempt = 0; attempt < 6 && keptLines > 1; attempt++) {
-          formattedContent = formatLines(keptLines);
-          estimatedTokens = estimateTokens(formattedContent, ext);
-          if (estimatedTokens <= tokenBudget) break;
-          keptLines = Math.max(1, Math.floor(keptLines * 0.7));
-        }
-        formattedContent = formatLines(keptLines);
-        estimatedTokens = estimateTokens(formattedContent, ext);
+      const data: ReadTextResultData = {
+        type: "text",
+        file: {
+          filePath: actualFilePath,
+          content,
+          numLines,
+          startLine,
+          totalLines: availableLines,
+        },
+      };
 
-        // A single line can still blow the budget on its own (minified bundle,
-        // one-line JSON): fall back to a character window and say so, because
-        // line paging cannot reach the rest of that line.
-        if (estimatedTokens > maxTokens) {
-          veryLongLine = true;
-          const chars = Math.max(
-            1,
-            Math.floor(
-              (formattedContent.length * tokenBudget) / estimatedTokens,
-            ),
-          );
-          formattedContent = formattedContent.slice(0, chars);
-          const lastCode = formattedContent.charCodeAt(
-            formattedContent.length - 1,
-          );
-          // Never split a surrogate pair in half.
-          if (lastCode >= 0xd800 && lastCode <= 0xdbff) {
-            formattedContent = formattedContent.slice(0, -1);
-          }
-          estimatedTokens = estimateTokens(formattedContent, ext);
-        }
-        endLine = startLine + keptLines - 1;
-      }
-
-      const truncated = sizeCapped || endLine < availableLines;
-      // Same shape as Claude Code's pager notice: how much was shown, why it
-      // stopped, how to continue from here.
-      const shownRange =
-        totalLines === undefined
-          ? `showing lines ${startLine}-${endLine} of a file past the ${Math.floor(maxSizeBytes / 1024)}KB read cap`
-          : `showing lines ${startLine}-${endLine} of ${totalLines} total`;
-      const budgetNote = `${estimatedTokens.toLocaleString()} tokens, cap ${maxTokens.toLocaleString()}`;
-      const howToContinue = veryLongLine
-        ? "this file has very long lines and cannot be paged by line. Use Grep to find a specific section, or Read with offset/limit to page through it.] Do NOT answer from this excerpt alone if the answer may be elsewhere in the file."
-        : `Call ${READ_TOOL_NAME} with offset=${endLine + 1} limit=${keptLines} for the next page, or Grep to find a specific section.] Do NOT answer from this page alone if the answer may be further in the file.`;
-      const partialNotice =
-        truncatedByTokenCap || sizeCapped
-          ? `<system-reminder>[Truncated: PARTIAL view — ${filePath}: ${shownRange} (${budgetNote}). ${howToContinue}</system-reminder>\n`
-          : "";
-
-      // Add file information header. A file inside the auto-memory directory
-      // gets a staleness note in front of it: memory is a point-in-time
-      // observation, and a stale `file:line` citation reads as authoritative.
-      // `autoMemoryDir` is unset when auto-memory is off, so the note can never
-      // fire for a disabled feature.
-      const memoryNote =
+      // A file inside the auto-memory directory gets a freshness note in front of
+      // it: memory is a point-in-time observation, and a stale `file:line`
+      // citation reads as authoritative. The mtime rides a side channel so it
+      // never lands in `data` (see resultData/read.ts).
+      if (
         context.autoMemoryDir &&
         isPathInside(actualFilePath, context.autoMemoryDir)
-          ? memoryFreshnessNote(stats.mtime.getTime())
-          : "";
-      let content = `${memoryNote}${partialNotice}File: ${filePath}\n`;
-      if (totalLines === undefined) {
-        content += `Lines ${startLine}-${endLine} of a file past the ${Math.floor(maxSizeBytes / 1024)}KB read cap\n`;
-      } else if (startLine > 1 || truncated) {
-        content += `Lines ${startLine}-${endLine} of ${totalLines}\n`;
-      } else {
-        content += `Total lines: ${totalLines}\n`;
-      }
-      content += "─".repeat(50) + "\n";
-      content += formattedContent;
-
-      // If only showing partial content, add prompt
-      if (totalLines !== undefined && endLine < totalLines) {
-        content += `\n${"─".repeat(50)}\n`;
-        content += `... ${totalLines - endLine} more lines not shown`;
+      ) {
+        recordReadMemoryMtime(data, stats.mtime.getTime());
       }
 
       return {
         success: true,
-        content,
-        shortResult: `Read ${keptLines} lines${truncated || truncatedByTokenCap ? " (truncated)" : ""}`,
-        metadata: {
-          type: "text",
-          totalLines,
-          startLine,
-          endLine,
-          truncated,
-          ...(truncatedByTokenCap && { truncatedByTokenCap: true }),
-        },
+        data,
+        content: renderReadTextResultData(data),
+        shortResult: `Read ${numLines} lines`,
       };
     } catch (error) {
       return {

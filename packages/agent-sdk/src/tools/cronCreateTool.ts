@@ -2,8 +2,12 @@ import { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { CRON_CREATE_TOOL_NAME } from "../constants/tools.js";
 import { cronToHuman } from "../utils/cronToHuman.js";
 import { parseCronExpression } from "../utils/parseCronExpression.js";
+import {
+  DEFAULT_MAX_AGE_DAYS,
+  renderCronCreateResultData,
+  type CronCreateResultData,
+} from "./resultData/cronCreate.js";
 
-const DEFAULT_MAX_AGE_DAYS = 7;
 const MAX_JOBS = 50;
 
 const CRON_CREATE_DESCRIPTION = `Schedule a prompt to run at a future time within this Wave session — either recurring on a cron schedule, or once at a specific time.`;
@@ -143,22 +147,22 @@ Returns a job id you can pass to CronDelete.`,
         durable,
       });
 
-      const humanSchedule = cronToHuman(cron);
-      const where = durable
-        ? "Persisted to .wave/scheduled_tasks.json"
-        : "Session-only (not written to disk, dies when Wave exits)";
-      const resultMessage = recurring
-        ? `Scheduled recurring job ${job.id} (${humanSchedule}). ${where}. Auto-expires after ${DEFAULT_MAX_AGE_DAYS} days. Use CronDelete to cancel sooner.`
-        : `Scheduled one-shot task ${job.id} (${humanSchedule}). ${where}. It will fire once then auto-delete.`;
+      // CC 的正文由 `mapToolResultToToolResultBlockParam` 从 data 现场渲染
+      // （`ScheduleCronTool/CronCreateTool.ts:143-154`），这里同样先组 data 再渲染，
+      // 不再手写一遍句子。
+      const data: CronCreateResultData = {
+        id: job.id,
+        humanSchedule: cronToHuman(cron),
+        recurring,
+        durable,
+      };
+      const message = renderCronCreateResultData(data);
 
       return {
         success: true,
-        content: JSON.stringify(
-          { id: job.id, humanSchedule, recurring, durable },
-          null,
-          2,
-        ),
-        shortResult: resultMessage,
+        data,
+        content: message,
+        shortResult: message,
       };
     } catch (error) {
       return {

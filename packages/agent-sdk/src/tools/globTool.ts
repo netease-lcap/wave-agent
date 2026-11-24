@@ -10,19 +10,15 @@ import {
   extractGlobBaseDirectory,
 } from "../utils/globSearch.js";
 import { logger } from "../utils/globalLogger.js";
+import {
+  renderGlobResultData,
+  type GlobResultData,
+} from "./resultData/glob.js";
 
 /**
  * Maximum number of files returned by glob tool
  */
 const MAX_GLOB_RESULTS = 100;
-
-/**
- * Appended when the walk found more files than `limit`. Removing the cap would
- * flood the context with the whole tree, so the model is told to narrow instead;
- * wording matches Claude Code's Glob.
- */
-const TRUNCATED_NOTICE =
-  "(Results are truncated. Consider using a more specific path or pattern.)";
 
 /**
  * Glob Tool Plugin - Fast file pattern matching
@@ -150,34 +146,40 @@ export const globTool: ToolPlugin = {
         .map((file) => (isAbsolute(file) ? file : join(searchDir, file)));
 
       if (absoluteFiles.length === 0) {
+        const data: GlobResultData = {
+          durationMs: Date.now() - startTime,
+          numFiles: 0,
+          filenames: [],
+          truncated: false,
+        };
         return {
           success: true,
-          content: "No files match the pattern",
-          shortResult: "No matches found",
+          data,
+          content: renderGlobResultData(data),
+          shortResult: "No files found",
         };
       }
 
       const totalCount = absoluteFiles.length;
       const isTruncated = totalCount > limit;
-      const files = absoluteFiles
+      // 相对路径（CC 的 `toRelativePath`）：渲染与脚本用同一份，不另存绝对路径。
+      const filenames = absoluteFiles
         .slice(0, limit)
         .map((file) => getDisplayPath(file, context.workdir));
-
-      const content = isTruncated
-        ? `${files.join("\n")}\n${TRUNCATED_NOTICE}`
-        : files.join("\n");
+      const data: GlobResultData = {
+        durationMs: Date.now() - startTime,
+        numFiles: filenames.length,
+        filenames,
+        truncated: isTruncated,
+      };
 
       return {
         success: true,
-        content,
+        data,
+        content: renderGlobResultData(data),
         shortResult: isTruncated
           ? `Found ${totalCount} files (showing first ${limit})`
           : `Found ${totalCount} file${totalCount === 1 ? "" : "s"}`,
-        metadata: {
-          durationMs: Date.now() - startTime,
-          numFiles: totalCount,
-          truncated: isTruncated,
-        },
       };
     } catch (error) {
       return {

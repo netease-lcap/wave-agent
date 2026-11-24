@@ -13,7 +13,7 @@ import {
   type Mock,
 } from "vitest";
 import { Agent } from "@/agent.js";
-import type { AgentCallbacks } from "@/types/index.js";
+import type { AgentCallbacks, Message, ToolBlock } from "@/types/index.js";
 import type { SubagentConfiguration } from "@/utils/subagentParser.js";
 
 // Mock subagent configurations - hoisted to top for vi.mock usage
@@ -143,6 +143,50 @@ describe("Agent - onSubagentMessagesChange Callback Tests", () => {
       expect(Array.isArray(calls[0]![1])).toBe(true);
       expect(calls[1]![0]).toBe(subagentInstance.subagentId);
       expect(Array.isArray(calls[1]![1])).toBe(true);
+    });
+
+    it("子代理消息里的新格式工具块也补上文本（issue #3055 阶段 2 · C）", async () => {
+      const subagentManager = (
+        agent as unknown as {
+          subagentManager: (typeof agent)["subagentManager"];
+        }
+      ).subagentManager;
+      const subagentInstance = await subagentManager.createInstance(
+        mockSubagentConfig,
+        {
+          description: "Tool text hydration",
+          prompt: "Test prompt",
+          subagent_type: "test-subagent",
+        },
+      );
+
+      subagentInstance.messageManager.addAssistantMessage("我跑个命令");
+      const assistantId = subagentInstance.messageManager
+        .getMessages()
+        .slice(-1)[0]!.id;
+      vi.clearAllMocks();
+
+      subagentInstance.messageManager.addToolBlockToMessage(assistantId, {
+        name: "Bash",
+        stage: "end",
+        success: true,
+        data: { stdout: "hi", exitCode: 0, interrupted: false },
+      });
+
+      const calls = vi.mocked(mockOnSubagentMessagesChange).mock.calls;
+      expect(calls).toHaveLength(1);
+      const forwarded = calls[0]![1] as Message[];
+      const forwardedBlock = forwarded
+        .flatMap((message) => message.blocks)
+        .find((block): block is ToolBlock => block.type === "tool");
+      expect(forwardedBlock?.result).toBe("hi");
+
+      // 只补不改：子代理自己那份消息里没有 result（转录不会多存一份文本）。
+      const storedBlock = subagentInstance.messageManager
+        .getMessages()
+        .flatMap((message) => message.blocks)
+        .find((block): block is ToolBlock => block.type === "tool");
+      expect(storedBlock?.result).toBeUndefined();
     });
 
     it("should work with multiple subagents independently", async () => {

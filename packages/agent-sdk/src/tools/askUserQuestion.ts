@@ -4,6 +4,10 @@ import {
   AskUserQuestionInput,
 } from "../types/tools.js";
 import { ASK_USER_QUESTION_TOOL_NAME } from "../constants/tools.js";
+import {
+  renderAskUserQuestionResultData,
+  type AskUserQuestionResultData,
+} from "./resultData/askUserQuestion.js";
 
 /**
  * Collects every option that lacks a usable `label`, as `questions[i].options[j]`
@@ -35,6 +39,24 @@ function collectOptionLabelErrors(
     });
   });
   return errors;
+}
+
+/**
+ * Fold the answer values into CC's shape: `answers` is
+ * `Record<string, string>`, and a multi-select answer is one comma-separated
+ * string (`AskUserQuestionTool.tsx:71`), because CC's UI joins the picked labels
+ * with `", "` before submitting (`AskUserQuestionPermissionRequest.tsx:426-429`).
+ * Our hosts send `string[]` for multi-select, so the join happens here — the
+ * `data` we hand out then matches CC field for field.
+ */
+function normalizeAnswers(
+  answers: Record<string, string | string[]>,
+): Record<string, string> {
+  const normalized: Record<string, string> = {};
+  for (const [question, answer] of Object.entries(answers)) {
+    normalized[question] = Array.isArray(answer) ? answer.join(", ") : answer;
+  }
+  return normalized;
 }
 
 /**
@@ -272,9 +294,16 @@ In plan mode, use it to clarify requirements or choose between approaches before
       const payload = parseDecisionPayload(
         JSON.parse(decision.message || "{}"),
       );
+      // Text is rendered from `data`, never stored as a literal (CC's
+      // `mapToolResultToToolResultBlockParam`, `AskUserQuestionTool.tsx:224-244`).
+      const data: AskUserQuestionResultData = {
+        answers: normalizeAnswers(payload.answers),
+        ...(payload.annotations ? { annotations: payload.annotations } : {}),
+      };
       return {
         success: true,
-        content: JSON.stringify(payload),
+        content: renderAskUserQuestionResultData(data),
+        data,
       };
     } catch {
       return {

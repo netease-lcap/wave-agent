@@ -15,6 +15,10 @@ import {
   processContentWithAI,
 } from "../services/contentSummarizer.js";
 import { persistToolResultBuffer } from "../utils/toolResultStorage.js";
+import {
+  renderWebFetchResultData,
+  type WebFetchResultData,
+} from "./resultData/webFetch.js";
 
 // --- Security Limits ---
 const MAX_HTTP_CONTENT_LENGTH = 10 * 1024 * 1024; // 10MB
@@ -220,6 +224,18 @@ function pastEndMessage(offset: number, totalChars: number): string {
 }
 
 /**
+ * A successful fetch's `data` and the `content` rendered from it. The two always
+ * leave together, so they go out through one door: no branch can hand out a
+ * `data` without also letting the renderer speak.
+ */
+function renderedResult(data: WebFetchResultData): {
+  data: WebFetchResultData;
+  content: string;
+} {
+  return { data, content: renderWebFetchResultData(data) };
+}
+
+/**
  * Summarize the part that did not fit the verbatim interval, so one call still
  * covers the whole page cheaply. The same prompt is applied to the overflow —
  * Claude Code's helper does the same — and the text goes through the same
@@ -322,6 +338,7 @@ async function answerFromText({
   code,
   codeText,
   offset,
+  startedAt,
   context,
 }: {
   url: string;
@@ -330,11 +347,25 @@ async function answerFromText({
   code: number;
   codeText: string;
   offset: number;
+  /** `Date.now()` from the top of the call: CC times fetch + apply together. */
+  startedAt: number;
   context: ToolContext;
 }): Promise<ToolResult> {
   const chunk = buildWebContentChunk(text, offset);
+  // The fetched content's byte size, never the answer's: CC's `bytes` is what
+  // came back over HTTP (`WebFetchTool.ts:34`).
+  const bytes = new TextEncoder().encode(text).length;
+
   if (!chunk.body) {
-    return { success: true, content: pastEndMessage(offset, text.length) };
+    const data: WebFetchResultData = {
+      bytes,
+      code,
+      codeText,
+      result: pastEndMessage(offset, text.length),
+      durationMs: Date.now() - startedAt,
+      url,
+    };
+    return { success: true, ...renderedResult(data) };
   }
 
   const answer = await processContentWithAI(
@@ -344,10 +375,23 @@ async function answerFromText({
     code,
     codeText,
     context,
-    new TextEncoder().encode(text).length,
+    bytes,
   );
+  // A fast-model failure keeps its own payload (including the verbatim body it
+  // puts in `content`). CC throws here, so the failure carries no `data`.
   if (!answer.success) return answer;
-  if (offset === 0 && chunk.remainingChars === 0) return answer;
+
+  if (offset === 0 && chunk.remainingChars === 0) {
+    const data: WebFetchResultData = {
+      bytes,
+      code,
+      codeText,
+      result: answer.content,
+      durationMs: Date.now() - startedAt,
+      url,
+    };
+    return { ...answer, ...renderedResult(data) };
+  }
 
   // The preview is capped at one interval too: a 10MB page must not turn into a
   // second full-size model call.
@@ -359,9 +403,11 @@ async function answerFromText({
     ? await summarizeOverflow(prompt, preview, context)
     : undefined;
 
-  return {
-    ...answer,
-    content: composeChunkedResult({
+  const data: WebFetchResultData = {
+    bytes,
+    code,
+    codeText,
+    result: composeChunkedResult({
       url,
       answer: answer.content,
       offset,
@@ -370,7 +416,12 @@ async function answerFromText({
       previewedChars: preview.length,
       summary,
     }),
+    durationMs: Date.now() - startedAt,
+    url,
   };
+  // `shortResult` stays whatever the summarizer reported: it is the collapsed
+  // row's text, not part of CC's output shape.
+  return { ...answer, ...renderedResult(data) };
 }
 
 // --- Tool ---
@@ -439,6 +490,8 @@ Usage notes:
     let url = args.url as string;
     const prompt = args.prompt as string;
     const offset = normalizeOffset(args.offset);
+    // CC times the whole call (`WebFetchTool.ts:212`) and reports `durationMs`.
+    const startedAt = Date.now();
 
     if (!url || !prompt) {
       return {
@@ -487,8 +540,26 @@ Usage notes:
           readResult.artifact,
           context,
         );
-        result.metadata = { artifactRead: { slug, ver: version } };
-        return result;
+        // The interception answers from the artifact's own HTML over the
+        // authenticated channel, so no public HTTP status exists here: 200/OK is
+        // the status the shared reader reports (artifactContent.ts:409-410) and
+        // `bytes` is the artifact's own size. `result` keeps the whole
+        // model-facing text, persisted-output note and sharing header included.
+        // A failed read keeps its own payload and carries no `data` (CC throws
+        // here too), so `artifactRead` rides the success branch only.
+        if (!result.success) return result;
+        const data: WebFetchResultData = {
+          bytes: readResult.artifact.bytes,
+          code: 200,
+          codeText: "OK",
+          result: result.content,
+          durationMs: Date.now() - startedAt,
+          url,
+          // 这次走的是 artifact 读通道：slug + 页面版本（阶段 2 之前挂在
+          // `ToolResult.metadata.artifactRead`）。正文不打印它们。
+          artifactRead: { slug, ver: version },
+        };
+        return { ...result, ...renderedResult(data) };
       }
     }
 
@@ -498,15 +569,20 @@ Usage notes:
         // A cached binary fetch only has a path to report — nothing to send to
         // the model.
         if (cached.persistedPath) {
-          return {
-            success: true,
-            content: savedBinaryMessage({
+          const data: WebFetchResultData = {
+            bytes: cached.bytes,
+            code: cached.code,
+            codeText: cached.codeText,
+            result: savedBinaryMessage({
               status: `${cached.code} ${cached.codeText}`.trim(),
               contentType: cached.contentType,
               size: formatSize(cached.persistedSize ?? cached.bytes),
               filePath: cached.persistedPath,
             }),
+            durationMs: Date.now() - startedAt,
+            url,
           };
+          return { success: true, ...renderedResult(data) };
         }
 
         return answerFromText({
@@ -516,6 +592,7 @@ Usage notes:
           code: cached.code,
           codeText: cached.codeText,
           offset,
+          startedAt,
           context,
         });
       }
@@ -524,10 +601,17 @@ Usage notes:
       const result = await fetchWithRedirects(url, context.abortSignal);
 
       if (result.kind === "redirect") {
-        return {
-          success: true,
-          content: `REDIRECT_TO: ${result.redirectUrl}\nThe URL redirected to a different host. Please make a new WebFetch request with this redirect URL if you wish to continue.`,
+        const message = `REDIRECT_TO: ${result.redirectUrl}\nThe URL redirected to a different host. Please make a new WebFetch request with this redirect URL if you wish to continue.`;
+        const data: WebFetchResultData = {
+          // Nothing was fetched, so CC reports the message's own size (`:238`).
+          bytes: new TextEncoder().encode(message).length,
+          code: result.statusCode,
+          codeText: result.statusText,
+          result: message,
+          durationMs: Date.now() - startedAt,
+          url,
         };
+        return { success: true, ...renderedResult(data) };
       }
 
       if (result.kind === "error") {
@@ -538,7 +622,7 @@ Usage notes:
         };
       }
 
-      const { response, finalUrl } = result;
+      const { response } = result;
 
       if (!response.ok) {
         return {
@@ -590,15 +674,20 @@ Usage notes:
           });
         }
 
-        return {
-          success: true,
-          content: savedBinaryMessage({
+        const data: WebFetchResultData = {
+          bytes: bytes.length,
+          code: response.status,
+          codeText: response.statusText,
+          result: savedBinaryMessage({
             status,
             contentType,
             size: formatSize(bytes.length),
             filePath,
           }),
+          durationMs: Date.now() - startedAt,
+          url,
         };
+        return { success: true, ...renderedResult(data) };
       }
 
       const body = await response.text();
@@ -615,7 +704,11 @@ Usage notes:
       // `example.com` → `www.example.com` never hit its own cache. Claude Code
       // keys its WebFetch cache the same way.
       cache.set(url, {
-        bytes: new TextEncoder().encode(text).length,
+        // A positive size is required: an empty body would otherwise throw
+        // inside the cache and turn "the page has no readable text" into a fetch
+        // failure. CC clamps its cache size to 1 for the same reason
+        // (WebFetchTool/utils.ts:479-480).
+        bytes: Math.max(1, new TextEncoder().encode(text).length),
         code: response.status,
         codeText: response.statusText,
         content: text,
@@ -623,12 +716,13 @@ Usage notes:
       });
 
       return answerFromText({
-        url: finalUrl,
+        url,
         prompt,
         text,
         code: response.status,
         codeText: response.statusText,
         offset,
+        startedAt,
         context,
       });
     } catch (error) {
@@ -652,8 +746,13 @@ async function fetchWithRedirects(
   abortSignal?: AbortSignal,
   redirectCount = 0,
 ): Promise<
-  | { kind: "response"; response: Response; finalUrl: string }
-  | { kind: "redirect"; redirectUrl: string }
+  | { kind: "response"; response: Response }
+  | {
+      kind: "redirect";
+      redirectUrl: string;
+      statusCode: number;
+      statusText: string;
+    }
   | { kind: "error"; error: string }
 > {
   if (redirectCount >= MAX_REDIRECTS) {
@@ -693,7 +792,12 @@ async function fetchWithRedirects(
       const redirectUrl = new URL(location, initialUrl).toString();
 
       if (!isPermittedRedirect(initialUrl, redirectUrl)) {
-        return { kind: "redirect", redirectUrl };
+        return {
+          kind: "redirect",
+          redirectUrl,
+          statusCode: response.status,
+          statusText: response.statusText,
+        };
       }
 
       // Follow permitted redirect recursively
@@ -701,5 +805,5 @@ async function fetchWithRedirects(
     }
   }
 
-  return { kind: "response", response, finalUrl: initialUrl };
+  return { kind: "response", response };
 }

@@ -1,5 +1,9 @@
 import { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { CRON_DELETE_TOOL_NAME } from "../constants/tools.js";
+import {
+  renderCronDeleteResultData,
+  type CronDeleteResultData,
+} from "./resultData/cronDelete.js";
 
 const CRON_DELETE_DESCRIPTION = "Cancel a scheduled cron job by ID";
 
@@ -42,13 +46,26 @@ export const cronDeleteTool: ToolPlugin = {
       };
     }
 
-    const success = context.cronManager.deleteJob(id);
+    const deleted = context.cronManager.deleteJob(id);
+
+    // CC 把「没有这个 id」判在 `validateInput`（`ScheduleCronTool/CronDeleteTool.ts:61-70`），
+    // 不产出 data；这里同样只回 error，不带失败载荷。
+    if (!deleted) {
+      return {
+        success: false,
+        content: "",
+        shortResult: `Job ${id} not found`,
+        error: `Job ${id} not found`,
+      };
+    }
+
+    const data: CronDeleteResultData = { id };
 
     return {
-      success,
-      content: JSON.stringify({ success }, null, 2),
-      shortResult: success ? `Deleted job ${id}` : `Job ${id} not found`,
-      error: success ? undefined : `Job ${id} not found`,
+      success: true,
+      data,
+      content: renderCronDeleteResultData(data),
+      shortResult: `Deleted job ${id}`,
     };
   },
 };

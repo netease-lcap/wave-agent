@@ -167,8 +167,12 @@ describe("kb_search", () => {
     expect(result.content).toContain("解析降级：emf_or_chart");
     expect(result.content).not.toContain("undefined");
     expect(result.shortResult).toBe("命中 3 条 · 2 个文档");
-    // Citations are the server's hits, untouched (the webview reads them).
-    expect(result.metadata?.citations).toEqual(hits);
+    // Citations are the server's hits, untouched (the webview reads them);
+    // they ride `data.citations` since issue #3055 阶段 2 (was `metadata`).
+    expect(result.data).toEqual(
+      expect.objectContaining({ status: "ok", citations: hits }),
+    );
+    expect(result.metadata).toBeUndefined();
   });
 
   describe("location", () => {

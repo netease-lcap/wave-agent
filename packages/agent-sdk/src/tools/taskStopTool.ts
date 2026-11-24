@@ -1,5 +1,9 @@
 import { TASK_STOP_TOOL_NAME } from "../constants/tools.js";
 import { ToolContext, ToolPlugin, ToolResult } from "./types.js";
+import {
+  renderTaskStopResultData,
+  type TaskStopResultData,
+} from "./resultData/taskStop.js";
 
 export const taskStopTool: ToolPlugin = {
   name: TASK_STOP_TOOL_NAME,
@@ -52,28 +56,43 @@ export const taskStopTool: ToolPlugin = {
       };
     }
 
-    const stopped = backgroundTaskManager.stopTask(taskId);
-    if (stopped) {
+    // 先取任务再停：`stopTask` 把同一个对象就地改成 `killed`，而 `data` 要的是
+    // 停下那一刻之前的命令行 / description（CC 的 `tasks/stopTask.ts` 也是先
+    // kill、再把这两样回填进 output）。
+    const task = backgroundTaskManager.getTask(taskId);
+    if (!task) {
       return {
-        success: true,
-        content: `Task ${taskId} has been stopped`,
-        shortResult: `Stopped ${taskId}`,
+        success: false,
+        content: "",
+        error: `Task with ID ${taskId} not found`,
       };
-    } else {
-      const task = backgroundTaskManager.getTask(taskId);
-      if (!task) {
-        return {
-          success: false,
-          content: "",
-          error: `Task with ID ${taskId} not found`,
-        };
-      }
+    }
+
+    if (!backgroundTaskManager.stopTask(taskId)) {
       return {
         success: false,
         content: "",
         error: `Failed to stop task ${taskId} (status: ${task.status})`,
       };
     }
+
+    // shell 任务报命令行，subagent / workflow 报 description —— 与 CC
+    // `tasks/stopTask.ts` 的 `isLocalShellTask(task) ? task.command : task.description`
+    // 同一判据。
+    const command = task.type === "shell" ? task.command : task.description;
+    const data: TaskStopResultData = {
+      message: `Successfully stopped task: ${taskId} (${command})`,
+      task_id: taskId,
+      task_type: task.type,
+      command,
+    };
+
+    return {
+      success: true,
+      data,
+      content: renderTaskStopResultData(data),
+      shortResult: `Stopped ${taskId}`,
+    };
   },
   formatCompactParams: (params: Record<string, unknown>) => {
     return params.task_id as string;

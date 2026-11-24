@@ -234,7 +234,7 @@ src/utils.ts:1:export const logger = {};
 
     expect(result.success).toBe(true);
     expect(result.content).toBe(
-      "Note: working directory /repo/.wave/worktrees/feat-a no longer exists; session working directory recovered to /repo.\nsrc/index.ts:1:export const app = 'main';",
+      "Note: working directory /repo/.wave/worktrees/feat-a no longer exists; session working directory recovered to /repo.\nFound 1 file\nsrc/index.ts:1:export const app = 'main';",
     );
   });
 
@@ -252,7 +252,9 @@ src/utils.ts:1:export const logger = {};
     const result = await grepTool.execute({ pattern: "export const" }, context);
 
     expect(result.success).toBe(true);
-    expect(result.content).toBe("src/index.ts:1:export const app = 'main';");
+    expect(result.content).toBe(
+      "Found 1 file\nsrc/index.ts:1:export const app = 'main';",
+    );
   });
 
   it("should show match counts (count mode)", async () => {
@@ -454,8 +456,8 @@ src/index.ts-3-  return new Application();
     );
 
     expect(result.success).toBe(true);
-    const lines = result.content.split("\n").filter((line) => line.trim());
-    expect(lines.length).toBe(1);
+    // 列表前多一行 `Found 1 file limit: 1`——CC 把分页信息拼在这一行上。
+    expect(result.content).toBe("Found 1 file limit: 1\nsrc/index.ts");
     expect(result.shortResult).toContain("(showing 1 of 3)");
   });
 
@@ -522,7 +524,9 @@ src/index.ts-3-  return new Application();
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("No matches found");
+    // 默认是 files_with_matches 模式，CC 的原话是 `No files found`；后面那句出口
+    // 提示是我方保留的（见 resultData/grep.ts 的 NO_RESULTS_HINT）。
+    expect(result.content).toContain("No files found");
     expect(result.content).toContain("Suggestion: specify the 'path' field");
     expect(result.shortResult).toBe("No matches found");
   });
@@ -600,10 +604,15 @@ src/index.ts-3-  return new Application();
     );
 
     expect(result.success).toBe(true);
-    const lines = result.content.split("\n").filter((line) => line.trim());
-    expect(lines.length).toBe(2); // file2.ts and file3.ts
-    expect(result.metadata?.numMatches).toBe(3);
-    expect(result.metadata?.appliedOffset).toBe(1);
+    // 两句匹配行 + 末尾那行 pagination（offset 生效时 CC 会附一句）。
+    expect(result.content).toBe(
+      "file2.ts:2:match2\nfile3.ts:3:match3\n\n[Showing results with pagination = offset: 1]",
+    );
+    // 分页字段与匹配数都在 `data` 里（原来是 `ToolResult.metadata`）。
+    expect(result.data).toEqual(
+      expect.objectContaining({ numMatches: 3, appliedOffset: 1 }),
+    );
+    expect(result.metadata).toBeUndefined();
 
     // Verify that context was passed as -C
     expect(mockSpawn).toHaveBeenCalledWith(

@@ -13,6 +13,10 @@ import { describeWorktreeRemovalOutcome } from "../utils/worktreeRemoval.js";
 import { EXIT_WORKTREE_TOOL_NAME } from "../constants/tools.js";
 import { logger } from "../utils/globalLogger.js";
 import { executeWorktreeRemoveHook } from "../services/worktreeHooks.js";
+import {
+  renderExitWorktreeResultData,
+  type ExitWorktreeResultData,
+} from "./resultData/exitWorktree.js";
 
 export const EXIT_WORKTREE_TOOL_PROMPT = `Exit a worktree session created by EnterWorktree and return the session to the original working directory.
 
@@ -165,9 +169,18 @@ export const exitWorktreeTool: ToolPlugin = {
         aiManager.setWorkspaceRoot(originalCwd);
       }
 
+      // 正文由 `data` 现场渲染（CC `ExitWorktreeTool.ts:271-283`）。
+      const data: ExitWorktreeResultData = {
+        action: "keep",
+        originalCwd,
+        worktreePath,
+        worktreeBranch: worktreeBranch || undefined,
+      };
+
       return {
         success: true,
-        content: `Exited worktree. Your work is preserved at ${worktreePath}${worktreeBranch ? ` on branch ${worktreeBranch}` : ""}. Session is now back in ${originalCwd}.`,
+        data,
+        content: renderExitWorktreeResultData(data),
       };
     }
 
@@ -186,7 +199,9 @@ export const exitWorktreeTool: ToolPlugin = {
       session.originalHeadCommit,
     ) ?? { changedFiles: 0, commits: 0 };
 
-    let hookNote = "";
+    // 删除走的哪条路：hook 执行 / hook 缺失（目录留在原地）/ 省略 = git 删除。
+    // 正文里那一句由渲染器从 `data.removeHook` 重建。
+    let removeHook: ExitWorktreeResultData["removeHook"];
     // Set when the removal did not actually happen; `removeWorktree` returns
     // nothing, so the filesystem is the only witness.
     let survivalNote = "";
@@ -210,13 +225,12 @@ export const exitWorktreeTool: ToolPlugin = {
         },
       );
       if (hookRan) {
-        hookNote = " WorktreeRemove hooks were executed.";
+        removeHook = "executed";
       } else {
         logger?.warn(
           `No WorktreeRemove hook configured, hook-based worktree left at: ${worktreePath}`,
         );
-        hookNote =
-          " No WorktreeRemove hook configured, hook-based worktree left at the path above.";
+        removeHook = "missing";
       }
     } else {
       await removeWorktree(worktreeInfo);
@@ -242,22 +256,6 @@ export const exitWorktreeTool: ToolPlugin = {
       aiManager.setWorkspaceRoot(originalCwd);
     }
 
-    const discardParts: string[] = [];
-    if (summary.commits > 0) {
-      discardParts.push(
-        `${summary.commits} ${summary.commits === 1 ? "commit" : "commits"}`,
-      );
-    }
-    if (summary.changedFiles > 0) {
-      discardParts.push(
-        `${summary.changedFiles} uncommitted ${summary.changedFiles === 1 ? "file" : "files"}`,
-      );
-    }
-    const discardNote =
-      discardParts.length > 0
-        ? ` Discarded ${discardParts.join(" and ")}.`
-        : "";
-
     if (survivalNote !== "") {
       // Nothing was deleted (see `survivalNote`), so the counts above were not
       // discarded — they are still in that directory. Reporting them as
@@ -272,9 +270,23 @@ export const exitWorktreeTool: ToolPlugin = {
       };
     }
 
+    // `Discarded …` 那句由渲染器从两个计数现拼，顺序与单复数照 CC
+    // （`ExitWorktreeTool.ts:299-309`）；路径是「退出前的 currentWorkdir」与退出后
+    // 回去的 `originalCwd`，两个基准别对调。
+    const data: ExitWorktreeResultData = {
+      action: "remove",
+      originalCwd,
+      worktreePath,
+      worktreeBranch: worktreeBranch || undefined,
+      discardedFiles: summary.changedFiles,
+      discardedCommits: summary.commits,
+      removeHook,
+    };
+
     return {
       success: true,
-      content: `Exited and removed worktree at ${worktreePath}.${discardNote} Session is now back in ${originalCwd}.${hookNote}`,
+      data,
+      content: renderExitWorktreeResultData(data),
     };
   },
 };

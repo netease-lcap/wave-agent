@@ -18,9 +18,28 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
 }));
 
 import {
+  commentThreadsData,
   fetchComments,
-  formatCommentThreads,
+  type CommentPage,
 } from "../../src/services/artifactComments.js";
+import {
+  artifactCommentsShortResult,
+  renderArtifactCommentsResultData,
+} from "../../src/tools/resultData/artifactComments.js";
+
+// issue #3055 阶段 2：服务层只产 `data`（CC `Nr` 形状），正文由 resultData 层从
+// `data` 重建 —— 这里走一遍完整链路，断言与迁移前不变。
+function renderRead(
+  page: CommentPage,
+  opts: Parameters<typeof commentThreadsData>[1],
+) {
+  const data = { action: "read" as const, ...commentThreadsData(page, opts) };
+  return {
+    data,
+    content: renderArtifactCommentsResultData(data),
+    shortResult: artifactCommentsShortResult(data),
+  };
+}
 
 const SERVER_URL = "https://server.test";
 
@@ -178,7 +197,44 @@ describe("fetchComments", () => {
   });
 });
 
-describe("formatCommentThreads", () => {
+describe("read 的 data → 文本", () => {
+  it("data 用 CC `Nr` 的字段与嵌套（threads[].comments[]）", async () => {
+    stubFetch(() =>
+      jsonResponse(200, {
+        comments: [commentRow()],
+        unresolvedCount: 1,
+      }),
+    );
+    const outcome = await fetchComments("abc");
+    if (outcome.kind !== "ok") throw new Error("expected ok");
+    const { data } = renderRead(outcome.value, { url: "u" });
+
+    expect(data).toEqual({
+      action: "read",
+      url: "u",
+      unresolved_count: 1,
+      threads: [
+        {
+          id: "c1",
+          created_at: "2026-10-20T10:00:00Z",
+          resolved: false,
+          claude_activated: false,
+          anchor_label: 'text: "这里颜色不对"',
+          comments: [
+            {
+              id: "c1",
+              account: "张三",
+              role: "user",
+              text: "这里颜色不对",
+              created_at: "2026-10-20T10:00:00Z",
+              awaiting_reply: true,
+            },
+          ],
+        },
+      ],
+    });
+  });
+
   it("renders thread roots with indented replies and flags awaiting threads", async () => {
     stubFetch(() =>
       jsonResponse(200, {
@@ -205,7 +261,7 @@ describe("formatCommentThreads", () => {
     );
     const outcome = await fetchComments("abc");
     if (outcome.kind !== "ok") throw new Error("expected ok");
-    const rendered = formatCommentThreads(outcome.value, {
+    const rendered = renderRead(outcome.value, {
       url: `${SERVER_URL}/code/artifact/abc`,
     });
 
@@ -259,7 +315,7 @@ describe("formatCommentThreads", () => {
     );
     const outcome = await fetchComments("abc");
     if (outcome.kind !== "ok") throw new Error("expected ok");
-    const rendered = formatCommentThreads(outcome.value, { url: "u" });
+    const rendered = renderRead(outcome.value, { url: "u" });
 
     const lines = rendered.content.split("\n");
     expect(lines).toContain("  张三: 这里颜色不对");
@@ -280,7 +336,7 @@ describe("formatCommentThreads", () => {
     );
     const outcome = await fetchComments("abc");
     if (outcome.kind !== "ok") throw new Error("expected ok");
-    const rendered = formatCommentThreads(outcome.value, {
+    const rendered = renderRead(outcome.value, {
       url: "u",
       cursor: "prev",
     });
@@ -294,7 +350,7 @@ describe("formatCommentThreads", () => {
     stubFetch(() => jsonResponse(200, { comments: [], unresolvedCount: 0 }));
     const outcome = await fetchComments("abc");
     if (outcome.kind !== "ok") throw new Error("expected ok");
-    const rendered = formatCommentThreads(outcome.value, { url: "u" });
+    const rendered = renderRead(outcome.value, { url: "u" });
     expect(rendered.content).toContain("No comments matched.");
     expect(rendered.shortResult).toBe("Read 0 comment thread(s)");
   });
@@ -308,7 +364,7 @@ describe("formatCommentThreads", () => {
     );
     const outcome = await fetchComments("abc");
     if (outcome.kind !== "ok") throw new Error("expected ok");
-    const rendered = formatCommentThreads(outcome.value, { url: "u" });
+    const rendered = renderRead(outcome.value, { url: "u" });
     expect(rendered.content).not.toContain("x".repeat(700));
     expect(rendered.content).toContain("…");
   });

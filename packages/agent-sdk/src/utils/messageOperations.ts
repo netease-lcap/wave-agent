@@ -63,7 +63,15 @@ export interface UpdateToolBlockParams {
    * `ToolBlock.nestedToolCalls`).
    */
   nestedToolCalls?: string[];
-  /** Structured extras from `ToolResult.metadata` (host-side rendering only). */
+  /**
+   * 工具结果的结构化本体（`ToolResult.data`）。阶段 2 起新转录只写这个字段，
+   * `result` 退化为读老转录的兼容字段 —— 见 `ToolBlock.data`。
+   */
+  data?: unknown;
+  /**
+   * 向前兼容：只有老转录里有 `ToolResult.metadata`，新工具不再填它。
+   * （宿主侧渲染只读，见 `ToolBlock.metadata`。）
+   */
   metadata?: Record<string, unknown>;
   timestamp?: number;
 }
@@ -285,8 +293,9 @@ export const addToolBlockToMessageInMessages = (
             id: toolBlockId,
             name: params.name || "unknown",
             parameters: params.parameters || "",
-            result: params.result || "",
             stage: "start",
+            // `...params` 原样带上 `data`；`result` 只在调用方真的给了时才落，
+            // 不在这里塞一个空串（阶段 2 起文本可由 `data` 现渲）。
             ...params,
           } as ToolBlock,
         ],
@@ -317,6 +326,7 @@ export const updateToolBlockInMessage = ({
   backgroundedByUser,
   assistantAutoBackgrounded,
   nestedToolCalls,
+  data,
   metadata,
 }: UpdateToolBlockParams): { messages: Message[]; messageId?: string } => {
   const newMessages = [...messages];
@@ -356,6 +366,7 @@ export const updateToolBlockInMessage = ({
             toolBlock.assistantAutoBackgrounded = assistantAutoBackgrounded;
           if (nestedToolCalls !== undefined)
             toolBlock.nestedToolCalls = nestedToolCalls;
+          if (data !== undefined) toolBlock.data = data;
           if (metadata !== undefined) toolBlock.metadata = metadata;
         }
       }
@@ -397,6 +408,7 @@ export const updateToolBlockInMessage = ({
             toolBlock.assistantAutoBackgrounded = assistantAutoBackgrounded;
           if (nestedToolCalls !== undefined)
             toolBlock.nestedToolCalls = nestedToolCalls;
+          if (data !== undefined) toolBlock.data = data;
           if (metadata !== undefined) toolBlock.metadata = metadata;
         }
         const foundMessageId = newMessages[i].id;
@@ -408,7 +420,10 @@ export const updateToolBlockInMessage = ({
           type: "tool",
           parameters:
             parameters !== undefined ? parameters : (parametersChunk ?? ""),
-          result: result || "",
+          // 不写 `result: result || ""`：阶段 2 起 `data` 才是本体，凭空塞一个空串
+          // 会让读路径把「没有文本」当成「文本是空串」，`toolBlockText` 就不再用渲染
+          // 器重建这段结果了。
+          ...(result !== undefined ? { result } : {}),
           shortResult: shortResult,
           startLineNumber: startLineNumber,
           images: images, // Add image data
@@ -423,6 +438,7 @@ export const updateToolBlockInMessage = ({
           backgroundedByUser: backgroundedByUser,
           assistantAutoBackgrounded: assistantAutoBackgrounded,
           nestedToolCalls: nestedToolCalls,
+          data: data,
           metadata: metadata,
         });
         const foundMessageId = newMessages[i].id;

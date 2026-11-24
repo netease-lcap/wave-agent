@@ -223,7 +223,8 @@ describe("Task Management Tools", () => {
       const result = await taskUpdateTool.execute({ taskId: "2" }, context);
 
       expect(result.success).toBe(false);
-      expect(result.content).toBe("Task #2 not found");
+      // 照 CC：找不到任务时正文就是那句 error，不带 id（TaskUpdateTool.ts:373-381）。
+      expect(result.content).toBe("Task not found");
     });
   });
 
@@ -438,7 +439,8 @@ describe("Task Management Tools", () => {
       // No reciprocal cleanup — just delete the task file
       expect(mockTaskManager.updateTask).not.toHaveBeenCalled();
       expect(result.success).toBe(true);
-      expect(result.content).toContain("Task #1 deleted");
+      // 照 CC：删除也被表达成一次状态变更，所以文本是「更新成 deleted」。
+      expect(result.content).toContain("Updated task #1 deleted");
     });
   });
 });

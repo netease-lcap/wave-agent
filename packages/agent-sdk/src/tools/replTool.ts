@@ -14,7 +14,12 @@ import {
   REPL_SHELL_DEFAULT_WAIT_MS,
   REPL_SYNC_WAIT_MS,
 } from "../repl/constants.js";
-import { runReplScript, type ReplRunResult } from "../repl/replRuntime.js";
+import { runReplScript } from "../repl/replRuntime.js";
+import {
+  renderReplResultData,
+  replResultDataOf,
+  REPL_FAILURE_TEXT,
+} from "./resultData/repl.js";
 import type { ToolContext, ToolPlugin, ToolResult } from "./types.js";
 
 /**
@@ -133,44 +138,11 @@ It is very helpful if you write a clear, concise description of what this script
 
 Which tools are reachable is announced in the conversation as it changes. Every nested call goes through the same permission check and the same hooks as a flat call, so it can still be denied — the denial comes back to the script as an error it can catch.`;
 
-/** The element a finished script renders into. */
-const OUTPUT_TAG = "repl-output";
-
 /**
  * How many of the most recent nested calls the result summary lists, mirroring
  * how the `Agent` tool lists the subagent tools it just ran.
  */
 const RECENT_CALLS_SHOWN = 2;
-
-/**
- * Share of a truncated part kept from the head. The remainder is kept from the
- * tail: the beginning of a value says what it is, the end says where it stops
- * being one, and the middle is what a summary can afford to drop.
- */
-const HEAD_SHARE = 0.6;
-
-/** Says where the rest of a cut value can be read without redoing the work. */
-const FULL_VALUE_NOTE =
-  "The part above was cut. The full value is still under its key in the REPL context — slice or search it there instead of reading it again or re-running anything.";
-
-/** Says the session is talking to a context that has no memory of earlier scripts. */
-const CONTEXT_RESET_NOTE =
-  "This is a new REPL context: the variables, functions and timers of earlier scripts are gone.";
-
-/**
- * The one line a *text* answer gets when the script produced nothing at all.
- *
- * The markup form needs no such line — it writes `<result/>`, which Claude Code
- * renders too. A text answer has no element that can be empty, and an empty tool
- * result is not an answer, so this branch keeps the sentence. It can only be
- * reached with no value, no log, no stderr and no tool call, which is exactly
- * when the sentence is true.
- */
-const NO_OUTPUT_TEXT =
-  "The script finished without a return value and without any self.log() output.";
-
-/** Last-resort failure text when the runtime reports failure without a reason. */
-const FAILURE_TEXT = "The REPL script failed.";
 
 /**
  * One line of the collapsed row: what it says, and whether it counts.
@@ -298,305 +270,6 @@ function helperLine(name: string, args: Record<string, unknown>): CallLine {
   return { text: `${name}: ${shown}`, counted: false };
 }
 
-/**
- * The script number a context assigned to this run, when the runtime reports one.
- *
- * The published result carries the number only on the dispatch path
- * (`dispatched`); a finished script's id is read opportunistically so the
- * `eval="N"` attribute is rendered whenever it is available and omitted when it
- * is not (the spec allows the attribute to be absent).
- */
-function evalIdOf(result: ReplRunResult): number | undefined {
-  const id = (result as ReplRunResult & { evalId?: unknown }).evalId;
-  return typeof id === "number" ? id : undefined;
-}
-
-/**
- * Escape the three characters that would otherwise be read as markup.
- *
- * Display only: the value the script produced is untouched, and a model that
- * copies the escaped text back into a file gets the entity, not the character —
- * which is why the description says so.
- */
-function escapeOutput(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-/** A part of the output, after the per-part character cap was applied. */
-interface CutPart {
-  /** The text as it goes into the output: head, marker and tail when it was cut. */
-  text: string;
-  /** Characters dropped from the middle; 0 when the part fitted. */
-  elided: number;
-}
-
-/**
- * Apply the per-part cap: head and tail kept, middle replaced by a marker naming
- * how much was dropped.
- *
- * The cap is per part rather than per result because the parts answer different
- * questions — a wall of `self.log` output must not eat the budget of the one
- * value the model actually asked for.
- */
-function cutPart(text: string): CutPart {
-  if (text.length <= REPL_PART_CHAR_LIMIT) return { text, elided: 0 };
-  const headChars = Math.floor(REPL_PART_CHAR_LIMIT * HEAD_SHARE);
-  const tailChars = REPL_PART_CHAR_LIMIT - headChars;
-  const elided = text.length - REPL_PART_CHAR_LIMIT;
-  return {
-    text: `${text.slice(0, headChars)}\n... [${elided} chars elided] ...\n${text.slice(
-      text.length - tailChars,
-    )}`,
-    elided,
-  };
-}
-
-/**
- * Apply the total gate: the whole answer, cut to `REPL_DEFAULT_MAX_RESULT_CHARS`.
- *
- * The per-part cap bounds each part but says nothing about how many parts there
- * are, so the one script that logs fifty values still pays fifty parts' worth of
- * context. Claude Code carries the same second bound on a rendered REPL result;
- * the one-line note exists because a silent cut at the boundary teaches the model
- * that what it can see is all there was.
- */
-function cutTotal(content: string): string {
-  if (content.length <= REPL_DEFAULT_MAX_RESULT_CHARS) return content;
-  const elided = content.length - REPL_DEFAULT_MAX_RESULT_CHARS;
-  return (
-    `${content.slice(0, REPL_DEFAULT_MAX_RESULT_CHARS)}\n` +
-    `[... ${elided} more chars truncated — a REPL result carries at most ${REPL_DEFAULT_MAX_RESULT_CHARS} characters of text]`
-  );
-}
-
-/** One child element; an empty body is written as `<tag/>`, never as an empty pair. */
-function element(tag: string, body: string): string {
-  return body.length === 0
-    ? `<${tag}/>`
-    : `<${tag}>${escapeOutput(body)}</${tag}>`;
-}
-
-/** Every tool the script reached, repeats collapsed, in first-call order. */
-function toolNames(
-  result: ReplRunResult,
-  calls: readonly string[],
-): readonly string[] {
-  return [...new Set(result.toolsUsed ?? calls)];
-}
-
-/**
- * The log blocks: one per stream, not one per line.
- *
- * A stream is the unit the model reasons about ("what did the build print"), and a
- * two-hundred-line build is one answer rather than two hundred elements — the
- * element boundary was carrying no information beyond the newline that is already
- * inside the text. Claude Code renders it the same way: one `<log>` for stdout and
- * one for stderr. `[stderr] ` stays on each note, because our stderr entries are
- * separate host notes rather than one pre-formatted stream.
- */
-function logParts(result: ReplRunResult): string[] {
-  const parts: string[] = [];
-  // An all-empty `logs` array still writes `<log/>`: that is a stream the script
-  // did produce and left empty, not a section it never produced.
-  if (result.logs.length > 0) parts.push(result.logs.join("\n"));
-  const stderr = result.stderr ?? [];
-  if (stderr.length > 0) {
-    parts.push(stderr.map((line) => `[stderr] ${line}`).join("\n"));
-  }
-  return parts;
-}
-
-/**
- * Whether the answer has any structure to carry.
- *
- * A structured answer gets the markup form; one that is nothing but an outcome —
- * a value or an error, with no calls and no logs — falls back to a plain text
- * form, because wrapping a lone string in elements is noise the model has to
- * read past.
- */
-function isStructured(
-  result: ReplRunResult,
-  calls: readonly string[],
-  logs: readonly string[],
-): boolean {
-  return (
-    toolNames(result, calls).length > 0 ||
-    (result.refusedCalls?.length ?? 0) > 0 ||
-    logs.length > 0
-  );
-}
-
-/**
- * The outcome section: the script's value on success, the reason on failure.
- *
- * One function for both renderers, so the markup form and the text form cannot
- * disagree about what counts as "no output" or about when the note pointing back
- * at the REPL context is due.
- */
-function outcomePart(
-  result: ReplRunResult,
-  notes: string[],
-): { tag: "result" | "error"; body: string } {
-  if (!result.ok) {
-    return {
-      tag: "error",
-      body: result.error?.trim() ? result.error : FAILURE_TEXT,
-    };
-  }
-  // `undefined` is what a script without a `return` serializes to, and it must
-  // read as "nothing came back" rather than as the string "undefined". An empty
-  // body is the whole answer: the markup form writes it as `<result/>`, which is
-  // exactly what Claude Code renders (`e.result === undefined → ""`). Saying "the
-  // script finished without a return value" here instead is what made a result
-  // contradict its own `<log>` / `<stderr>` siblings.
-  const value = result.value ?? "";
-  if (value.length === 0 || value === "undefined") {
-    return { tag: "result", body: "" };
-  }
-  const part = cutPart(value);
-  if (part.elided > 0) notes.push(FULL_VALUE_NOTE);
-  return { tag: "result", body: part.text };
-}
-
-/** The `<repl-output>` form: fixed child order, every part capped separately. */
-function renderMarkup(
-  result: ReplRunResult,
-  calls: readonly string[],
-  logs: readonly string[],
-  elapsedMs: number | undefined,
-  notes: string[],
-): string {
-  const evalId = evalIdOf(result);
-  const lines: string[] = [
-    `<${OUTPUT_TAG}${evalId === undefined ? "" : ` eval="${evalId}"`}${
-      elapsedMs === undefined ? "" : ` ms="${elapsedMs}"`
-    }>`,
-  ];
-  // A section the script never produced is left out rather than written empty.
-  // A self-closed `<refused/>` on every answer reads as "something was refused"
-  // to a model that has no way to tell it apart from a real one.
-  const tools = toolNames(result, calls);
-  if (tools.length > 0) lines.push(element("tools", tools.join(", ")));
-  const refused = result.refusedCalls ?? [];
-  if (refused.length > 0) lines.push(element("refused", refused.join(", ")));
-  for (const log of logs) {
-    lines.push(element("log", cutPart(log).text));
-  }
-  const outcome = outcomePart(result, notes);
-  lines.push(element(outcome.tag, outcome.body));
-  lines.push(`</${OUTPUT_TAG}>`);
-  return lines.join("\n");
-}
-
-/**
- * The text form, for an answer with nothing structured in it: the sections the
- * spec fixes, one after another.
- *
- * Only the outcome section can appear here in practice — a log line or a refused
- * call is itself structure, which is what sends an answer to the markup form —
- * but the two stream labels are rendered from the same data so the two forms
- * cannot disagree about what a stream is called.
- */
-function renderText(result: ReplRunResult, notes: string[]): string {
-  const sections: string[] = [];
-  const stdout = result.logs.join("\n");
-  if (stdout.length > 0) sections.push(`stdout:\n${cutPart(stdout).text}`);
-  const stderr = (result.stderr ?? []).join("\n");
-  if (stderr.length > 0) sections.push(`stderr:\n${cutPart(stderr).text}`);
-  const outcome = outcomePart(result, notes);
-  // A section the script did not produce is left out — and an empty body is "did
-  // not produce". The markup form has an element to leave empty (`<result/>`);
-  // here the section simply does not appear, and the fallback below covers the
-  // case where that leaves nothing at all.
-  if (outcome.body.length > 0) {
-    sections.push(`${outcome.tag}:\n${outcome.body}`);
-  }
-  if (sections.length === 0) sections.push(`result:\n${NO_OUTPUT_TEXT}`);
-  return sections.join("\n\n");
-}
-
-/**
- * The receipt a dispatched script answers with, instead of a result.
- *
- * It has to say what it means, not just that something happened: the model that
- * reads `(dispatched #7)` and nothing else submits the same script again, and the
- * host deliberately does not deduplicate — so running it twice is exactly what a
- * silent receipt causes.
- */
-function renderDispatched(dispatched: number, result: ReplRunResult): string {
-  const lines = [`(dispatched #${dispatched})`];
-  if (result.ok) {
-    lines.push(
-      "The script is already running (or queued), so submitting it again would run it twice — wait for its result with `Poll` instead.",
-    );
-  } else {
-    lines.push(
-      result.error?.trim()
-        ? result.error
-        : `${FAILURE_TEXT} The script was not started.`,
-    );
-  }
-  return lines.join("\n");
-}
-
-/**
- * Turn one run into a tool result.
- *
- * `success` follows the runtime's verdict; a dispatch receipt is a successful
- * answer to the call itself even though the script has not finished (the
- * concurrency refusal is the one receipt that is a failure).
- *
- * Exported because a background script's outcome is rendered by the same function
- * whether it arrives in `Poll`'s answer or as a `<event kind="repl-eval">` message:
- * one renderer, so the two can never disagree about what a result looks like.
- * `elapsedMs` is absent for a background outcome — nobody was waiting on the clock.
- */
-export function formatReplRun(
-  result: ReplRunResult,
-  calls: readonly string[],
-  elapsedMs?: number,
-): ToolResult {
-  const called = calls.length > 0 ? [...calls] : [...(result.toolsUsed ?? [])];
-  const notes: string[] = [];
-
-  let content: string;
-  if (result.dispatched !== undefined) {
-    content = renderDispatched(result.dispatched, result);
-  } else {
-    const logs = logParts(result);
-    content = isStructured(result, calls, logs)
-      ? renderMarkup(result, calls, logs, elapsedMs, notes)
-      : renderText(result, notes);
-    if (result.contextReset) notes.push(CONTEXT_RESET_NOTE);
-    if (notes.length > 0) content = [content, ...notes].join("\n");
-    // The gate sits after the notes: they are part of what the model reads, and a
-    // note that explains a cut is worthless if the cut removed it.
-    content = cutTotal(content);
-  }
-
-  return {
-    success: result.ok,
-    content,
-    ...(result.ok ? {} : { error: result.error ?? FAILURE_TEXT }),
-    // The renderer only knows the names — a polled background script comes back
-    // as names — so its line carries no parameters. `execute` writes the richer
-    // version while the parameters are still in hand. Every one of them is a call:
-    // a helper never reaches `toolsUsed`.
-    shortResult: result.ok
-      ? formatSummary(called.map((name) => ({ text: name, counted: true })))
-      : "failed",
-    // The calls themselves, not just their summary: a deferred tool leaves no
-    // block of its own, so this is the only trace a host-side judgment (e.g. the
-    // task reminder's counter) has of it. Carried on failure too — a call that
-    // happened still happened.
-    ...(called.length > 0 ? { nestedToolCalls: called } : {}),
-    ...(result.images.length > 0 ? { images: result.images } : {}),
-  };
-}
-
 export const replTool: ToolPlugin = {
   name: REPL_TOOL_NAME,
   searchHint: "run code in a sandbox to search and call the on-demand tools",
@@ -721,7 +394,36 @@ Long output is cut per part (head and tail kept). A script that outlives the wai
         context.onShortResultUpdate?.(formatSummary(rowCalls));
       },
     });
-    const rendered = formatReplRun(result, calls, Date.now() - startedAt);
+    // The whole of the model-facing text comes from `data` (see
+    // `resultData/repl.ts`): the tool no longer knows how a result is worded, it
+    // only knows what happened. `Date.now()` is the wall clock the caller waited —
+    // a background outcome has none.
+    const data = replResultDataOf(result, calls, Date.now() - startedAt);
+    // The names, taken once more for the two host-side fields below: `shortResult`
+    // and `nestedToolCalls` are the row's and the host's record, not the model-facing
+    // text, so they read the live list first (a call the tool saw still happened even
+    // if the runtime stopped recording it in `toolsUsed`).
+    const called =
+      calls.length > 0 ? [...calls] : [...(result.toolsUsed ?? [])];
+    const rendered: ToolResult = {
+      success: result.ok,
+      data,
+      content: renderReplResultData(data),
+      ...(result.ok ? {} : { error: result.error ?? REPL_FAILURE_TEXT }),
+      // The renderer only knows the names — a polled background script comes back
+      // as names — so its line carries no parameters. `execute` writes the richer
+      // version while the parameters are still in hand. Every one of them is a call:
+      // a helper never reaches `toolsUsed`.
+      shortResult: result.ok
+        ? formatSummary(called.map((name) => ({ text: name, counted: true })))
+        : "failed",
+      // The calls themselves, not just their summary: a deferred tool leaves no
+      // block of its own, so this is the only trace a host-side judgment (e.g. the
+      // task reminder's counter) has of it. Carried on failure too — a call that
+      // happened still happened.
+      ...(called.length > 0 ? { nestedToolCalls: called } : {}),
+      ...(result.images.length > 0 ? { images: result.images } : {}),
+    };
     // The row the turn settles on shows what each call touched; the renderer
     // has only the names, so the parameters are put back here while the run is
     // still in hand. A failed script keeps its `failed` line.
