@@ -62,6 +62,38 @@ vi.mock("../../src/utils/sandboxRuntime.js", async (importOriginal) => {
   return { ...actual, isSandboxRuntimeAvailable: () => sandboxProbe.available };
 });
 
+/**
+ * `finally`-cleanup probe. `rmSync` delegates to the real one everywhere except
+ * the installer's temp dir, where [failOnTempDir] can make it fail the way
+ * Windows does (`EBUSY` / `EPERM` from a recursive rmdir another process still
+ * has open). [tempDirCalls] counts the deletions that targeted a temp dir, so a
+ * test can prove the cleanup path really ran instead of passing vacuously.
+ */
+const cleanupProbe = vi.hoisted(() => ({
+  failOnTempDir: undefined as NodeJS.ErrnoException | undefined,
+  tempDirCalls: 0,
+}));
+
+const RUNTIME_TEMP_PREFIX = ".wave-runtime-tmp-";
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...actual,
+    rmSync: (
+      target: Parameters<typeof actual.rmSync>[0],
+      options?: Parameters<typeof actual.rmSync>[1],
+    ) => {
+      if (!String(target).includes(RUNTIME_TEMP_PREFIX)) {
+        return actual.rmSync(target, options);
+      }
+      cleanupProbe.tempDirCalls++;
+      if (cleanupProbe.failOnTempDir) throw cleanupProbe.failOnTempDir;
+      return actual.rmSync(target, options);
+    },
+  };
+});
+
 import {
   __resetRuntimeDepsForTesting,
   ensureRuntimeDeps,
@@ -447,6 +479,8 @@ function seedMuslDetectLibc(): void {
 beforeEach(() => {
   // Failures are logged, not printed: assertions read `result.reason`.
   warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  cleanupProbe.failOnTempDir = undefined;
+  cleanupProbe.tempDirCalls = 0;
   fs.rmSync(TEST_ROOT, { recursive: true, force: true });
   cliHome = path.join(TEST_ROOT, `home-${++cliHomeCounter}`);
   installDir = path.join(cliHome, "node_modules");
@@ -769,6 +803,38 @@ describe("ensureRuntimeDeps", () => {
     expect(
       fs.existsSync(path.join(installDir, ".wave-runtime-deps.json")),
     ).toBe(false);
+  });
+
+  it("reports the real failure when the temp dir cannot be cleaned up", async () => {
+    // The temp dir is removed in a `finally`, which runs while a download /
+    // extract / verify error is in flight. Windows hands `EBUSY` / `EPERM` to a
+    // recursive rmdir of a directory another process still has open (an
+    // antivirus scan, a just-killed process), so a bare `rmSync` there replaces
+    // the in-flight error: the caller is told "the temp dir is busy" and never
+    // learns why the install actually failed.
+    const registry = registryWithSharp();
+    const fetchImpl = (async (input: string | URL) => {
+      if (String(input).endsWith(".tgz")) throw new Error("EXTRACT_FAILED");
+      return registry.fetchImpl(input as string);
+    }) as unknown as typeof fetch;
+    cleanupProbe.failOnTempDir = Object.assign(
+      new Error(
+        "EBUSY: resource busy or locked, rmdir 'C:\\tmp\\.wave-runtime-tmp-1'",
+      ),
+      { code: "EBUSY" },
+    );
+
+    const result = await ensureRuntimeDeps({
+      cliHome: cliHome,
+      fetchImpl,
+    });
+
+    // The cleanup really did run and really did fail — otherwise the assertions
+    // below would hold for the wrong reason.
+    expect(cleanupProbe.tempDirCalls).toBeGreaterThan(0);
+    expect(result.available).toBe(false);
+    expect(result.reason).toContain("EXTRACT_FAILED");
+    expect(result.reason).not.toContain("EBUSY");
   });
 
   it("treats an installed-but-unusable batch as failed without downloading again", async () => {
