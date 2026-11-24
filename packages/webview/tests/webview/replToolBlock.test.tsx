@@ -119,8 +119,9 @@ describe("REPL tool block", () => {
     expect(code).toBeNull();
   });
 
-  it("keeps a long script line on one line, scrolling sideways instead of wrapping", () => {
-    // 场景 13：脚本是代码，长行不折行、横向看全；输出区不跟，终端输出折行才是对的。
+  it("wraps a long script line on the card instead of scrolling sideways", () => {
+    // 场景 13：模型写的脚本常常整段就一行，超宽行必须折行——横滚会让用户一路
+    // 横向拖才能读完。这与 Bash 命令行同一套（`pre-wrap`），输出区也是 `pre-wrap`。
     const longLine = `const veryLong = await Read({ file_path: "${"/tmp/".repeat(60)}a.ts" });`;
     const { container, code, output } = renderRepl({
       code: longLine,
@@ -128,8 +129,8 @@ describe("REPL tool block", () => {
     });
     const input = container.querySelector(".bash-command-input") as HTMLElement;
 
-    expect(getComputedStyle(code as HTMLElement).whiteSpace).toBe("pre");
-    expect(input.scrollWidth).toBeGreaterThan(input.clientWidth + 1);
+    expect(getComputedStyle(code as HTMLElement).whiteSpace).toBe("pre-wrap");
+    expect(input.scrollWidth).toBeLessThanOrEqual(input.clientWidth + 1);
     expect(getComputedStyle(output as HTMLElement).whiteSpace).toBe("pre-wrap");
   });
 
