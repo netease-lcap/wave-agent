@@ -55,6 +55,7 @@ const DEFERRED_BUILTINS = [
   "TaskStop",
   "TaskUpdate",
   "WebFetch",
+  "WebSearch",
 ];
 
 /**

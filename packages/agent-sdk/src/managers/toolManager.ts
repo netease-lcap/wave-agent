@@ -19,6 +19,7 @@ import { cronCreateTool } from "../tools/cronCreateTool.js";
 import { cronDeleteTool } from "../tools/cronDeleteTool.js";
 import { cronListTool } from "../tools/cronListTool.js";
 import { webFetchTool } from "../tools/webFetchTool.js";
+import { webSearchTool } from "../tools/webSearchTool.js";
 import { sendUserFileTool } from "../tools/sendUserFileTool.js";
 import { artifactTool } from "../tools/artifactTool.js";
 import { replTool } from "../tools/replTool.js";
@@ -26,6 +27,7 @@ import { artifactCommentsTool } from "../tools/artifactCommentsTool.js";
 import { pollTool } from "../tools/pollTool.js";
 import { isArtifactEnabled } from "../services/artifactAvailability.js";
 import { isKnowledgeBaseEnabled } from "../services/knowledgeBaseAvailability.js";
+import { isWebSearchAvailable } from "../services/webSearchAvailability.js";
 import { isTaskToolsEnabled } from "../services/taskToolsAvailability.js";
 import {
   collectShellToolGateInput,
@@ -481,6 +483,15 @@ class ToolManager {
       );
     }
 
+    // Web search is a *server* capability, not a local one: the endpoint answers
+    // 404 when the deployment has it switched off, and that first answer is
+    // remembered for this process (see `services/webSearchAvailability.ts`).
+    // Once the verdict is in, the tool is not registered at all — no declaration,
+    // no prompt paragraph, and no further round trips to prove it again.
+    if (isWebSearchAvailable()) {
+      builtInTools.push(webSearchTool);
+    }
+
     // Enterprise knowledge base: three retrieval function tools, present only
     // when `enableKnowledgeBase` says so (off by default — they pull enterprise
     // documents into every conversation's context). The directory is the
@@ -510,7 +521,8 @@ class ToolManager {
    * reload. Currently gates the Artifact tools (`Artifact` plus its
    * `ArtifactComments` sibling) on settings.json `enableArtifact`, the REPL tool on `enableRepl` (and, through the deferral
    * judgment, on `enableReplCoreTools`), the three knowledge-base
-   * tools on `enableKnowledgeBase`, the four task-list tools on
+   * tools on `enableKnowledgeBase`, `WebSearch` on the server's own 404 verdict
+   * (`services/webSearchAvailability.ts`), the four task-list tools on
    * `env.WAVE_ENABLE_TASK_TOOLS`, and the two shell tools on the shell gate
    * (`env.WAVE_USE_POWERSHELL_TOOL` / whether Git Bash exists). Safe to call
    * multiple times: gated tools are removed from the registry first, then
@@ -522,6 +534,7 @@ class ToolManager {
     this.toolsRegistry.delete(replTool.name);
     this.toolsRegistry.delete(artifactCommentsTool.name);
     this.toolsRegistry.delete(pollTool.name);
+    this.toolsRegistry.delete(webSearchTool.name);
     // Both shell tools are gate-dependent: enabling PowerShell on a machine
     // without Git Bash, or disabling it on one with Git Bash, changes which of
     // the two is listed — and "neither" is a legal outcome.

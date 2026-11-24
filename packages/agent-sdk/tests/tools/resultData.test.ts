@@ -352,6 +352,7 @@ describe("data → 文本渲染器 golden", () => {
         "TaskStop",
         "TaskUpdate",
         "WebFetch",
+        "WebSearch",
         "Workflow",
         "Write",
       ]) {

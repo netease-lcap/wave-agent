@@ -22,6 +22,11 @@ export const CRON_CREATE_TOOL_NAME = "CronCreate";
 export const CRON_DELETE_TOOL_NAME = "CronDelete";
 export const CRON_LIST_TOOL_NAME = "CronList";
 export const WEB_FETCH_TOOL_NAME = "WebFetch";
+/**
+ * 联网搜索。服务端接口由 codechat 提供（`POST /api/v1/web-search`），入参与回执
+ * 逐字对齐 CC 的 `WebSearch`（spec `core/web-search-tool.md`）。
+ */
+export const WEB_SEARCH_TOOL_NAME = "WebSearch";
 export const ENTER_WORKTREE_TOOL_NAME = "EnterWorktree";
 export const EXIT_WORKTREE_TOOL_NAME = "ExitWorktree";
 export const WORKFLOW_TOOL_NAME = "Workflow";

@@ -24,6 +24,7 @@ import {
 } from "../../src/tools/taskManagementTools.js";
 import { taskStopTool } from "../../src/tools/taskStopTool.js";
 import { webFetchTool } from "../../src/tools/webFetchTool.js";
+import { webSearchTool } from "../../src/tools/webSearchTool.js";
 import { writeTool } from "../../src/tools/writeTool.js";
 
 /**
@@ -57,11 +58,12 @@ const BUILT_INS: ToolPlugin[] = [
   taskUpdateTool,
   taskStopTool,
   webFetchTool,
+  webSearchTool,
 ];
 
 describe("built-in output schemas", () => {
-  it("covers the twenty-two tools a script can reach", () => {
-    expect(BUILT_INS).toHaveLength(22);
+  it("covers the twenty-three tools a script can reach", () => {
+    expect(BUILT_INS).toHaveLength(23);
   });
 
   for (const tool of BUILT_INS) {
