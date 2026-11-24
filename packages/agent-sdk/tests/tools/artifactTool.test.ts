@@ -390,7 +390,6 @@ describe("artifactTool", () => {
           "You cannot change sharing; that is done from the page's Share menu.",
         ].join("\n"),
       });
-      expect(result.metadata).toBeUndefined();
 
       const [deployUrl, init] = fetchMock.mock.calls[0];
       expect(deployUrl).toBe(`${SERVER_URL}/api/frame/deploy/direct`);

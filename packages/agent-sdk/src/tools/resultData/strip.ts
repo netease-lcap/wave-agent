@@ -25,8 +25,9 @@
  * - `Read` 的 `type: "image"` → `file.base64 = ""`（`type` 是 mime、`dimensions`、
  *   `originalSize` 留着）；`pdf` / `binary` / 超 token 这几档本来没有大字段，原样
  *   返回；
- * - `Bash` → `stdout` / `stderr` 清成空串（`exitCode`、后台任务三态、`tempDir`、
- *   `diskPressure`、`persistedOutputPath` 这些都留着）；
+ * - `Bash` / `PowerShell` → `stdout` / `stderr` 清成空串（两个 shell 工具的
+ *   `data` 同源，见 `resultData/powershell.ts`；`exitCode`、后台任务三态、
+ *   `tempDir`、`diskPressure`、`persistedOutputPath` 这些都留着）；
  * - 表外工具（MCP 及其它插件工具）按形状判：`content` 数组里的
  *   `{ type: "image", data: "<base64>", mimeType }` 项删掉 `data` 键。
  *
@@ -40,10 +41,14 @@
  *    content: "" } }`）；不需要剥的时候**返回同一个引用**，调用方据此判断「没变」。
  * 2. **剥掉的只是落盘副本**。`ToolResult.data` 原件在执行期间照旧是完整的 ——
  *    模型侧 tool_result 文本、mod 事件的 `tool_response`、REPL 的动态返回都在
- *    strip 之前从原件取（`aiManager.executeToolCall`），压缩恢复走 `result` 全文
- *    （`utils/toolBlockText.ts` 一律 `result` 优先）。
+ *    strip 之前从原件取（`aiManager.executeToolCall`）；压缩恢复走 `result`
+ *    —— 转录里的 `ToolBlock.result` 是全文，`data` 只是剥过的骨架。
  */
-import { BASH_TOOL_NAME, READ_TOOL_NAME } from "../../constants/tools.js";
+import {
+  BASH_TOOL_NAME,
+  POWERSHELL_TOOL_NAME,
+  READ_TOOL_NAME,
+} from "../../constants/tools.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -113,6 +118,7 @@ export function stripToolResultDataForStorage(
     case READ_TOOL_NAME:
       return stripRead(data);
     case BASH_TOOL_NAME:
+    case POWERSHELL_TOOL_NAME:
       return stripBash(data);
     default:
       return stripImageBlocks(data);

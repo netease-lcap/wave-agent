@@ -204,8 +204,7 @@ function toToolResult(value: unknown): ToolResult {
  *
  * Editing tools report `linesAdded` / `linesRemoved` in `result.data`; every
  * other tool carries neither and contributes nothing. A failed call changed no
- * file, so nothing is recorded. `metadata` is the fallback for a result recorded
- * before issue #3055 phase 2 moved these scalars into `data`.
+ * file, so nothing is recorded.
  */
 function recordLinesChangedFromResult(
   result: ToolResult,
@@ -216,15 +215,9 @@ function recordLinesChangedFromResult(
   const data = result.data as
     | { linesAdded?: unknown; linesRemoved?: unknown }
     | undefined;
-  const metadata = result.metadata as
-    | { linesAdded?: unknown; linesRemoved?: unknown }
-    | undefined;
-  const added = numberOrUndefined(data?.linesAdded ?? metadata?.linesAdded);
-  const removed = numberOrUndefined(
-    data?.linesRemoved ?? metadata?.linesRemoved,
-  );
-  // Neither counter present == not an editing tool (the old gate was "has
-  // metadata at all", which no longer says anything now every tool writes data).
+  const added = numberOrUndefined(data?.linesAdded);
+  const removed = numberOrUndefined(data?.linesRemoved);
+  // Neither counter present == not an editing tool.
   if (added === undefined && removed === undefined) return;
   recordLinesChanged({ added, removed }, recordContextOf(context, container));
 }

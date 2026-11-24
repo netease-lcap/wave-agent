@@ -553,8 +553,6 @@ describe("Bash 的 data → 文本 golden", () => {
       interruptedReason: "Command timed out",
       exitCode: 130,
     });
-    // 阶段 2：工具不再填 `metadata`，退出码只在新形状里。
-    expect(result.metadata).toBeUndefined();
     expectRendersBack(result);
   });
 

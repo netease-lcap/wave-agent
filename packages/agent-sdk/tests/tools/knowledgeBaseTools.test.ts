@@ -172,7 +172,6 @@ describe("kb_search", () => {
     expect(result.data).toEqual(
       expect.objectContaining({ status: "ok", citations: hits }),
     );
-    expect(result.metadata).toBeUndefined();
   });
 
   describe("location", () => {

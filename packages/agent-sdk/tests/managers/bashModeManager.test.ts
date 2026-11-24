@@ -182,20 +182,6 @@ describe("BashModeManager", () => {
       );
     });
 
-    it("should still read the exit code off metadata for a pre-phase-2 shape", async () => {
-      // `data.exitCode` is the authority since issue #3055 阶段 2; `metadata` is
-      // only the forward-compat fallback for a result recorded before that move.
-      mockExecute.mockResolvedValue({
-        success: false,
-        content: "old shape",
-        metadata: { exitCode: 42 },
-      } as never);
-
-      const exitCode = await bashModeManager.executeCommand("legacy");
-
-      expect(exitCode).toBe(42);
-    });
-
     it("should pass an aborted command's 130 through", async () => {
       mockExecute.mockResolvedValue({
         success: false,

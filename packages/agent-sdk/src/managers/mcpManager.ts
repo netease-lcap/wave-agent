@@ -1748,8 +1748,9 @@ export class McpManager {
         // `{ content, ...mcpMeta }`），我们的 `ToolResult` 没有这一格，所以这里
         // 只带 content 块。
         // 没有块（或服务端没给）时给 `null`，与上面 `output` 的「说了空就是
-        // null」同一口径。这一格只服务 PostToolUse 的 `tool_response` 与 REPL
-        // 脚本，不进转录：MCP 工具没有渲染器，落盘走 `ToolBlock.result`。
+        // null」同一口径。双写下这一格会随工具块落盘（`ToolBlock.data`，图片块的
+        // base64 已由 `resultData/strip.ts` 剥掉），同时供 PostToolUse 的
+        // `tool_response` 与 REPL 脚本读。
         data: result.content ?? null,
         images: images.length > 0 ? images : undefined,
         serverName,

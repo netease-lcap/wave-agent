@@ -832,17 +832,11 @@ function splitCwdNote(
 /**
  * The exit code a shell result carries, or `undefined` when it carries none.
  *
- * `data.exitCode` is the authority (each shell tool puts its code there);
- * `metadata` is only read for a transcript or mod recorded before issue #3055
- * phase 2 moved the short scalars into `data`.
+ * Each shell tool puts its code in `data.exitCode`.
  */
 function exitCodeFromResult(result: ToolResult): number | undefined {
   const data = result.data as { exitCode?: unknown } | undefined;
-  if (data && typeof data.exitCode === "number") return data.exitCode;
-  const metadata = result.metadata as { exitCode?: unknown } | undefined;
-  return metadata && typeof metadata.exitCode === "number"
-    ? metadata.exitCode
-    : undefined;
+  return data && typeof data.exitCode === "number" ? data.exitCode : undefined;
 }
 
 /** The exit code a Bash result carries, with a sane fallback for a missing one. */

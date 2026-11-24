@@ -26,7 +26,6 @@ vi.mock("mermaid", () => ({
 interface BlockOptions {
   stage?: "streaming" | "end";
   data?: unknown;
-  metadata?: Record<string, unknown>;
   compactParams?: string;
   shortResult?: string;
   error?: string;
@@ -35,7 +34,6 @@ interface BlockOptions {
 const artifactMessage = ({
   stage = "end",
   data,
-  metadata,
   compactParams = "pages/index.html → https://codechat.test/code/artifact/abc",
   shortResult = "Published pages/index.html → https://codechat.test/code/artifact/abc",
   error,
@@ -59,7 +57,6 @@ const artifactMessage = ({
         compactParams,
         shortResult,
         data,
-        metadata,
       },
     ],
   }) as unknown as MessageType;
@@ -76,12 +73,6 @@ const renderArtifact = (options: BlockOptions = {}) => {
   return { vscode };
 };
 
-const PUBLISHED_METADATA = {
-  artifactUrl: "https://codechat.test/code/artifact/abc",
-  artifactTitle: "运营活动原型",
-  artifactVersion: "3",
-};
-
 /** 阶段 2 之后工具只写 `data`（issue #3055）：`url` / `version` 与正文同级。 */
 const PUBLISHED_DATA = {
   action: "publish",
@@ -92,7 +83,7 @@ const PUBLISHED_DATA = {
 
 describe("artifact 卡片", () => {
   it("发布成功 → 卡片显示标题与版本，只有一个「在浏览器中打开」动作", () => {
-    renderArtifact({ metadata: PUBLISHED_METADATA });
+    renderArtifact({ data: PUBLISHED_DATA });
 
     expect(screen.getByTestId("artifact-card")).toBeInTheDocument();
     expect(screen.getByText("运营活动原型")).toBeInTheDocument();
@@ -102,7 +93,7 @@ describe("artifact 卡片", () => {
   });
 
   it("保留工具行（工具名 + 参数摘要），卡片挂在其下方", () => {
-    renderArtifact({ metadata: PUBLISHED_METADATA });
+    renderArtifact({ data: PUBLISHED_DATA });
 
     const header = document.querySelector(".tool-container > .tool-block");
     const card = screen.getByTestId("artifact-card");
@@ -118,8 +109,8 @@ describe("artifact 卡片", () => {
     ).toBeTruthy();
   });
 
-  it("点「在浏览器中打开」→ 发 openExternal，url 取 metadata", () => {
-    const { vscode } = renderArtifact({ metadata: PUBLISHED_METADATA });
+  it("点「在浏览器中打开」→ 发 openExternal，url 取 data", () => {
+    const { vscode } = renderArtifact({ data: PUBLISHED_DATA });
 
     fireEvent.click(screen.getByTestId("artifact-card-open"));
 
@@ -131,7 +122,10 @@ describe("artifact 卡片", () => {
 
   it("缺 artifactTitle 时用 URL 兜底，缺 version 时副信息只写「已发布」", () => {
     renderArtifact({
-      metadata: { artifactUrl: "https://codechat.test/code/artifact/abc" },
+      data: {
+        action: "publish",
+        url: "https://codechat.test/code/artifact/abc",
+      },
     });
 
     expect(
@@ -140,31 +134,7 @@ describe("artifact 卡片", () => {
     expect(screen.getByText("已发布")).toBeInTheDocument();
   });
 
-  it("新格式（工具只写 data）→ 卡片从 data 读 url / 标题 / 版本", () => {
-    const { vscode } = renderArtifact({ data: PUBLISHED_DATA });
-
-    expect(screen.getByTestId("artifact-card")).toBeInTheDocument();
-    expect(screen.getByText("运营活动原型")).toBeInTheDocument();
-    expect(screen.getByText("已发布 · v3")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByTestId("artifact-card-open"));
-    expect(vscode.postMessage).toHaveBeenCalledWith({
-      command: "openExternal",
-      url: "https://codechat.test/code/artifact/abc",
-    });
-  });
-
-  it("data 与老 metadata 同时存在时 data 优先", () => {
-    renderArtifact({
-      data: { ...PUBLISHED_DATA, artifactTitle: "新标题" },
-      metadata: PUBLISHED_METADATA,
-    });
-
-    expect(screen.getByText("新标题")).toBeInTheDocument();
-    expect(screen.queryByText("运营活动原型")).not.toBeInTheDocument();
-  });
-
-  it("没有 metadata（list / read / 评论等 action）保持文本渲染，不出卡片", () => {
+  it("没有 data（list / read / 评论等 action）保持文本渲染，不出卡片", () => {
     renderArtifact({ shortResult: "Listed 1 artifact (scope: mine)" });
 
     expect(screen.queryByTestId("artifact-card")).not.toBeInTheDocument();
@@ -174,11 +144,11 @@ describe("artifact 卡片", () => {
   });
 
   it("流式中的块不出卡片；失败的发布出错误而不是卡片", () => {
-    renderArtifact({ stage: "streaming", metadata: PUBLISHED_METADATA });
+    renderArtifact({ stage: "streaming", data: PUBLISHED_DATA });
     expect(screen.queryByTestId("artifact-card")).not.toBeInTheDocument();
 
     renderArtifact({
-      metadata: PUBLISHED_METADATA,
+      data: PUBLISHED_DATA,
       error: "Artifact: authentication failed (HTTP 401)",
     });
     expect(screen.queryByTestId("artifact-card")).not.toBeInTheDocument();

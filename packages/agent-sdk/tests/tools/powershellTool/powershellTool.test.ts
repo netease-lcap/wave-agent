@@ -247,7 +247,6 @@ describe("powershellTool", () => {
     expect(result.error).toBeUndefined();
     // 退出码在 `data.exitCode`（原来是 `ToolResult.metadata.exitCode`），正文里不出现。
     expect(result.data).toEqual(expect.objectContaining({ exitCode: 0 }));
-    expect(result.metadata).toBeUndefined();
   });
 
   it("reports a non-zero exit code with the failure text", async () => {
@@ -265,7 +264,6 @@ describe("powershellTool", () => {
     expect(result.success).toBe(false);
     expect(result.error).toBe("Command failed with exit code: 1");
     expect(result.data).toEqual(expect.objectContaining({ exitCode: 1 }));
-    expect(result.metadata).toBeUndefined();
     expect(result.content).toContain("Cannot find path");
   });
 
@@ -484,7 +482,6 @@ describe("powershellTool", () => {
       expect(result.success).toBe(false);
       expect(result.error).toContain("Command timed out after 5s");
       expect(result.data).toEqual(expect.objectContaining({ exitCode: 130 }));
-      expect(result.metadata).toBeUndefined();
     });
 
     it("terminates the process tree when the caller aborts", async () => {
@@ -503,7 +500,6 @@ describe("powershellTool", () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe("Command execution was aborted");
       expect(result.data).toEqual(expect.objectContaining({ exitCode: 130 }));
-      expect(result.metadata).toBeUndefined();
     });
 
     it("aborts immediately when the signal is already aborted", async () => {
@@ -613,7 +609,6 @@ describe("powershellTool", () => {
         expect(result.data).toEqual(
           expect.objectContaining({ exitCode: 130, interrupted: true }),
         );
-        expect(result.metadata).toBeUndefined();
       },
     );
   });

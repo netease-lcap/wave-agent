@@ -131,7 +131,7 @@ describe("convertMessagesForAPI", () => {
     );
   });
 
-  it("renders a data-only tool block with the tool's own renderer (issue #3055 阶段 2)", async () => {
+  it("uses the stored result verbatim (双写：模型当时读到的全文)", async () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),
@@ -148,6 +148,7 @@ describe("convertMessagesForAPI", () => {
               filenames: ["a.ts", "b.ts"],
             },
             stage: "end",
+            result: "Found 2 files\na.ts\nb.ts",
           },
         ],
         timestamp: new Date().toISOString(),
@@ -164,7 +165,7 @@ describe("convertMessagesForAPI", () => {
     });
   });
 
-  it("prefers a stored result over the renderer (老转录 / 事后追加过提示的块)", async () => {
+  it("keeps text appended after the tool ran (事后追加过提示的块)", async () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),

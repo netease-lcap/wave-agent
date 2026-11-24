@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { stripToolResultDataForStorage } from "../../../src/tools/resultData/strip.js";
 import type { BashResultData } from "../../../src/tools/resultData/bash.js";
+import type { PowerShellResultData } from "../../../src/tools/resultData/powershell.js";
 import type {
   ReadImageResultData,
   ReadTextResultData,
@@ -51,6 +52,18 @@ function bashData(): BashResultData {
     persistedOutputPath: "/tmp/wave/output.txt",
     persistedOutputSize: 123456,
     timeoutMs: 120000,
+  };
+}
+
+function powershellData(): PowerShellResultData {
+  return {
+    stdout: "total 0\n-rw-r--r--  1 me me 0 a.txt",
+    stderr: "Shell cwd was reset to /work/src",
+    interrupted: false,
+    exitCode: 1,
+    backgroundTaskId: "task-9",
+    persistedOutputPath: "/tmp/wave/ps-output.txt",
+    persistedOutputSize: 42,
   };
 }
 
@@ -125,6 +138,21 @@ describe("stripToolResultDataForStorage", () => {
     expect(stripped.persistedOutputPath).toBe("/tmp/wave/output.txt");
     expect(stripped.persistedOutputSize).toBe(123456);
     expect(stripped.timeoutMs).toBe(120000);
+  });
+
+  it("PowerShell：与 Bash 同源，stdout / stderr 清成空串，退出码等原样保留", () => {
+    const stripped = stripToolResultDataForStorage(
+      "PowerShell",
+      powershellData(),
+    ) as PowerShellResultData;
+
+    expect(stripped.stdout).toBe("");
+    expect(stripped.stderr).toBe("");
+    expect(stripped.exitCode).toBe(1);
+    expect(stripped.interrupted).toBe(false);
+    expect(stripped.backgroundTaskId).toBe("task-9");
+    expect(stripped.persistedOutputPath).toBe("/tmp/wave/ps-output.txt");
+    expect(stripped.persistedOutputSize).toBe(42);
   });
 
   it("MCP 形状（表外工具）：图片块删掉 data 键，其余键与文本块原样", () => {

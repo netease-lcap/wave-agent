@@ -612,7 +612,6 @@ src/index.ts-3-  return new Application();
     expect(result.data).toEqual(
       expect.objectContaining({ numMatches: 3, appliedOffset: 1 }),
     );
-    expect(result.metadata).toBeUndefined();
 
     // Verify that context was passed as -C
     expect(mockSpawn).toHaveBeenCalledWith(

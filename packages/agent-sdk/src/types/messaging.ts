@@ -93,25 +93,17 @@ export interface ToolBlock {
   /**
    * 工具结果的结构化本体（`ToolResult.data`），与 `result` **同时**落盘。
    *
-   * 两份分工：`result` 是模型当时读到的全文（唯一能发生压缩/恢复的文本来源，
-   * `utils/toolBlockText.ts` 也一律它优先），`data` 是同一份结果的骨架 —— 落盘前
-   * 按工具剥掉了大块载荷（`tools/resultData/strip.ts`，对齐 CC 的
-   * `stripForStorage`）：`Read` 的 `file.content` / `file.base64`、`Bash` 的
-   * `stdout` / `stderr` 是空串，MCP 图片块没有 `data` 键。宿主卡片要的短标量
-   * （行数、退出码、mime …）都还在骨架里。
+   * 两份分工：`result` 是模型当时读到的全文（唯一能发生压缩/恢复的文本来源），
+   * `data` 是同一份结果的骨架 —— 落盘前按工具剥掉了大块载荷
+   * （`tools/resultData/strip.ts`，对齐 CC 的 `stripForStorage`）：`Read` 的
+   * `file.content` / `file.base64`、`Bash` / `PowerShell` 的 `stdout` / `stderr`
+   * 是空串，MCP 图片块没有 `data` 键。宿主卡片要的短标量（行数、退出码、mime …）
+   * 都还在骨架里。
    *
    * 没有 `data` 的块只剩一种：工具没给结构化结果（只给 `content` 的老形态）。
    * 形状由各工具在 `tools/resultData/` 里声明，宿主必须当作未知结构。
    */
   data?: unknown;
-  /**
-   * Structured extras a tool attached to its result (`ToolResult.metadata`).
-   *
-   * **向前兼容字段**：阶段 2 起工具不再填 `metadata`（那些标量已经扁平并入
-   * `data`），新转录里不会有这个键，它只为读老转录保留。宿主要继续把每个键当成
-   * 可选的，缺了或形状不对就退回文本渲染 —— CLI 则完全不读它。
-   */
-  metadata?: Record<string, unknown>;
   /**
    * Tool execution stage:
    * - 'start': Tool call initiated (from AI service streaming)

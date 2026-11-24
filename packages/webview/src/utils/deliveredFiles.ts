@@ -41,9 +41,8 @@ function pushFile(files: DeliveredFile[], entry: unknown): void {
 /**
  * Read the structured list a `SendUserFile` result attached.
  *
- * 阶段 2 起工具把这份列表写进 `ToolBlock.data`（`data.attachments`，形状对齐
- * Claude Code 的 `SendUserFile` outputSchema），`ToolBlock.metadata`
- * （`metadata.files`）只剩读老转录的向前兼容通道 —— 新转录里没有那个键。
+ * 工具把这份列表写进 `ToolBlock.data`（`data.attachments`，形状对齐 Claude Code
+ * 的 `SendUserFile` outputSchema）。
  *
  * Every field is re-derived defensively: an older SDK, a hand-edited transcript or a
  * tool that changed its shape must degrade to "render what we can", never to a crash.
@@ -57,22 +56,13 @@ export function readDeliveredFiles(toolBlock: ToolBlock): DeliveredFiles {
     toolBlock.data && typeof toolBlock.data === "object"
       ? (toolBlock.data as Record<string, unknown>)
       : {};
-  const legacy = toolBlock.metadata ?? {};
-  const entries = Array.isArray(data.attachments)
-    ? data.attachments
-    : Array.isArray(legacy.files)
-      ? legacy.files
-      : [];
+  const entries = Array.isArray(data.attachments) ? data.attachments : [];
 
   const files: DeliveredFile[] = [];
   for (const entry of entries) pushFile(files, entry);
 
   const caption =
-    typeof data.caption === "string" && data.caption
-      ? data.caption
-      : typeof legacy.caption === "string" && legacy.caption
-        ? legacy.caption
-        : undefined;
+    typeof data.caption === "string" && data.caption ? data.caption : undefined;
 
   return { files, caption };
 }

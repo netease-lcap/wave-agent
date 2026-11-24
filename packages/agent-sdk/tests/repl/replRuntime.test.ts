@@ -478,28 +478,6 @@ describe("$ — the shell template", () => {
     expect(result.logs).toEqual(["ShellError 2"]);
   });
 
-  it("still reads the exit code off metadata for a pre-phase-2 shape", async () => {
-    // `data.exitCode` is the authority since issue #3055 阶段 2; `metadata` is
-    // only the forward-compat fallback for a result recorded before that move.
-    const h = harness(() => ({
-      success: false,
-      content: "old shape",
-      error: "Command failed with exit code: 7",
-      metadata: { exitCode: 7 },
-    }));
-
-    const result = await runRepl(
-      h,
-      `
-      try { await $\`false\`; } catch (e) { self.log(String(e.exitCode)); }
-      return "after";
-    `,
-    );
-
-    expect(result.ok).toBe(true);
-    expect(result.logs).toEqual(["7"]);
-  });
-
   it("hands a command that outlived its wait back as a running task", async () => {
     const h = harness(() => ({
       success: true,
