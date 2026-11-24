@@ -124,6 +124,7 @@ export const skillTool: ToolPlugin = {
             prompt: skillResult.content,
             subagent_type: agentType,
             allowedTools: skillResult.allowedTools,
+            disallowedTools: skillResult.disallowedTools,
             model: skillMetadata.model,
           },
           false, // run_in_background
@@ -208,6 +209,15 @@ export const skillTool: ToolPlugin = {
       // Add temporary rules if allowedTools are present
       if (result.allowedTools && result.allowedTools.length > 0) {
         context.permissionManager?.addTemporaryRules(result.allowedTools);
+      }
+      // The skill's `disallowed-tools` are already registered by
+      // `executeSkill` (it needs them in place before the skill's own `!`cmd``
+      // blocks run); this is the same list applied again for symmetry with the
+      // allow side above, and neither adds a duplicate.
+      if (result.disallowedTools && result.disallowedTools.length > 0) {
+        context.permissionManager?.addTemporaryDeniedRules(
+          result.disallowedTools,
+        );
       }
 
       return {

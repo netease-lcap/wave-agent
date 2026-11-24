@@ -338,6 +338,15 @@ export class SlashCommandManager {
                     prompt: forkContent,
                     subagent_type: subagentType,
                     model: skill.model,
+                    // A `context: fork` skill's `disallowed-tools` travel into
+                    // the subagent that runs it: the ban belongs to the skill,
+                    // not to the conversation it was started from, and Claude
+                    // Code applies it on the fork path too (`iun` in the
+                    // 2.1.325 bundle layers `alwaysDenyRules` in the same way
+                    // as the inline path).
+                    ...(skill.disallowedTools?.length
+                      ? { disallowedTools: skill.disallowedTools }
+                      : {}),
                   },
                   false,
                   () => {

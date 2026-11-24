@@ -318,6 +318,21 @@ describe("SlashCommandManager", () => {
       });
     });
 
+    it("falls back to description for the menu row", () => {
+      slashCommandManager.registerSkillCommands([
+        {
+          name: "plain-skill",
+          description: "Only a description",
+          type: "project",
+          skillPath: "/p",
+        },
+      ] as unknown as SkillMetadata[]);
+
+      expect(slashCommandManager.getCommand("plain-skill")?.description).toBe(
+        "Skill: Only a description",
+      );
+    });
+
     it("should tag skill commands with their UI source (personal→user)", () => {
       const skills = [
         {

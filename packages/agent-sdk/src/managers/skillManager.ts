@@ -692,6 +692,7 @@ export class SkillManager extends EventEmitter {
     content: string;
     context?: SkillInvocationContext;
     allowedTools?: string[];
+    disallowedTools?: string[];
   }> {
     const { skill_name } = args;
 
@@ -713,6 +714,14 @@ export class SkillManager extends EventEmitter {
     if (permissionManager && allowedTools?.length) {
       permissionManager.addTemporaryRules(allowedTools);
     }
+    // `disallowed-tools` lands in the same place and the same moment, because
+    // deny is resolved before allow: whatever this skill bans is banned even
+    // for a tool it also listed in `allowed-tools` (spec ecosystem/agent-skills
+    //「技能里的工具黑名单」).
+    const disallowedTools = prepared.skill.disallowedTools;
+    if (permissionManager && disallowedTools?.length) {
+      permissionManager.addTemporaryDeniedRules(disallowedTools);
+    }
 
     try {
       const finalContent = await this.executeBashInSkillContent(
@@ -727,6 +736,7 @@ export class SkillManager extends EventEmitter {
           skillName: skill_name,
         },
         allowedTools: prepared.skill.allowedTools,
+        disallowedTools: prepared.skill.disallowedTools,
       };
     } catch (error) {
       logger?.error(`Failed to execute skill '${skill_name}':`, error);
@@ -897,6 +907,7 @@ export class SkillManager extends EventEmitter {
         type: skill.type,
         skillPath: skill.skillPath,
         allowedTools: skill.allowedTools,
+        disallowedTools: skill.disallowedTools,
         context: skill.context,
         agent: skill.agent,
         model: skill.model,

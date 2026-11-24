@@ -20,6 +20,16 @@ export interface SkillMetadata {
    */
   skillPath: string;
   allowedTools?: string[];
+  /**
+   * Tools this skill must **not** use while it runs (frontmatter
+   * `disallowed-tools`), in the same rule syntax as `allowedTools`.
+   *
+   * Registered as temporary **deny** rules for the turn, so it beats
+   * `allowedTools` when both name the same tool — deny is checked first, as in
+   * Claude Code, where `allowed-tools` goes to `alwaysAllowRules` and
+   * `disallowed-tools` to `alwaysDenyRules` (two buckets, deny resolved first).
+   */
+  disallowedTools?: string[];
   context?: "fork";
   agent?: string;
   model?: string;
@@ -48,6 +58,10 @@ export interface SkillFrontmatter {
   name: string;
   description: string;
   "allowed-tools"?: string | string[];
+  /** Same shape as `allowed-tools`; wins over it when both name a tool. */
+  "disallowed-tools"?: string | string[];
+  /** Camel-case alias of `disallowed-tools`, as in Claude Code's schema. */
+  disallowedTools?: string | string[];
   context?: "fork";
   agent?: string;
   model?: string;

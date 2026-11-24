@@ -1111,6 +1111,57 @@ describe("SkillManager", () => {
       );
     });
 
+    // spec ecosystem/agent-skills「技能里的工具黑名单」
+    it("registers disallowed-tools before running injected commands and returns them", async () => {
+      const addTemporaryRules = vi.fn();
+      const addTemporaryDeniedRules = vi.fn();
+      const permissionManager = {
+        getCurrentEffectiveMode: vi.fn().mockReturnValue("default"),
+        createContext: vi.fn().mockReturnValue({}),
+        checkPermission: vi.fn().mockResolvedValue({ behavior: "allow" }),
+        addTemporaryRules,
+        addTemporaryDeniedRules,
+      };
+      container.register(
+        "PermissionManager",
+        permissionManager as unknown as PermissionManager,
+      );
+
+      const mockSkill: Skill = {
+        name: "no-push-skill",
+        description: "A skill that may not push",
+        type: "personal",
+        skillPath: "/path/to/skill",
+        content:
+          "---\nname: no-push-skill\ndescription: d\n---\n\nResult: !`git push`",
+        frontmatter: {
+          name: "no-push-skill",
+          description: "d",
+          "disallowed-tools": ["Bash(git push*)"],
+        },
+        disallowedTools: ["Bash(git push*)"],
+        isValid: true,
+        errors: [],
+      };
+
+      vi.mocked(skillManager.loadSkill).mockResolvedValue(mockSkill);
+      vi.mocked(executeBashCommands).mockResolvedValue([
+        { command: "git push", output: "", exitCode: 0 },
+      ]);
+
+      const result = await skillManager.executeSkill({
+        skill_name: "no-push-skill",
+      });
+
+      // In force before the skill's own injected commands are judged.
+      expect(addTemporaryDeniedRules).toHaveBeenCalledWith(["Bash(git push*)"]);
+      expect(addTemporaryDeniedRules.mock.invocationCallOrder[0]).toBeLessThan(
+        vi.mocked(executeBashCommands).mock.invocationCallOrder[0],
+      );
+      // The Skill tool applies the same list, and a forked subagent inherits it.
+      expect(result.disallowedTools).toEqual(["Bash(git push*)"]);
+    });
+
     it("leaves injected commands ungated when no permission manager is registered", async () => {
       const mockSkill: Skill = {
         name: "ungated-skill",

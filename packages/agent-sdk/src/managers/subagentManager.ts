@@ -502,6 +502,14 @@ export class SubagentManager {
       prompt: string;
       subagent_type: string;
       allowedTools?: string[];
+      /**
+       * Rules the subagent must not use, registered as temporary deny rules in
+       * its own PermissionManager — the fork base of a `context: fork` skill
+       * passes that skill's `disallowed-tools` here, so the ban travels with
+       * the skill into the subagent (spec ecosystem/agent-skills「技能里的工具
+       * 黑名单」). It is a deny list, so it beats `allowedTools` too.
+       */
+      disallowedTools?: string[];
       model?: string;
       stream?: boolean;
       permissionModeOverride?: PermissionMode;
@@ -672,6 +680,19 @@ export class SubagentManager {
           { rules: parameters.allowedTools },
         );
         subagentPermissionManager.addTemporaryRules(parameters.allowedTools);
+      }
+
+      // Same moment, same mechanism, opposite list: a forked skill's
+      // `disallowed-tools` must be in force before the subagent's first turn,
+      // and deny outranks the allow rules just registered above.
+      if (parameters.disallowedTools) {
+        logger.debug(
+          `Adding ${parameters.disallowedTools.length} temporary deny rules to subagent ${subagentId}`,
+          { rules: parameters.disallowedTools },
+        );
+        subagentPermissionManager.addTemporaryDeniedRules(
+          parameters.disallowedTools,
+        );
       }
 
       // Create isolated MessageManager for the subagent
