@@ -39,6 +39,9 @@ minimumReleaseAgeExclude:
 # 各包 package.json 写 `"vitest": "catalog:"`。catalogMode: prefer 让 `pnpm add`
 # 也优先落到 catalog 版本，避免新包又写一份独立范围把版本漂开。
 catalog:
+  # SKILL.md 的 `hooks` 字段是嵌套 YAML（映射 → 映射序列），手写子集解析器
+  # 表达不了，frontmatter 解析改用官方 yaml（见 utils/frontmatterYaml.ts）。
+  yaml: ^2.8.1
   vitest: ^5.1.0
   tsx: ^4.20.4
   # type-check 与 build 的执行者是 tsrs（TypeScript 的 Rust 移植），不是 tsc：

@@ -129,7 +129,13 @@ function normalizeTools(
   value: FrontmatterValue | undefined,
 ): string[] | undefined {
   if (Array.isArray(value)) {
-    return value.map((item) => item.trim()).filter(Boolean);
+    // Frontmatter values nest now (a skill's `hooks` table needs it), so a
+    // list item is only a tool name when it is a scalar — a nested mapping in
+    // `tools:` is not one.
+    return value
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter(Boolean);
   }
   if (typeof value !== "string") {
     return undefined;

@@ -1,20 +1,33 @@
+import { parse } from "yaml";
+import { logger } from "./globalLogger.js";
+
 /**
  * Shared YAML frontmatter reader for wave's markdown artifacts: skills
  * (SKILL.md), subagents, custom slash commands, memory rules and memory files.
  *
- * Wave ships no YAML dependency, so this is a hand-rolled parser for the subset
- * those files actually use: `key: value`, block lists (`key:` + indented
- * `- item`), block scalars (`key: >-` / `key: |` and their chomping variants)
- * and indented multi-line plain scalars. Block scalars matter in practice — a
- * folded `description: >-` used to be read as the literal string ">-", which
- * silently threw away the whole "when to use this" text (see spec
- * `ecosystem/agent-skills` 场景 2, `multi-agent/subagent` 场景 6,
- * `ui/slash-commands` 场景 3, `core/memory-management` 场景 4/13).
+ * The block is parsed with the `yaml` package, because frontmatter nests now: a
+ * skill's `hooks` table is a mapping of events to lists of hook configurations,
+ * which the flat `key: value` reader this module used to be could not express
+ * (spec `automation/skill-hooks`).
  *
- * Values are strings or string arrays only — no boolean/number coercion — so
- * callers comparing against `"true"` or `parseInt`-ing the value keep working.
+ * Leaves are still strings all the way down — lists and tables nest, scalar
+ * values do not coerce: `true` reads as "true", `30` as "30", a key with no
+ * value as "". All five artifacts compare against "true" or parseInt the value,
+ * so handing out a real boolean or number would silently change their behavior.
+ * Timestamps are not resolved to Date objects either (core schema): a
+ * `released: 2024-01-02` line stays the string, not midnight UTC.
+ *
+ * A block that is not valid YAML is not half-read: the whole frontmatter comes
+ * back empty, so the artifact that owns it is rejected with a warning instead of
+ * silently losing a field or two. That is what Claude Code does (a skill whose
+ * frontmatter fails to parse is skipped, not loaded with defaults), and the one
+ * file this used to punish — the built-in `code-review` skill, whose description
+ * carries an unquoted colon — now quotes its value.
  */
-export type FrontmatterValue = string | string[];
+export type FrontmatterValue =
+  | string
+  | FrontmatterValue[]
+  | { [key: string]: FrontmatterValue };
 export type ParsedFrontmatter = Record<string, FrontmatterValue>;
 
 const FRONTMATTER_REGEX =
@@ -38,199 +51,69 @@ export function splitFrontmatter(content: string): {
 
 /**
  * Parse a frontmatter block (without the `---` delimiters) into key/value
- * pairs. Unparseable input yields an empty object; callers that require fields
- * report the missing ones themselves.
+ * pairs. Never throws: a block that is not valid YAML, or that parses to
+ * something other than a table (a bare scalar, a list, nothing at all), yields
+ * an empty object — the caller reports the missing required fields, which is how
+ * a broken frontmatter takes its artifact down.
  */
 export function parseFrontmatterYaml(yamlContent: string): ParsedFrontmatter {
-  const frontmatter: ParsedFrontmatter = {};
-
+  let document: unknown;
   try {
-    const lines = yamlContent.split("\n");
-    let currentKey: string | null = null;
-
-    for (let index = 0; index < lines.length; index++) {
-      const raw = lines[index].replace(/\r$/, "");
-      const trimmed = raw.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-
-      const indent = raw.length - raw.trimStart().length;
-
-      // Block list item belonging to the key above it.
-      if (trimmed.startsWith("-") && currentKey) {
-        const value = stripQuotes(trimmed.substring(1).trim());
-        if (value) {
-          const existing = frontmatter[currentKey];
-          if (Array.isArray(existing)) {
-            existing.push(value);
-          } else {
-            frontmatter[currentKey] = [value];
-          }
-        }
-        continue;
-      }
-
-      const colonIndex = trimmed.indexOf(":");
-      if (colonIndex === -1) continue;
-
-      const key = trimmed.substring(0, colonIndex).trim();
-      if (!key) continue;
-      const inlineValue = trimmed.substring(colonIndex + 1).trim();
-      currentKey = key;
-
-      // Block scalar: `>-`, `|`, `>+`, `|-`, ...
-      const blockIndicator = /^([>|])([-+]?)$/.exec(inlineValue);
-      if (blockIndicator) {
-        const block = readBlockScalar(
-          lines,
-          index + 1,
-          indent,
-          blockIndicator[1] as ">" | "|",
-        );
-        // Same treatment as inline scalars: chomping indicators only decide how
-        // the block's line breaks are trimmed, and a metadata scalar never
-        // keeps leading/trailing whitespace.
-        frontmatter[key] = block.text.trim();
-        index = block.nextIndex - 1;
-        continue;
-      }
-
-      if (inlineValue) {
-        frontmatter[key] = stripQuotes(inlineValue);
-        continue;
-      }
-
-      // Key with no inline value: either an indented block list or an indented
-      // (multi-line) scalar.
-      const continuation = readIndentedValue(lines, index + 1, indent);
-      index = continuation.nextIndex - 1;
-      if (continuation.items) {
-        frontmatter[key] = continuation.items;
-      } else {
-        frontmatter[key] = continuation.text ?? [];
-      }
-    }
-  } catch {
-    // Return whatever was parsed so far — callers validate required fields.
+    document = parse(yamlContent);
+  } catch (error) {
+    // Same diagnosis Claude Code logs: the artifact is skipped, but the reason
+    // ("Nested mappings are not allowed in compact mappings at line 4, ...")
+    // has to be discoverable.
+    logger.warn(
+      `Failed to parse YAML frontmatter: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return {};
   }
-
+  if (!isTable(document)) return {};
+  const frontmatter: ParsedFrontmatter = {};
+  const visiting = new Set<object>();
+  for (const [key, value] of Object.entries(document)) {
+    frontmatter[key] = toFrontmatterValue(value, visiting);
+  }
   return frontmatter;
 }
 
-function stripQuotes(value: string): string {
-  return value.replace(/^["']|["']$/g, "");
+/**
+ * Normalize one parsed node: lists and tables keep their shape, every leaf
+ * becomes a string. `visiting` holds the containers on the current path so an
+ * anchor pointing back at its own parent (YAML aliases can build real cycles)
+ * becomes "" instead of recursing forever.
+ */
+function toFrontmatterValue(
+  value: unknown,
+  visiting: Set<object>,
+): FrontmatterValue {
+  if (typeof value === "string") return value;
+  if (value === null || value === undefined) return "";
+  if (Array.isArray(value)) {
+    if (visiting.has(value)) return "";
+    visiting.add(value);
+    const list = value.map((item) => toFrontmatterValue(item, visiting));
+    visiting.delete(value);
+    return list;
+  }
+  if (isTable(value)) {
+    if (visiting.has(value)) return "";
+    visiting.add(value);
+    const table: { [key: string]: FrontmatterValue } = {};
+    for (const [key, item] of Object.entries(value)) {
+      table[key] = toFrontmatterValue(item, visiting);
+    }
+    visiting.delete(value);
+    return table;
+  }
+  return String(value);
 }
 
-/**
- * Fold a block scalar's lines the way YAML does: `|` keeps line breaks, `>`
- * folds a single break into a space and turns each blank line into one line
- * break (a blank line is a paragraph break, not two).
- */
-function foldBlockLines(lines: string[], indicator: ">" | "|"): string {
-  if (indicator === "|") return lines.join("\n");
-
-  let text = "";
-  for (let index = 0; index < lines.length; index++) {
-    const line = lines[index];
-    if (line === "") {
-      let blanks = 0;
-      while (lines[index] === "") {
-        blanks++;
-        index++;
-      }
-      index--;
-      text += "\n".repeat(blanks);
-      continue;
-    }
-    text += line;
-    if (index + 1 < lines.length && lines[index + 1] !== "") {
-      text += " ";
-    }
+function isTable(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
   }
-  return text;
-}
-
-/**
- * Read the block scalar that starts at `startIndex` (the line after its key).
- * Lines belong to the block while they are blank or indented deeper than the
- * key; the block's own indentation is taken from its first non-blank line.
- */
-function readBlockScalar(
-  lines: string[],
-  startIndex: number,
-  keyIndent: number,
-  indicator: ">" | "|",
-): { text: string; nextIndex: number } {
-  let index = startIndex;
-  let baseIndent: number | null = null;
-  const collected: string[] = [];
-
-  while (index < lines.length) {
-    const raw = lines[index].replace(/\r$/, "");
-    if (!raw.trim()) {
-      // Blank lines before the first content line belong to the YAML document,
-      // not to the scalar; afterwards they are paragraph breaks.
-      if (baseIndent !== null) collected.push("");
-      index++;
-      continue;
-    }
-    const indent = raw.length - raw.trimStart().length;
-    if (indent <= keyIndent) break;
-    if (baseIndent === null) baseIndent = indent;
-    if (indent < baseIndent) break;
-    collected.push(raw.slice(baseIndent));
-    index++;
-  }
-
-  // Trailing blank lines belong to the following key, not to the scalar's
-  // content (chomping decides how many line breaks survive).
-  while (collected.length > 0 && collected[collected.length - 1] === "") {
-    collected.pop();
-  }
-
-  if (collected.length === 0) {
-    return { text: "", nextIndex: index };
-  }
-
-  return {
-    text: foldBlockLines(collected, indicator),
-    nextIndex: index,
-  };
-}
-
-/**
- * Read the value of a key whose value starts on the following lines: an
- * indented block list (`- item`) or an indented multi-line plain scalar (folded
- * with spaces).
- */
-function readIndentedValue(
-  lines: string[],
-  startIndex: number,
-  keyIndent: number,
-): { items?: string[]; text?: string; nextIndex: number } {
-  let index = startIndex;
-  const items: string[] = [];
-  const textLines: string[] = [];
-  let sawListItem = false;
-
-  while (index < lines.length) {
-    const raw = lines[index].replace(/\r$/, "");
-    if (!raw.trim()) break;
-    const indent = raw.length - raw.trimStart().length;
-    if (indent <= keyIndent) break;
-
-    const trimmed = raw.trim();
-    if (trimmed.startsWith("- ")) {
-      sawListItem = true;
-      items.push(stripQuotes(trimmed.substring(1).trim()));
-    } else if (sawListItem) {
-      break;
-    } else {
-      textLines.push(trimmed);
-    }
-    index++;
-  }
-
-  if (sawListItem) return { items, nextIndex: index };
-  if (textLines.length === 0) return { nextIndex: index };
-  return { text: textLines.join(" "), nextIndex: index };
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }

@@ -175,7 +175,10 @@ description: |
 # Test Skill`);
 
       const literal = parseSkillFile("/path/to/test-skill/SKILL.md");
-      expect(literal.skillMetadata.description).toBe("第一行\n第二行");
+      // Chomping belongs to the YAML parser now: a `|` block keeps its final
+      // line break, `|-` strips it. The hand-rolled reader trimmed both, so the
+      // two forms used to be indistinguishable.
+      expect(literal.skillMetadata.description).toBe("第一行\n第二行\n");
 
       mockReadFileSync.mockReturnValue(`---
 name: test-skill

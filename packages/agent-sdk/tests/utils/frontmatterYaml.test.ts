@@ -103,3 +103,104 @@ describe("parseFrontmatterYaml", () => {
     ).toEqual({ title: "Test", key: "value" });
   });
 });
+
+/**
+ * The parser is the `yaml` package now (a skill's `hooks` nests, which the old
+ * hand-rolled subset could not express), but the contract the five artifacts
+ * read is unchanged: scalars come back as strings. A block that is not valid
+ * YAML comes back empty, exactly as in Claude Code, which skips a skill whose
+ * frontmatter fails to parse rather than loading it with whatever it could read.
+ */
+describe("parseFrontmatterYaml on the yaml package", () => {
+  it("keeps a mapping → list → mapping tree (a skill's hooks)", () => {
+    const yaml = [
+      "name: demo",
+      "hooks:",
+      "  PostToolUse:",
+      "    - matcher: Bash",
+      "      hooks:",
+      "        - type: command",
+      "          command: node src/collect.mjs",
+      "          timeout: 30",
+      "          once: true",
+    ].join("\n");
+
+    expect(parseFrontmatterYaml(yaml)).toEqual({
+      name: "demo",
+      hooks: {
+        PostToolUse: [
+          {
+            matcher: "Bash",
+            hooks: [
+              {
+                type: "command",
+                command: "node src/collect.mjs",
+                // Strings even here: the hook parser converts them back, and
+                // every other artifact compares against "true" / parseInts them.
+                timeout: "30",
+                once: "true",
+              },
+            ],
+          },
+        ],
+      },
+    });
+  });
+
+  it("reads flow style, which the previous subset reader could not", () => {
+    expect(
+      parseFrontmatterYaml(
+        "tools: [Read, Bash]\nhooks: {Stop: [{hooks: [{type: command, command: lint}]}]}",
+      ),
+    ).toEqual({
+      tools: ["Read", "Bash"],
+      hooks: { Stop: [{ hooks: [{ type: "command", command: "lint" }] }] },
+    });
+  });
+
+  it("turns every scalar into a string and an empty value into an empty string", () => {
+    const yaml = [
+      "disable-model-invocation: true",
+      "user-invocable: false",
+      "timeout: 30",
+      "ratio: 1.5",
+      'quoted-number: "30"',
+      "empty:",
+      "explicit-null: null",
+      "updated: 2024-01-02",
+    ].join("\n");
+
+    expect(parseFrontmatterYaml(yaml)).toEqual({
+      "disable-model-invocation": "true",
+      "user-invocable": "false",
+      timeout: "30",
+      ratio: "1.5",
+      "quoted-number": "30",
+      empty: "",
+      "explicit-null": "",
+      // No timestamp resolution: the core schema leaves the date as written.
+      updated: "2024-01-02",
+    });
+  });
+
+  it("leaves chomping to the parser: a literal block keeps its breaks and its clip", () => {
+    expect(parseFrontmatterYaml("description: |\n  第一行\n  第二行")).toEqual({
+      description: "第一行\n第二行\n",
+    });
+  });
+
+  it("returns {} for a block that is not valid YAML", () => {
+    // An unquoted ": " inside a plain scalar, an unterminated flow sequence, a
+    // duplicate key — the parser rejects each of them, and the whole block goes
+    // with it. Reading such a block partially would load the artifact with some
+    // fields and not others; Claude Code drops the artifact instead, and so do we.
+    expect(parseFrontmatterYaml("description: Use this when: foo")).toEqual({});
+    expect(parseFrontmatterYaml("name: demo\na: [1")).toEqual({});
+    expect(() => parseFrontmatterYaml("name: a\nname: b")).not.toThrow();
+    expect(parseFrontmatterYaml("name: a\nname: b")).toEqual({});
+  });
+
+  it("returns {} for an empty block", () => {
+    expect(parseFrontmatterYaml("")).toEqual({});
+  });
+});
