@@ -20,6 +20,7 @@ import {
   ShellProcessReaper,
   type LeftoverProcessGroup,
 } from "../../src/managers/shellProcessReaper.js";
+import { toPosixPath } from "../../src/utils/path.js";
 import { isProcessGroupAlive } from "../../src/utils/processGroupProbe.js";
 
 // Agent.create() must not reach the network or OTEL.
@@ -103,6 +104,49 @@ function killGroupQuietly(pgid: number | undefined): void {
   } catch {
     // already gone
   }
+}
+
+/**
+ * The pid the shell wrote down for the process it backgrounded.
+ *
+ * Throws on an empty or non-numeric file: without this handle the leftover
+ * cannot be stopped, so silence here would just be a leaked `sleep 60`.
+ */
+function readLeftoverPid(file: string): number {
+  const raw = fs.readFileSync(file, "utf8").trim();
+  const pid = Number(raw);
+  if (!Number.isInteger(pid) || pid <= 1) {
+    throw new Error(`no leftover pid in ${file} (read ${JSON.stringify(raw)})`);
+  }
+  return pid;
+}
+
+/**
+ * Kill a leftover by the pid its shell reported, and wait until it is gone.
+ *
+ * Windows offers neither a process group nor a live parent to walk from, so the
+ * pid is the only handle — and it is an *MSYS* pid. `kill` **inside** Git Bash is
+ * what makes that usable: the MSYS runtime is the one place that maps its own pid
+ * space onto Windows pids, so nothing here has to reproduce the translation
+ * (`/proc/<pid>/winpid` read right after a fork can still hand back the slot's
+ * previous occupant — exactly the kind of guess that would kill a stranger).
+ */
+async function killLeftoverShellProcess(
+  dir: string,
+  pid: number,
+): Promise<void> {
+  await bashTool.execute({ command: `kill -9 ${pid}` }, makeContext(dir));
+  await vi.waitFor(
+    async () => {
+      const probe = await bashTool.execute(
+        { command: `kill -0 ${pid}` },
+        makeContext(dir),
+      );
+      // `kill -0` only exits 0 while the pid still resolves.
+      expect(probe.success).toBe(false);
+    },
+    { timeout: 5000 },
+  );
 }
 
 describe("ShellProcessReaper with real shells", () => {
@@ -248,14 +292,35 @@ describe("ShellProcessReaper with real shells", () => {
 
   // Scenario 7: Windows has no process groups and the shell's pid cannot drive
   // `taskkill /T` once the shell is gone, so this is an explicit no-op there.
+  //
+  // "Records nothing" is the contract, so the leftover `sleep 60` is nobody's to
+  // kill — left alone it outlives the run by a full minute. Nothing on the OS
+  // side holds it either (no group, and the shell that owned it is gone), so the
+  // shell writes down the pid of what it just backgrounded and the teardown
+  // stops exactly that one. The backgrounded part of the command — a real
+  // `nohup sleep 60` that really escapes its shell — is untouched; only the pid
+  // bookkeeping is added around it.
   it.skipIf(!isWindows)("records nothing on Windows", async () => {
     const instance = reaper();
+    const dir = workdir();
+    const leftoverPidFile = path.join(dir, "leftover.pid");
     const result = await bashTool.execute(
-      { command: "nohup sleep 60 >/dev/null 2>&1 & echo started" },
-      makeContext(workdir(), instance),
+      {
+        command:
+          `nohup sleep 60 >/dev/null 2>&1 & echo $! > '${toPosixPath(leftoverPidFile)}'; ` +
+          `echo started`,
+      },
+      makeContext(dir, instance),
     );
-    expect(result.success).toBe(true);
-    expect(instance.getRecordedGroups()).toHaveLength(0);
+    // The handle comes first: a red assertion below must not leave the `sleep`
+    // running for the rest of the minute.
+    const leftoverPid = readLeftoverPid(leftoverPidFile);
+    try {
+      expect(result.success).toBe(true);
+      expect(instance.getRecordedGroups()).toHaveLength(0);
+    } finally {
+      await killLeftoverShellProcess(dir, leftoverPid);
+    }
   });
 });
 
