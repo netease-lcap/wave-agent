@@ -790,6 +790,40 @@ button.reasoning-header {
   color: var(--vscode-textLink-activeForeground);
 }
 
+/* ---- REPL 工具块 ----
+   （specs/ui/message-rendering-system.md「REPL 工具块的脚本与输出」）
+   几何与配色沿用上面 Bash 的 unified 卡片，只有两处不同：脚本区比命令行高
+   （一段脚本常有几十行，120px 只够看开头），返回值单独占一行、带一枚 `=>`
+   前缀好和 `self.log` 的输出分开。 */
+.repl-block .bash-command-input {
+  max-height: 320px;
+  overflow-x: auto;
+}
+
+/* 脚本是代码：长行横滚，不折行（与消息里的围栏代码块同形）。Bash 那套
+   `pre-wrap` 对「一条命令偶尔超长」是对的，但一段代码每行都可能超宽，折行会把
+   40 行脚本变成 80+ 视觉行、把纵向的上限耗光。输出区不跟：终端输出折行才是对的。 */
+.repl-block .bash-command {
+  flex: 1 0 auto;
+  white-space: pre;
+  word-break: normal;
+}
+
+.repl-result {
+  margin-top: 2px;
+}
+
+.repl-result-arrow {
+  color: var(--vscode-descriptionForeground);
+  user-select: none;
+}
+
+.repl-notice {
+  margin-top: 2px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+}
+
 /* ---- 终端颜色（ANSI SGR）----
    命令输出不剥转义序列（specs/core/bash-tools.md「ANSI 颜色代码」），由
    utils/ansiText.ts 渲染成 ansi-fg-* / ansi-bg-* / ansi-bold 等类。命名色跟随
