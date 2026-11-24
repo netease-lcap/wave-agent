@@ -308,11 +308,13 @@ describe("data → 文本渲染器 golden", () => {
       ).toBeUndefined();
     });
 
-    it("REPL 的历史名 Eval 与 REPL 命中同一个渲染器", () => {
-      const data = { ok: true, stdout: ["hi"] };
-      expect(renderToolResultData("Eval", data)).toBe(
-        renderToolResultData("REPL", data),
-      );
+    it("`Eval` 不是 REPL 的历史名，表里查不到", () => {
+      // `Eval` 是 Claude Code 自己那个 tool 的名字，我们从未注册过（历史是
+      // `Exec` → `REPL`），所以这条名字只能退回 `ToolBlock.result`，不能借用
+      // REPL 的渲染器。
+      expect(
+        renderToolResultData("Eval", { ok: true, stdout: ["hi"] }),
+      ).toBeUndefined();
     });
 
     it("data 缺失时返回 undefined（阶段 2 读老转录靠它退回 result）", () => {

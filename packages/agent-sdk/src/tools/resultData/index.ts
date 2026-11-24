@@ -41,7 +41,6 @@ import {
   POLL_TOOL_NAME,
   POWERSHELL_TOOL_NAME,
   READ_TOOL_NAME,
-  REPL_TOOL_ALIASES,
   SEND_USER_FILE_TOOL_NAME,
   SKILL_TOOL_NAME,
   TASK_CREATE_TOOL_NAME,
@@ -217,12 +216,6 @@ const RENDERERS: Record<string, ToolResultRenderer> = {
     renderWorkflowResultData(data as WorkflowResultData),
   [WRITE_TOOL_NAME]: (data) => renderWriteResultData(data as WriteResultData),
 };
-
-// `REPL` 的历史名（`REPL_TOOL_ALIASES`，老转录里的 tool block 叫 `Eval`）：阶段 2
-// 按名字查表，别名也得命中同一份渲染器，否则老会话的这段结果只能退回 `content`。
-for (const alias of REPL_TOOL_ALIASES) {
-  RENDERERS[alias] = RENDERERS[REPL_TOOL_NAME];
-}
 
 /**
  * 按工具名把 `data` 渲染成文本。

@@ -44,17 +44,12 @@ export const SEND_USER_FILE_TOOL_NAME = "SendUserFile";
 /**
  * Name of the REPL tool — the carrier of the on-demand tool pool.
  *
- * The tool used to be `Exec`; that spelling is not registered any more, and
- * `REPL_TOOL_ALIASES` carries the names that still are.
+ * The only name it answers to. It used to be `Exec`, and Claude Code spells the
+ * same tool `Eval`; neither has ever been a name of ours, so a `--tools` entry,
+ * a permission rule or a transcript naming anything but `REPL` is an unknown
+ * tool rather than this one.
  */
 export const REPL_TOOL_NAME = "REPL";
-
-/**
- * Other names the same tool answers to. `Eval` is the spelling Claude Code
- * accepted before `REPL`, so hosts register the tool under every name here and
- * an older settings file or permission rule naming `Eval` still lands on it.
- */
-export const REPL_TOOL_ALIASES = ["Eval"] as const;
 
 /**
  * The explicit wait of the REPL's async lane.

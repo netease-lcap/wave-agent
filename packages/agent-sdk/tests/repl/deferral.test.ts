@@ -69,19 +69,32 @@ describe("isDeferredTool", () => {
     // operator editing a list cannot accidentally let the sandbox call its own
     // carrier, which would be a script spawning a script.
     expect(STRUCTURAL_NON_DEFERRABLE).toContain("REPL");
-    expect(STRUCTURAL_NON_DEFERRABLE).toContain("Eval");
-    for (const name of ["REPL", "Eval"]) {
-      expect(
-        isDeferredTool(
-          { name, defer: true, isMcp: true },
-          new Set(STRUCTURAL_NON_DEFERRABLE),
-        ),
-      ).toBe(false);
-      // ... and the same holds with the core-tool switch on.
-      expect(
-        isDeferredTool({ name }, new Set(STRUCTURAL_NON_DEFERRABLE), true),
-      ).toBe(false);
-    }
+    expect(
+      isDeferredTool(
+        { name: "REPL", defer: true, isMcp: true },
+        new Set(STRUCTURAL_NON_DEFERRABLE),
+      ),
+    ).toBe(false);
+    // ... and the same holds with the core-tool switch on.
+    expect(
+      isDeferredTool(
+        { name: "REPL" },
+        new Set(STRUCTURAL_NON_DEFERRABLE),
+        true,
+      ),
+    ).toBe(false);
+  });
+
+  it("does not exempt `Eval` — Claude Code's spelling, never a name of ours", () => {
+    // Nothing is registered as `Eval`, so there is no carrier to keep out of the
+    // pool: it is judged like any other name, by its own `defer` claim.
+    expect(STRUCTURAL_NON_DEFERRABLE).not.toContain("Eval");
+    expect(
+      isDeferredTool(
+        { name: "Eval", defer: true },
+        new Set(STRUCTURAL_NON_DEFERRABLE),
+      ),
+    ).toBe(true);
   });
 });
 

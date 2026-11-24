@@ -203,6 +203,22 @@ describe("the two dispatch funnels", () => {
     expect(result.toolsUsed).toEqual(["Fail"]);
   });
 
+  it("does not judge a script call by this request's flat declarations", async () => {
+    const h = harness();
+    // What the host really carries: the names `tools[]` declared. A pooled tool is
+    // by definition missing from it, and a script's call is second-hop, so the set
+    // must not follow the frame in — otherwise every `tools.Echo(...)` and every
+    // `$` would be rejected as an undeclared model call (spec
+    // `core/repl-tool.md`「开关把核心文件与 shell 工具也收进 REPL」场景 5).
+    (h.context as ToolContext).declaredToolNames = new Set(["REPL"]);
+
+    const result = await runRepl(h, `return await tools.Echo({ a: 1 });`);
+
+    expect(result.ok).toBe(true);
+    expect(h.dispatched).toEqual([{ name: "Echo", args: { a: 1 } }]);
+    expect(h.contexts[0].declaredToolNames).toBeUndefined();
+  });
+
   it("throws an MCP failure into the script instead of returning it", async () => {
     const h = harness(undefined, () => {
       throw new Error(
