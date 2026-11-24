@@ -69,8 +69,24 @@ async function buildHookJsonInput(
     }
   }
 
-  if (context.event === "PostToolUse" && context.toolResponse !== undefined) {
-    jsonInput.tool_response = context.toolResponse;
+  // PostToolUse 的四格照 CC 的 schema（`0172:9978-9986`）：`tool_response` 是
+  // 工具自己的结构化结果（`ToolResult.data`，由 hookManager 拆出来），另外三格
+  // 是这次调用的身份与代价。`duration_ms` / `mcp_server` 在 CC 那边是可选，
+  // 我们只有 PostToolUse 会填（PreToolUse 也有 `tool_use_id` / `mcp_server`，
+  // 见 `0172:9965-9970`，我们还没接）。
+  if (context.event === "PostToolUse") {
+    if (context.toolResponse !== undefined) {
+      jsonInput.tool_response = context.toolResponse;
+    }
+    if (context.toolUseId !== undefined) {
+      jsonInput.tool_use_id = context.toolUseId;
+    }
+    if (context.durationMs !== undefined) {
+      jsonInput.duration_ms = context.durationMs;
+    }
+    if (context.mcpServer !== undefined) {
+      jsonInput.mcp_server = context.mcpServer;
+    }
   }
 
   if (

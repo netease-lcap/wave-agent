@@ -15,7 +15,6 @@
 import { open, readFile } from "fs/promises";
 import type { Message, ToolBlock } from "../types/messaging.js";
 import type { TranscriptExportArchive } from "../types/transcriptExport.js";
-import { toolBlockText } from "../utils/toolBlockText.js";
 import {
   loadTranscriptForExport,
   type TranscriptExportStats,
@@ -189,13 +188,8 @@ function renderTool(block: ToolBlock): string[] {
   // 是半截参数，不是结果。
   if (block.stage !== "end") return out;
   const result =
-    // 阶段 2 起新转录只有 `data`，正文由渲染器现渲（老转录仍是 `result`）。
-    (
-      toolBlockText(block) ??
-      block.shortResult ??
-      errorMessageOf(block) ??
-      ""
-    ).trim();
+    // 正文在 `result` 里；`shortResult` / `error` 是没写成全文时的兜底。
+    (block.result ?? block.shortResult ?? errorMessageOf(block) ?? "").trim();
   if (!result) return out;
 
   const { text, truncated } = headLines(result, TOOL_RESULT_MAX_LINES);

@@ -1265,6 +1265,8 @@ describe("McpManager", () => {
         content: "Tool execution result",
         // No structured content declared, so the script's value is the text.
         output: "Tool execution result",
+        // 双写：服务端原样回来的 content 块数组同时随结果交出去（落盘时剥图片）。
+        data: [{ type: "text", text: "Tool execution result" }],
         serverName: "test-server",
       });
 
@@ -1309,6 +1311,7 @@ describe("McpManager", () => {
         success: true,
         content: '{"id":"7"}',
         output: { id: "7" },
+        data: [{ type: "text", text: '{"id":"7"}' }],
         serverName: "test-server",
       });
     });
@@ -1353,6 +1356,13 @@ describe("McpManager", () => {
           {
             data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChAI9jU77vwAAAABJRU5ErkJggg==",
             mediaType: "image/png",
+          },
+        ],
+        data: [
+          { type: "text", text: "Screenshot captured successfully" },
+          {
+            type: "image",
+            data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChAI9jU77vwAAAABJRU5ErkJggg==",
           },
         ],
         serverName: "test-server",
@@ -1450,6 +1460,11 @@ describe("McpManager", () => {
             mediaType: "image/png",
           },
         ],
+        data: [
+          { type: "text", text: "Multiple screenshots captured" },
+          { type: "image", data: "image1_base64_data" },
+          { type: "image", data: "image2_base64_data" },
+        ],
         serverName: "test-server",
       });
     });
@@ -1502,6 +1517,12 @@ describe("McpManager", () => {
             mediaType: "image/png",
           },
         ],
+        data: [
+          { type: "text", text: "First text result" },
+          { type: "image", data: "screenshot_data" },
+          { type: "text", text: "Second text result" },
+          { type: "resource", resource: { uri: "file:///path/to/file.txt" } },
+        ],
         serverName: "test-server",
       });
     });
@@ -1547,6 +1568,7 @@ describe("McpManager", () => {
             mediaType: "image/png",
           },
         ],
+        data: [{ type: "image", data: "only_image_data" }],
         serverName: "test-server",
       });
     });
@@ -1588,6 +1610,14 @@ describe("McpManager", () => {
           'Known text\n{\n  "type": "unknown_type",\n  "data": "some_data",\n  "custom_field": "custom_value"\n}',
         output:
           'Known text\n{\n  "type": "unknown_type",\n  "data": "some_data",\n  "custom_field": "custom_value"\n}',
+        data: [
+          { type: "text", text: "Known text" },
+          {
+            type: "unknown_type",
+            data: "some_data",
+            custom_field: "custom_value",
+          },
+        ],
         serverName: "test-server",
       });
     });

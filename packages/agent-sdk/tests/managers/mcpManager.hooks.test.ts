@@ -196,4 +196,33 @@ describe("McpManager.executeMcpTool runs tool-event hooks", () => {
     expect(result.content).toBe("tool output");
     expect(mockExecuteCommand).not.toHaveBeenCalled();
   });
+
+  it("hands PostToolUse the server's content blocks as tool_response, plus mcp_server", async () => {
+    // MCP 工具在 CC 里同样是标准 ToolResult：`tool_response` 是它自己的 Output
+    // （服务端回来的 content 块数组），另带 `mcp_server` 说是谁答的
+    // （`0172:9985`）。不给 `data` 的话改完之后 `tool_response` 会是空的。
+    const { mcpManager, callTool, context } = build();
+    callTool.mockResolvedValue({
+      content: [{ type: "text", text: "hi" }],
+    });
+
+    await mcpManager.executeMcpTool(TOOL_NAME, { q: "hi" }, {
+      ...context,
+      toolCallId: "toolu_01",
+    } as ToolContext);
+
+    const hookContext = mockExecuteCommand.mock.calls
+      .map((call) => call[1])
+      .find((ctx) => (ctx as { event: string }).event === "PostToolUse") as {
+      toolResponse?: unknown;
+      toolUseId?: string;
+      durationMs?: number;
+      mcpServer?: unknown;
+    };
+    expect(hookContext.toolResponse).toEqual([{ type: "text", text: "hi" }]);
+    expect(hookContext.toolUseId).toBe("toolu_01");
+    expect(hookContext.durationMs).toBeGreaterThanOrEqual(0);
+    // 这台服务器是测试里手工 addServer 进去的，没有配置 scope ⇒ CC 的默认档。
+    expect(hookContext.mcpServer).toEqual({ name: "s1", source: "dynamic" });
+  });
 });

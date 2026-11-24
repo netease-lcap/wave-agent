@@ -121,7 +121,6 @@ import { entrypointOf } from "./telemetry/attributes.js";
 import { remoteSettingsService } from "./services/remoteSettingsService.js";
 import { AUTO_MEMORY_DRAIN_TIMEOUT_MS } from "./services/autoMemoryService.js";
 import { contextUsagePercent } from "./utils/tokenCalculation.js";
-import { messagesForHost } from "./utils/toolBlockText.js";
 
 /**
  * 一份指令文件属于哪一档记忆（`classic.InstructionsLoaded` 的 `memory_type`）。
@@ -1096,12 +1095,11 @@ export class Agent {
   /**
    * 宿主读路径：整份会话消息（四端 UI 与远控页都从这里取）。
    *
-   * 新转录的工具块只有 `data`，而宿主只读 `ToolBlock.result`，所以文本在这里
-   * 补回去（issue #3055 阶段 2 · C，见 `utils/toolBlockText.ts` 的
-   * `messagesForHost`）。只补不改：老转录、表外工具、渲不出文本的结果原样返回。
+   * 宿主只读 `ToolBlock.result`，而它由双写保证：每个 `end` 块都带着模型当时
+   * 读到的那份全文（`data` 是另一份剥过大块载荷的骨架，供卡片与脚本用）。
    */
   public get messages(): Message[] {
-    return messagesForHost(this.messageManager.getMessages());
+    return this.messageManager.getMessages();
   }
 
   public get usages(): Usage[] {
@@ -2650,15 +2648,13 @@ export class Agent {
    * `limit`) one page of it. Older pages come from the transcript and are never
    * retained here — the in-memory list stays at the last compaction.
    *
-   * 宿主读路径：工具块的文本在这里补回去（`data` → `result`，issue #3055
-   * 阶段 2 · C）。渲染器只存在于 SDK 里，webview 拿不到，所以文本必须在会话数据
-   * 离开 agent 进程之前现渲；已有 `result` 的老转录原样返回。
+   * 宿主读路径：工具块的正文在 `result` 里，由双写保证（`data` 是剥过的骨架，
+   * 不能拿来渲染 —— `Read` 的 `file.content`、`Bash` 的 `stdout` 都是空串）。
    */
   public async getMessagePage(
     window: MessageWindow,
   ): Promise<MessageWindowResult> {
-    const page = await this.messageManager.getMessagePage(window);
-    return { ...page, messages: messagesForHost(page.messages) };
+    return this.messageManager.getMessagePage(window);
   }
 
   /** Totals for the session list (the list starts at the last compaction). */

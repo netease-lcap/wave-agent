@@ -1182,7 +1182,12 @@ export interface ModClassicPostToolBatchEvent extends ModClassicEventBase {
     tool_name: string;
     tool_input: unknown;
     tool_use_id: string;
-    tool_response?: string;
+    /**
+     * 这次调用的 `data` 本身（CC 的 `tool_response: ie().optional()`），不是
+     * 文本；装不下（超过 `$.ui.log` 那份字符限额）时才降级成截断文本，见
+     * `mods/text.ts` 的 `toolResponseForModEvent`。
+     */
+    tool_response?: unknown;
   }>;
 }
 

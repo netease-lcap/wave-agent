@@ -85,7 +85,7 @@ async function setupBlockingErrorHooks(): Promise<{
             {
               type: "command",
               command: `
-                exit_code=$(jq -r '.tool_response.exit_code // 0')
+                exit_code=$(jq -r '.tool_response.exitCode // 0')
                 if [ "$exit_code" -ne 0 ]; then
                   echo "WARNING: Tool execution failed with exit code $exit_code. Please review the output." >&2
                   exit 2

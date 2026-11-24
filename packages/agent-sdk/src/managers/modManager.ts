@@ -84,7 +84,6 @@ import { atomicWriteFileSync } from "../utils/atomicWrite.js";
 import { engineVersion } from "../utils/engineVersion.js";
 import { getEsbuild } from "../utils/esbuild.js";
 import { logger } from "../utils/globalLogger.js";
-import { toolBlockText } from "../utils/toolBlockText.js";
 
 /**
  * 我们真的会画的那三端（spec「元素表按端分」）。
@@ -498,9 +497,9 @@ export function toModSessionMessages(
         name,
         input: parseToolParameters(block.parameters),
       });
-      // 阶段 2 起块上通常只有 `data`：文本由渲染器现渲（老转录与表外工具仍是
-      // `result`），拿不到再退回 `error`。
-      const result = toolBlockText(block) ?? block.error;
+      // 结果正文在 `result` 里（双写后块上另有一份剥过的 `data`），拿不到退回
+      // `error`。
+      const result = block.result ?? block.error;
       if (result === undefined) continue;
       const text =
         typeof result === "string"

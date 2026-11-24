@@ -4,18 +4,18 @@
  * CC 的模型侧 tool_result 文本由每个工具的 `mapToolResultToToolResultBlockParam(data)`
  * 现场渲染、不预存；这里一一对应地放我方每个工具的那份渲染器。
  *
- * 为什么是一张按名字索引的静态表，而不是挂在 `ToolPlugin` 上：阶段 2 之后宿主读
- * 路径要用它重建历史会话的文本，而那时工具未必在当前会话里注册过（`Grep`/`Glob`
- * 是 `--tools` 可选、MCP 与插件工具也不在这个表里）。按名字查表 + 缺了就退回原
- * 文本，比「必须找到插件实例」稳。
+ * 为什么是一张按名字索引的静态表，而不是挂在 `ToolPlugin` 上：渲染发生在
+ * `aiManager.executeToolCall` 里「拿到 `ToolResult`、还没落盘」那一刻，按名字查表
+ * 才不用反查插件实例（`Grep`/`Glob` 是 `--tools` 可选、MCP 与插件工具也不在这个
+ * 表里，表外工具由调用方退回工具当场的 `content`）。
  *
- * 表里的模块都是纯函数、零 import 副作用，可以安全地进宿主读路径。
+ * 表里的模块都是纯函数、零 import 副作用。
  *
  * 契约：**成员 = 有这个工具的渲染器；某一份 `data` 没有文本形态时返回 `undefined`。**
- * 阶段 2 起 `data` 持有全部正文（子代理报告、技能正文、artifact 全文、知识库全文
- * 都在里面），所以 `undefined` 只剩「这段结果本来就没有纯文本」一种含义：`Read`
- * 的 image（红图块）、pdf / binary（读不了）、超 token 被拒（正文是空串、原因在
- * `error`）。除此之外的 `undefined` 都算缺口。
+ * `data` 是完整的结构化本体（剥掉大块载荷只发生在落盘副本上，见 `strip.ts`），
+ * 所以 `undefined` 只剩「这段结果本来就没有纯文本」一种含义：`Read` 的 image
+ * （红图块）、pdf / binary（读不了）、超 token 被拒（正文是空串、原因在 `error`）。
+ * 除此之外的 `undefined` 都算缺口。
  */
 import {
   AGENT_TOOL_NAME,
@@ -221,8 +221,8 @@ for (const alias of REPL_TOOL_ALIASES) {
  * 按工具名把 `data` 渲染成文本。
  *
  * 返回 `undefined` 表示这个工具还没迁过来、或这段结果没有文本形态（`Read` 的
- * image / pdf / binary / 超 token 被拒，见文件头的契约）：调用方退回
- * `ToolBlock.result` / 工具当场的 `content`，不要当成空输出。
+ * image / pdf / binary / 超 token 被拒，见文件头的契约）：调用方退回工具当场的
+ * `content`，不要当成空输出。
  */
 export function renderToolResultData(
   toolName: string,
@@ -233,7 +233,14 @@ export function renderToolResultData(
   return render ? render(data) : undefined;
 }
 
-/** 这个工具是否已经交出渲染器（阶段 2 的读路径靠它决定走哪条分支）。 */
+/**
+ * 这个工具是否已经交出渲染器。
+ *
+ * 只服务一条门禁：`tests/tools/resultData.test.ts` 的「内置工具整表都在」——
+ * 新增内置工具时忘了写渲染器不会崩（`aiManager` 会退回工具的 `content`），但文本
+ * 会悄悄脱离渲染器口径，那正是阶段 1 要消灭的漂移。`RENDERERS` 表本身不导出，
+ * 所以这是唯一判据，别当死代码删掉。
+ */
 export function hasToolResultRenderer(toolName: string): boolean {
   return toolName in RENDERERS;
 }

@@ -30,7 +30,6 @@ import { BackgroundTaskManager } from "./backgroundTaskManager.js";
 import { resolveTempDir } from "../utils/tempDir.js";
 import { MessageQueue } from "./messageQueue.js";
 import { logger } from "../utils/globalLogger.js";
-import { messagesForHost } from "../utils/toolBlockText.js";
 import { taskNotificationToXml } from "../utils/notificationXml.js";
 import {
   UserMessageParams,
@@ -1760,9 +1759,9 @@ export class SubagentManager {
     const instance = this.instances.get(subagentId);
     if (!instance) return;
 
-    // 子代理的消息同样交给宿主（子代理面板）渲染，所以和主代理一样补上工具块
-    // 文本（issue #3055 阶段 2 · C）：子代理的新转录里也只有 `data`。
-    const messages = messagesForHost(instance.messageManager.getMessages());
+    // 子代理的消息同样交给宿主（子代理面板）渲染：正文在块上的 `result` 里，
+    // 与主代理同一个双写口径。
+    const messages = instance.messageManager.getMessages();
     instance.messages = messages;
     // Compute usedTools from messages (last 2 tool blocks)
     const toolBlocks = messages.flatMap(

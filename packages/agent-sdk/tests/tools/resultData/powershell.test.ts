@@ -250,8 +250,6 @@ describe("PowerShell 的 data → 文本 golden", () => {
       interrupted: false,
       exitCode: 1,
     });
-    // 阶段 2：工具不再填 `metadata`，退出码只在新形状里。
-    expect(result.metadata).toBeUndefined();
     expectRendersBack(result);
   });
 
@@ -499,8 +497,6 @@ describe("PowerShell 的 data → 文本 golden", () => {
       interruptedReason: reason,
       exitCode: 130,
     });
-    // 阶段 2：工具不再填 `metadata`，退出码只在新形状里。
-    expect(result.metadata).toBeUndefined();
     expectRendersBack(result);
   });
 

@@ -352,6 +352,8 @@ describe("AIManager nested memory injection", () => {
   it("整批工具跑完后发一次 classic.PostToolBatch，带上每次的入参与结果", async () => {
     // spec「影子事件」：一批 = 一次模型响应里的全部工具调用（不是为并发切出来
     // 的那些小块）；成功的调用带 `tool_response`，失败的没有。
+    // `tool_response` 是工具自己的 `data`（CC 的 PostToolBatch 同形），不是文本；
+    // 这里的假工具没有 `data`，所以走 `{ content }` 兜底。
     const { aiManager, nestedMemoryQueue, notifyMods } = createHarness();
     readToolCall(nestedMemoryQueue);
     textReply();
@@ -368,7 +370,7 @@ describe("AIManager nested memory injection", () => {
       tool_name: "Read",
       tool_input: { file_path: "a.ts" },
       tool_use_id: "call_1",
-      tool_response: expect.any(String),
+      tool_response: { content: "read ok" },
     });
   });
 });

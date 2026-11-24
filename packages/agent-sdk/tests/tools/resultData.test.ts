@@ -304,7 +304,6 @@ describe("data → 文本渲染器 golden", () => {
       expect(
         renderToolResultData("mcp__unknown__tool", { x: 1 }),
       ).toBeUndefined();
-      expect(hasToolResultRenderer("mcp__unknown__tool")).toBe(false);
     });
 
     it("REPL 的历史名 Eval 与 REPL 命中同一个渲染器", () => {
@@ -312,13 +311,10 @@ describe("data → 文本渲染器 golden", () => {
       expect(renderToolResultData("Eval", data)).toBe(
         renderToolResultData("REPL", data),
       );
-      expect(hasToolResultRenderer("Eval")).toBe(true);
     });
 
     it("data 缺失时返回 undefined（阶段 2 读老转录靠它退回 result）", () => {
       expect(renderToolResultData("Glob", undefined)).toBeUndefined();
-      expect(hasToolResultRenderer("Glob")).toBe(true);
-      expect(hasToolResultRenderer("Write")).toBe(true);
     });
 
     it("内置工具整表都在（MCP / 插件工具不在这张表里）", () => {

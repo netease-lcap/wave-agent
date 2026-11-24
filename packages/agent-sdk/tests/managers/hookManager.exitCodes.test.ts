@@ -608,6 +608,70 @@ describe("HookManager exit-code semantics", () => {
       expect(mockMessageManager.addUserMessage).not.toHaveBeenCalled();
     });
 
+    it("hands PostToolUse the tool's `data` as tool_response, plus the call's id/cost/server", async () => {
+      // CC 的 PostToolUse 输入（`0172:9978-9987`）：`tool_response` 是工具
+      // Output 本身 —— 官方示例就是 `jq -r '.tool_response.filePath'`。整个
+      // `ToolResult` 包装（`success` / `shortResult` …）是宿主自己的账，不能漏进去。
+      loadWriteHook("PostToolUse");
+
+      await manager.executePostToolUseHooks(
+        "Write",
+        { file_path: "/a" },
+        {
+          success: true,
+          content: "File created successfully at: /a",
+          shortResult: "+3",
+          data: {
+            type: "create",
+            filePath: "/a",
+            linesAdded: 3,
+            linesRemoved: 0,
+          },
+        },
+        toolContext(),
+        {
+          toolUseId: "toolu_01",
+          durationMs: 12,
+          mcpServer: { name: "github", source: "user" },
+        },
+      );
+
+      const context = mockExecuteCommand.mock.calls[0][1] as {
+        toolResponse?: unknown;
+        toolUseId?: string;
+        durationMs?: number;
+        mcpServer?: unknown;
+      };
+      expect(context.toolResponse).toEqual({
+        type: "create",
+        filePath: "/a",
+        linesAdded: 3,
+        linesRemoved: 0,
+      });
+      expect(context.toolUseId).toBe("toolu_01");
+      expect(context.durationMs).toBe(12);
+      expect(context.mcpServer).toEqual({ name: "github", source: "user" });
+    });
+
+    it("falls back to `{ content }` when the tool produced no `data`", async () => {
+      // 第三方 ToolPlugin 可以先不填 `data`。给 `undefined` 会让 `tool_response`
+      // 这个键静默消失 —— 对钩子作者来说和失败长得一模一样，所以兜成
+      // `{ content }`（`content` 是 CC 在 MCP 结果里给同一件东西的键名）。
+      loadWriteHook("PostToolUse");
+
+      await manager.executePostToolUseHooks(
+        "Write",
+        {},
+        { success: true, content: "file written" },
+        toolContext(),
+      );
+
+      const context = mockExecuteCommand.mock.calls[0][1] as {
+        toolResponse?: unknown;
+      };
+      expect(context.toolResponse).toEqual({ content: "file written" });
+    });
+
     it("should fail open when a tool-event hook cannot run", async () => {
       loadWriteHook("PreToolUse");
       mockExecuteCommand.mockRejectedValue(new Error("spawn failed"));

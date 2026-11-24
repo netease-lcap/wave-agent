@@ -1897,22 +1897,15 @@ export const Message: React.FC<MessageProps> = React.memo(
       // 结果落回下面的通用渲染。
       if (toolBlock.name === ARTIFACT_TOOL_NAME) {
         // 卡片要的键在 `data` 里（issue #3055 阶段 2 起工具只写 `data`）：正文同级
-        // 的 `url` / `version`，加上卡片标题 `artifactTitle`。`metadata` 只剩向前
-        // 兼容——老转录写的是 `artifactUrl` / `artifactVersion` 那批旧键，缺 `data`
-        // 时按旧键读，读不到就落回下面的通用渲染。
+        // 的 `url` / `version`，加上卡片标题 `artifactTitle`。读不到就落回下面的
+        // 通用渲染。
         const data = toolBlock.data as Record<string, unknown> | undefined;
-        const meta = toolBlock.metadata as Record<string, unknown> | undefined;
-        const pick = (value: unknown, legacy: unknown): string =>
-          typeof value === "string" && value
-            ? value
-            : typeof legacy === "string" && legacy
-              ? legacy
-              : "";
-        const artifactUrl = pick(data?.url, meta?.artifactUrl);
+        const text = (value: unknown): string =>
+          typeof value === "string" && value ? value : "";
+        const artifactUrl = text(data?.url);
         if (artifactUrl && toolBlock.stage !== "streaming" && !errorContent) {
-          const artifactTitle =
-            pick(data?.artifactTitle, meta?.artifactTitle) || artifactUrl;
-          const artifactVersion = pick(data?.version, meta?.artifactVersion);
+          const artifactTitle = text(data?.artifactTitle) || artifactUrl;
+          const artifactVersion = text(data?.version);
           const version = artifactVersion
             ? `已发布 · v${artifactVersion}`
             : "已发布";

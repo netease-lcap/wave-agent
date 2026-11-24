@@ -1,6 +1,5 @@
 import type { Message } from "../types/index.js";
 import { estimateTokens as estimateStrTokens } from "./tokenEstimate.js";
-import { toolBlockText } from "./toolBlockText.js";
 
 export interface ApiRound {
   messages: Message[];
@@ -114,8 +113,8 @@ function estimateTokens(messages: Message[]): number {
         combined += block.parameters;
       }
       if (block.type === "tool") {
-        // 阶段 2 起新转录里没有 `result`：文本由渲染器从 `data` 现渲后计入。
-        combined += toolBlockText(block) ?? "";
+        // 块上的 `result` 是模型当时读到的全文，直接计入。
+        combined += block.result ?? "";
       }
     }
   }

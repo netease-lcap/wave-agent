@@ -15,8 +15,7 @@ type DeliveredEntry = { path: string; name: string; kind: string };
 /**
  * A `SendUserFile` result as the tool actually emits it: the list lives in
  * `ToolBlock.data.attachments` (CC's `SendUserFile` outputSchema). The `result`
- * text is only what the model reads back, and `metadata` exists solely for
- * transcripts written before issue #3055 阶段 2.
+ * text is only what the model reads back.
  */
 function deliveredMessage(files: DeliveredEntry[], caption?: string): Message {
   const message = MockDataGenerator.createAssistantMessageWithTool(
@@ -230,44 +229,6 @@ describe("SendUserFile delivered paths", () => {
     );
     expect(openFile?.path).toBe("/home/user/project/setup.exe");
     expect(document.querySelector(".ide-context-preview-title")).toBeNull();
-  });
-
-  it("still renders a pre-阶段-2 transcript that only has metadata.files", async () => {
-    const { vscode } = renderChatApp();
-    const message = deliveredMessage([
-      { path: "/home/user/project/report.md", name: "report.md", kind: "text" },
-    ]);
-    const block = message.blocks?.find(
-      (candidate) => candidate.type === "tool",
-    ) as ToolBlock;
-    // 老转录：`data` 不存在，结构化列表在 `metadata.files` 里。
-    block.data = undefined;
-    block.metadata = {
-      files: [
-        {
-          path: "/home/user/project/report.md",
-          name: "report.md",
-          kind: "text",
-        },
-      ],
-    };
-    sendCommand("updateMessages", { messages: [message] });
-
-    const path = await waitFor(() => {
-      const found = deliveredCards();
-      expect(found).toHaveLength(1);
-      return found[0];
-    });
-
-    (vscode.postMessage as ReturnType<typeof vi.fn>).mockClear();
-    await act(async () => {
-      fireEvent.click(path);
-    });
-
-    expect(
-      sentCommands(vscode).find((message) => message.command === "openFile")
-        ?.path,
-    ).toBe("/home/user/project/report.md");
   });
 
   it("falls back to the classifier when the entry carries no kind", async () => {

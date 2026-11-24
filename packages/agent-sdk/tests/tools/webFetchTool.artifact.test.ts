@@ -139,7 +139,6 @@ describe("webFetchTool artifact interception", () => {
       url: ARTIFACT_URL,
       artifactRead: { slug: "abc", ver: "v3" },
     });
-    expect(result.metadata).toBeUndefined();
     // Metadata probe goes through via=model_read, content through the Bearer URL.
     expect(fetchMock).toHaveBeenCalledWith(
       `${SERVER_URL}/api/frame/abc?via=model_read`,
@@ -247,7 +246,6 @@ describe("webFetchTool artifact interception", () => {
       artifactRead: { slug: "abc", ver: "v1" },
     });
     expect((result.data as { result: string }).result).toBe(result.content);
-    expect(result.metadata).toBeUndefined();
   });
 
   it("should NOT intercept artifact URLs when the feature is disabled", async () => {
@@ -271,6 +269,5 @@ describe("webFetchTool artifact interception", () => {
     expect(result.success).toBe(true);
     // Falls through to the normal fetch path with the raw artifact URL.
     expect(fetchMock).toHaveBeenCalledWith(ARTIFACT_URL, expect.any(Object));
-    expect(result.metadata).toBeUndefined();
   });
 });

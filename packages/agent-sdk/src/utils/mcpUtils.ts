@@ -109,6 +109,7 @@ export function createMcpToolPlugin(
   ) => Promise<{
     success: boolean;
     content: string;
+    data?: unknown;
     serverName?: string;
     images?: Array<{ data: string; mediaType?: string }>;
   }>,
@@ -135,6 +136,11 @@ export function createMcpToolPlugin(
         return {
           success: true,
           content: processedContent,
+          // `data` 是服务端的 content 块数组（`McpToolCallResult.data`）：MCP 工具
+          // 在 `tools/resultData/` 的渲染器表里没有位置（工具名是运行时才知道的），
+          // 所以落盘仍旧走 `result`，这一格只服务 PostToolUse 的 `tool_response`
+          // 与 REPL 脚本。
+          data: result.data,
           images: result.images,
         };
       } catch (error) {

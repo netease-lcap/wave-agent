@@ -183,9 +183,11 @@ describe("MessageManager context injection and file reads", () => {
     expect(fileReads[0].content).toBe(readResultContent);
   });
 
-  it("should track file read contents from a data-only read block (阶段 2)", () => {
-    // 新转录里没有 `result`：正文在 `data.file.content`，文本由渲染器现场重建
-    // （`行号<TAB>正文`，不带页眉）。
+  it("双写块（result 全文 + 剥过的 data）：压缩恢复拿到的是全文而不是空串", () => {
+    // issue #3055 阶段 2 双写之后新转录的形状：`result` 是模型读到的那份全文，
+    // `data` 落盘前已经把 `file.content` 剥成空串（`tools/resultData/strip.ts`）。
+    // 压缩前抓「最近读过的文件」必须走 `result`，否则恢复进上下文的是空正文。
+    const fullText = "1\tconst a = 1;\n2\tconst b = 2;";
     const msgs = [
       {
         id: "msg-1",
@@ -201,11 +203,12 @@ describe("MessageManager context injection and file reads", () => {
             name: "Read",
             stage: "end" as const,
             parameters: JSON.stringify({ file_path: "src/index.ts" }),
+            result: fullText,
             data: {
               type: "text",
               file: {
                 filePath: "/work/src/index.ts",
-                content: "const a = 1;\nconst b = 2;",
+                content: "",
                 numLines: 2,
                 startLine: 1,
                 totalLines: 2,
@@ -220,7 +223,7 @@ describe("MessageManager context injection and file reads", () => {
     const fileReads = messageManager.getRecentFileReads(5);
     expect(fileReads).toHaveLength(1);
     expect(fileReads[0].path).toBe("src/index.ts");
-    expect(fileReads[0].content).toBe("1\tconst a = 1;\n2\tconst b = 2;");
+    expect(fileReads[0].content).toBe(fullText);
   });
 
   it("should not track read tool blocks that are not finalized", () => {

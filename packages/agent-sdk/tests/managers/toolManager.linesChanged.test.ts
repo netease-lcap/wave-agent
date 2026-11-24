@@ -93,7 +93,7 @@ describe("ToolManager line-delta metric", () => {
     const manager = buildManager({
       success: true,
       content: "Edited",
-      metadata: { linesAdded: 12, linesRemoved: 3 },
+      data: { linesAdded: 12, linesRemoved: 3 },
     });
 
     await manager.execute("Edit", {}, baseContext);
@@ -129,7 +129,7 @@ describe("ToolManager line-delta metric", () => {
       success: false,
       content: "",
       error: "boom",
-      metadata: { linesAdded: 5, linesRemoved: 5 },
+      data: { linesAdded: 5, linesRemoved: 5 },
     });
 
     await manager.execute("Edit", {}, baseContext);
@@ -144,7 +144,7 @@ describe("ToolManager line-delta metric", () => {
       {
         success: true,
         content: "Edited",
-        metadata: { linesAdded: 1, linesRemoved: 0 },
+        data: { linesAdded: 1, linesRemoved: 0 },
       },
       sessionWorkdir,
     );

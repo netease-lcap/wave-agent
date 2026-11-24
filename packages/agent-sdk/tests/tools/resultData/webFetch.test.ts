@@ -373,8 +373,6 @@ describe("WebFetch data → 文本渲染器 golden", () => {
       // `ToolResult.metadata.artifactRead`）。
       artifactRead: { slug: "abc", ver: "v3" },
     });
-    // 阶段 2：工具不再填 `metadata`。
-    expect(result.metadata).toBeUndefined();
     expectRendersBack(result);
   });
 });

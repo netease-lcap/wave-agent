@@ -325,7 +325,6 @@ describe("writeTool", () => {
       linesAdded: 3,
       linesRemoved: 0,
     });
-    expect(result.metadata).toBeUndefined();
   });
 
   it("should handle empty content", async () => {

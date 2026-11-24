@@ -701,30 +701,3 @@ export const fixtureToolBlockMessage = (
   ],
   ...overrides,
 });
-
-/**
- * 同一条工具结果消息的**新形态**（issue #3055 阶段 2 · C）：块上只有 `data`，
- * 没有 `result`。
- *
- * 宿主在把会话数据交给 webview 之前用渲染器把文本补回去（`agent-sdk` 的
- * `utils/toolBlockText.ts` → `toolBlockForHost`），所以契约的两面都要有样例：
- * 上面那条代表老转录，这条代表新转录。
- */
-export const fixtureDataOnlyToolBlockMessage = (
-  overrides: Partial<Message> = {},
-): Message => ({
-  ...fixtureToolBlockMessage(),
-  id: "assistant-tool-data",
-  blocks: [
-    {
-      type: "tool",
-      id: "tool-data",
-      name: "Bash",
-      parameters: '{"command":"echo hi"}',
-      stage: "end",
-      success: true,
-      data: { stdout: "hi", exitCode: 0, interrupted: false },
-    },
-  ],
-  ...overrides,
-});

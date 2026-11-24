@@ -61,6 +61,7 @@ import { renderReplEvent, renderReplStatus } from "../tools/pollTool.js";
 // 只依赖 `resultData/` 的纯模块与 `constants/`（零 import 副作用），可以安全地进
 // 这条读路径：模型侧 tool_result 的文本由这里现渲，不再由工具预存。
 import { renderToolResultData } from "../tools/resultData/index.js";
+import { stripToolResultDataForStorage } from "../tools/resultData/strip.js";
 import { allocateAgentSlot, replSessionKey } from "../repl/sessionKey.js";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -106,7 +107,7 @@ import {
   type ModPromptSection,
   type ModTokenTotals,
 } from "../types/mods.js";
-import { truncateForModEvent } from "../mods/text.js";
+import { toolResponseForModEvent, truncateForModEvent } from "../mods/text.js";
 import {
   buildSystemPromptBlocks,
   buildSystemPromptSections,
@@ -3450,12 +3451,13 @@ ${question}`;
 
             // Execute batches sequentially; within a safe batch, tools run in parallel
             // 形状照 CC：成功与否看 `tool_response` 在不在（曾经有一个自造的
-            // `ok`，按 CC 字段写的插件读不到它）。
+            // `ok`，按 CC 字段写的插件读不到它）。`tool_response` 是 `data`
+            // 本身（CC 的 `0172:9997-10002`），不是文本。
             const batchOutcomes: Array<{
               tool_name: string;
               tool_input: Record<string, unknown>;
               tool_use_id: string;
-              tool_response?: string;
+              tool_response?: unknown;
             }> = [];
             for (const batch of batches) {
               if (
@@ -3477,7 +3479,9 @@ ${question}`;
                   tool_name: call.function?.name || "",
                   tool_input: outcome.toolInput ?? {},
                   tool_use_id: call.id || "",
-                  // 失败的调用没有 `tool_response`（CC 同形）。
+                  // 失败的调用没有 `tool_response`（CC 的 PostToolBatch 同形：
+                  // 它的 schema 里 `tool_response` 是可选的，失败那次只有
+                  // `tool_use_id` 在）。
                   ...(outcome.toolResponse === undefined
                     ? {}
                     : { tool_response: outcome.toolResponse }),
@@ -4203,7 +4207,7 @@ ${question}`;
   ): Promise<{
     ok: boolean;
     toolInput?: Record<string, unknown>;
-    toolResponse?: string;
+    toolResponse?: unknown;
   }> {
     const toolId = functionToolCall.id || "";
 
@@ -4351,10 +4355,10 @@ ${question}`;
         toolImages = await applyToolImageBudget(toolImages);
       }
 
-      // 模型这次读到的 tool_result 文本（issue #3055 阶段 2）：`data` 是唯一真相，
-      // 由 `tools/resultData/` 的渲染器现场生成；渲不出这段文本时才退回工具当场的
-      // `content`（表外工具、以及 `Read` 的图片 / pdf / 二进制这些没有文本形态的
-      // 结果），content 也空且带 error 时仍给一句 `Error: …`。
+      // 模型这次读到的 tool_result 文本（issue #3055 阶段 2）：`data` 是结构化真相，
+      // 文本由 `tools/resultData/` 的渲染器从它现场生成；渲不出这段文本时才退回工具
+      // 当场的 `content`（表外工具、以及 `Read` 的图片 / pdf / 二进制这些没有文本形态
+      // 的结果），content 也空且带 error 时仍给一句 `Error: …`。
       const renderedText = renderToolResultData(toolName, toolResult.data);
       let toolResultContent =
         renderedText ??
@@ -4365,23 +4369,27 @@ ${question}`;
           "\n\nTool arguments were truncated (likely exceeded max output tokens). Please reduce your output or split into multiple tool calls.";
       }
 
-      // 落盘口径：`data` 能重建出这段文本时**只写 `data`**，文本留给读路径现渲
-      // （`utils/toolBlockText.ts`），转录里不再存两份。两种例外必须继续写 `result`：
+      // 落盘口径（issue #3055 阶段 2 · 双写）：**两份都写**。
       //
-      // 1. 表外工具 —— MCP、插件工具、任何 `hasToolResultRenderer(name)` 为 false 的
-      //    名字都没有渲染器，丢了这个键，历史会话里那段结果就没了；
-      // 2. `jsonRecovered` —— 上面那半句截断提示是 aiManager 事后追加的，`data`
-      //    里没有，重建不出来。
-      const textIsRebuildable = renderedText !== undefined && !jsonRecovered;
+      // - `result` 是模型这次真正读到的那段文本，原样留下。它也是唯一能兜住
+      //   `jsonRecovered` 的分支（那半句截断提示是 aiManager 事后追加的，`data`
+      //   里没有），以及表外工具（MCP、插件工具没有渲染器）的唯一文本来源；
+      // - `data` 是结构化的骨架，交给宿主卡片与脚本。正文已经在 `result` 里了，
+      //   所以落盘前按工具剥掉大块载荷（`tools/resultData/strip.ts`，对齐 CC 的
+      //   `stripForStorage`）——只剥这份副本，`toolResult.data` 原件保持完整，
+      //   上面那句 `renderedText` 与 mod 事件的 `toolResponse` 都是在原件上取的。
+      //
+      // `data === undefined` 时不写这个键：`updateToolBlock` 把 `undefined` 当
+      // 「这次不改这一格」，老形态工具（只给 `content`）留下的 `data` 不该被清空。
 
       // Update message state - tool execution completed
       this.messageManager.updateToolBlock({
         id: toolId,
         parameters: argsString,
-        // 两者互斥出现：能重建就只留 `data`，否则留 `result`（见上）。
-        ...(textIsRebuildable
-          ? { data: toolResult.data }
-          : { result: toolResultContent }),
+        ...(toolResult.data === undefined
+          ? {}
+          : { data: stripToolResultDataForStorage(toolName, toolResult.data) }),
+        result: toolResultContent,
         success: toolResult.success,
         error: toolResult.error,
         stage: "end",
@@ -4392,7 +4400,6 @@ ${question}`;
         backgroundedByUser: toolResult.backgroundedByUser,
         assistantAutoBackgrounded: toolResult.assistantAutoBackgrounded,
         nestedToolCalls: toolResult.nestedToolCalls,
-        metadata: toolResult.metadata,
         startLineNumber: toolResult.startLineNumber,
         images: toolImages,
         timestamp: Date.now(),
@@ -4413,10 +4420,17 @@ ${question}`;
       return {
         ok: toolResult.success,
         toolInput: toolArgs,
-        // 失败的调用不给 `tool_response`（CC 的 PostToolBatch 同形：失败那次
-        // 只有 `tool_use_id` 在）。
+        // 成功的调用带 `data` 本身（CC 的 PostToolBatch 同形，`tool_response`
+        // 是可选的，失败那次只有 `tool_use_id` 在）。体积由
+        // `toolResponseForModEvent` 兜住：对象的 JSON 长度超过那份字符限额时
+        // 退回截断文本，别把一整份结果递进每个插件。
         ...(toolResult.success
-          ? { toolResponse: truncateForModEvent(toolResultContent) }
+          ? {
+              toolResponse: toolResponseForModEvent(
+                toolResult.data,
+                toolResultContent,
+              ),
+            }
           : {}),
       };
     } catch (toolError) {

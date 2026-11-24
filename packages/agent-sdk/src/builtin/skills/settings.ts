@@ -213,7 +213,10 @@ Wave provides detailed context to hook processes via \`stdin\` as a JSON object.
 ### Event-Specific Fields
 - \`tool_name\`: (PreToolUse, PostToolUse, PermissionRequest) The name of the tool.
 - \`tool_input\`: (PreToolUse, PostToolUse, PermissionRequest) The input parameters passed to the tool.
-- \`tool_response\`: (PostToolUse) The result of the tool execution.
+- \`tool_response\`: (PostToolUse) The tool's own structured result — the same object the tool reports as \`data\`, not a text rendering (Claude Code's shape: \`jq -r '.tool_response.filePath'\` for \`Write\`, \`jq -r '.tool_response.exitCode'\` for \`Bash\`). A tool that produces no structured data gives \`{"content": "<text>"}\`.
+- \`tool_use_id\`: (PostToolUse) The id of the \`tool_use\` block this result belongs to.
+- \`duration_ms\`: (PostToolUse) How long the call took, in milliseconds (measured from when the tool was entered, so it includes the permission prompt).
+- \`mcp_server\`: (PostToolUse, MCP tools only) \`{"name": "<server>", "source": "user" | "project" | "plugin" | "dynamic"}\` — which MCP server answered.
 - \`user_prompt\`: (UserPromptSubmit) The text submitted by the user.
 - \`subagent_type\`: (If executed by a subagent) The type of the subagent.
 - \`name\`: (WorktreeCreate) The name of the new worktree.

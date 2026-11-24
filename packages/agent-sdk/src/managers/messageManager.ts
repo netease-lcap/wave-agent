@@ -25,10 +25,6 @@ import type {
 } from "../types/index.js";
 import type { ThinkingBlockData } from "../types/anthropicMessages.js";
 import { getLastApiRounds } from "../utils/groupMessagesByApiRound.js";
-import {
-  toolBlockText,
-  toolBlockUpdateForHost,
-} from "../utils/toolBlockText.js";
 import { join, isAbsolute, relative, resolve } from "path";
 import {
   appendMessages,
@@ -1072,13 +1068,12 @@ export class MessageManager {
   /**
    * 把工具块更新推给宿主（CLI / stdio 宿主 / 远控页都从这里拿帧）。
    *
-   * 会话数据离开 agent 进程之前补上文本：新转录的块只有 `data`，而宿主只读
-   * `ToolBlock.result`（issue #3055 阶段 2 · C，见 `utils/toolBlockText.ts` 的
-   * `toolBlockUpdateForHost`）。这里是**唯一**的推送出口——主代理与子代理各有一个
-   * MessageManager，同一个类，所以两边的帧都过这一处。
+   * 这里是**唯一**的推送出口——主代理与子代理各有一个 MessageManager，同一个类，
+   * 所以两边的帧都过这一处。宿主只读 `ToolBlock.result`，而它由双写保证：每个
+   * `end` 帧都带着模型当时读到的那份全文。
    */
   private emitToolBlockUpdated(params: ToolBlockUpdateCallbackParams): void {
-    this.callbacks.onToolBlockUpdated?.(toolBlockUpdateForHost(params));
+    this.callbacks.onToolBlockUpdated?.(params);
   }
 
   /**
@@ -1966,13 +1961,12 @@ export class MessageManager {
    */
   private extractFileReadsFromMessage(message: Message): void {
     for (const block of message.blocks) {
-      // 文本走 `toolBlockText`：阶段 2 起新转录只有 `data`，`Read` 的正文由渲染器
-      // 现场重建（老转录仍是 `result`）。
+      // 正文在 `result` 里（`data` 里的 `file.content` 落盘时已剥成空串）。
       const text =
         block.type === "tool" &&
         block.name === READ_TOOL_NAME &&
         block.stage === "end"
-          ? toolBlockText(block)
+          ? block.result
           : undefined;
       if (text && block.type === "tool" && block.parameters) {
         let filePath: string | undefined;
@@ -2080,8 +2074,8 @@ export class MessageManager {
               // 模型当时实际看到的那份正文（已替换 ${WAVE_SKILL_DIR} 等占位符、
               // 首行带 `Base directory for this skill:`）——压缩后回灌直接复用它，
               // 不能重新读文件原文（spec core/message-compact 场景 4）。
-              // 阶段 2 起正文在 `data.content` 里，由 `toolBlockText` 现渲。
-              content: toolBlockText(block),
+              // 正是 `result`（双写；`data.content` 落盘时已剥成空串）。
+              content: block.result,
             });
           }
         } catch {

@@ -64,15 +64,11 @@ export interface UpdateToolBlockParams {
    */
   nestedToolCalls?: string[];
   /**
-   * 工具结果的结构化本体（`ToolResult.data`）。阶段 2 起新转录只写这个字段，
-   * `result` 退化为读老转录的兼容字段 —— 见 `ToolBlock.data`。
+   * 工具结果的结构化本体（`ToolResult.data`）。新转录与 `result` 双写：`result`
+   * 是全文、这里是剥过大块载荷的骨架（见 `ToolBlock.data` 与
+   * `tools/resultData/strip.ts`）。传 `undefined` 等于「这次不改这一格」。
    */
   data?: unknown;
-  /**
-   * 向前兼容：只有老转录里有 `ToolResult.metadata`，新工具不再填它。
-   * （宿主侧渲染只读，见 `ToolBlock.metadata`。）
-   */
-  metadata?: Record<string, unknown>;
   timestamp?: number;
 }
 
@@ -327,7 +323,6 @@ export const updateToolBlockInMessage = ({
   assistantAutoBackgrounded,
   nestedToolCalls,
   data,
-  metadata,
 }: UpdateToolBlockParams): { messages: Message[]; messageId?: string } => {
   const newMessages = [...messages];
 
@@ -367,7 +362,6 @@ export const updateToolBlockInMessage = ({
           if (nestedToolCalls !== undefined)
             toolBlock.nestedToolCalls = nestedToolCalls;
           if (data !== undefined) toolBlock.data = data;
-          if (metadata !== undefined) toolBlock.metadata = metadata;
         }
       }
     }
@@ -409,7 +403,6 @@ export const updateToolBlockInMessage = ({
           if (nestedToolCalls !== undefined)
             toolBlock.nestedToolCalls = nestedToolCalls;
           if (data !== undefined) toolBlock.data = data;
-          if (metadata !== undefined) toolBlock.metadata = metadata;
         }
         const foundMessageId = newMessages[i].id;
         return { messages: newMessages, messageId: foundMessageId };
@@ -420,9 +413,9 @@ export const updateToolBlockInMessage = ({
           type: "tool",
           parameters:
             parameters !== undefined ? parameters : (parametersChunk ?? ""),
-          // 不写 `result: result || ""`：阶段 2 起 `data` 才是本体，凭空塞一个空串
-          // 会让读路径把「没有文本」当成「文本是空串」，`toolBlockText` 就不再用渲染
-          // 器重建这段结果了。
+          // 不写 `result: result || ""`：块上只有 `data` 时没有这段文本，凭空塞
+          // 一个空串会让下游（导出、上下文抓取、计数）把「没有结果」当成「结果是
+          // 空串」，把 `shortResult` / `error` 那几条兜底全挡掉。
           ...(result !== undefined ? { result } : {}),
           shortResult: shortResult,
           startLineNumber: startLineNumber,
@@ -439,7 +432,6 @@ export const updateToolBlockInMessage = ({
           assistantAutoBackgrounded: assistantAutoBackgrounded,
           nestedToolCalls: nestedToolCalls,
           data: data,
-          metadata: metadata,
         });
         const foundMessageId = newMessages[i].id;
         return { messages: newMessages, messageId: foundMessageId };
