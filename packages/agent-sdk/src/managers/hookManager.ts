@@ -11,6 +11,7 @@ import {
   type HookExecutionContext,
   type ExtendedHookExecutionContext,
   type HookExecutionResult,
+  type HookMcpServerRef,
   type HookValidationResult,
   type SessionEndSource,
   type SessionStartSource,
@@ -30,6 +31,7 @@ import { taskNotificationToXml } from "../utils/notificationXml.js";
 import { Container } from "../utils/container.js";
 import type { ConfigurationService } from "../services/configurationService.js";
 import type { ToolContext, ToolResult } from "../tools/types.js";
+import { toolResponsePayload } from "../utils/toolResponse.js";
 import { logOTelEvent } from "../telemetry/events.js";
 import { entrypointOf } from "../telemetry/attributes.js";
 
@@ -49,6 +51,20 @@ function summarizeHookResults(results: HookExecutionResult[]) {
 /** Append one hook's text to a running collector, newline-separated. */
 function appendHookText(current: string | undefined, text: string) {
   return current ? `${current}\n${text}` : text;
+}
+
+/**
+ * What the PostToolUse hook input says about the call itself, besides the
+ * result. Filled by the two execution funnels, which are the only places that
+ * know the `tool_use` id, when the call started, and which MCP server ran it.
+ */
+export interface ToolHookCallInfo {
+  /** Id of the `tool_use` block (Claude Code's `tool_use_id`). */
+  toolUseId?: string;
+  /** Call duration in ms (Claude Code's `duration_ms`). */
+  durationMs?: number;
+  /** The MCP server that answered; absent for every non-MCP tool. */
+  mcpServer?: HookMcpServerRef;
 }
 
 export class HookManager {
@@ -424,12 +440,18 @@ export class HookManager {
    * Exit code 2 cannot block a call that already ran: Claude Code shows the
    * stderr to the model as an injected message instead, and so do we — the tool
    * result itself is never rewritten.
+   *
+   * The hook input carries the tool's `data` as `tool_response` (see
+   * {@link toolResponsePayload}), plus the call's identity and cost
+   * (`tool_use_id` / `duration_ms` / `mcp_server`, all four from Claude Code's
+   * PostToolUse schema).
    */
   async executePostToolUseHooks(
     toolName: string,
     toolInput: Record<string, unknown> | undefined,
     toolResponse: ToolResult | undefined,
     context: ToolContext,
+    call?: ToolHookCallInfo,
   ): Promise<void> {
     try {
       const results = await this.executeHooks(
@@ -440,6 +462,7 @@ export class HookManager {
           toolInput,
           toolResponse,
           context,
+          call,
         ),
       );
       if (results.length === 0) return;
@@ -530,8 +553,9 @@ export class HookManager {
     event: "PreToolUse" | "PostToolUse",
     toolName: string,
     toolInput: Record<string, unknown> | undefined,
-    toolResponse: ToolResult | undefined,
+    toolResult: ToolResult | undefined,
     context: ToolContext,
+    call?: ToolHookCallInfo,
   ): ExtendedHookExecutionContext {
     const workdir = context.workdir || this.workdir;
     return {
@@ -547,7 +571,15 @@ export class HookManager {
       transcriptPath: context.messageManager?.getTranscriptPath(),
       cwd: workdir,
       toolInput,
-      toolResponse,
+      // `tool_response` 是工具自己的 `data`，不是整个 `ToolResult`（口径见
+      // `utils/toolResponse.ts`）。
+      toolResponse:
+        event === "PostToolUse" && toolResult !== undefined
+          ? toolResponsePayload(toolResult.data, toolResult.content)
+          : undefined,
+      toolUseId: call?.toolUseId,
+      durationMs: call?.durationMs,
+      mcpServer: call?.mcpServer,
       subagentType: context.aiManager?.getSubagentType(),
       planFilePath: context.permissionManager?.getPlanFilePath(),
       env: context.sessionEnv,

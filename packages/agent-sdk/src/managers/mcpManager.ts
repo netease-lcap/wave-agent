@@ -1549,6 +1549,9 @@ export class McpManager {
     args: Record<string, unknown>,
     context?: ToolContext,
   ): Promise<McpToolCallResult> {
+    // PostToolUse 的 `duration_ms`（CC 的 `0172:9984`）从这里起算：进漏斗之后
+    // 的一切都算，与内置工具那条路的口径一致。
+    const startedAt = Date.now();
     // Check if it's a prefixed name: mcp__[serverName]__[toolName]
     if (!toolName.startsWith("mcp__")) {
       throw new Error(
@@ -1615,11 +1618,24 @@ export class McpManager {
               args,
               targetServerName,
             );
+            // `tool_response` 拿 `data`（CC 的 MCP Output：服务端 content 块数组，
+            // 见 `McpToolCallResult.data`）；`mcp_server` 只在真 MCP 调用时给
+            // （CC 的 `0172:9985`），值是 `{ name, source }`。
             await context?.hookManager?.executePostToolUseHooks(
               toolName,
               args,
-              { success: true, content: result.content },
+              { success: true, content: result.content, data: result.data },
               context,
+              {
+                toolUseId: context?.toolCallId,
+                durationMs: Date.now() - startedAt,
+                mcpServer: {
+                  name: targetServerName,
+                  // CC 没有 scope 时填 `dynamic`（`O2r()`，`0278:54`）；我们
+                  // 的 `scope` 只在配置文件里认出来的服务器上才有。
+                  source: server.scope ?? "dynamic",
+                },
+              },
             );
             // A PR/MR created by an MCP tool scores here rather than in
             // `ToolManager`: this is the one funnel every MCP call goes through,
@@ -1644,6 +1660,14 @@ export class McpManager {
                 error: error instanceof Error ? error.message : String(error),
               },
               context,
+              {
+                toolUseId: context?.toolCallId,
+                durationMs: Date.now() - startedAt,
+                mcpServer: {
+                  name: targetServerName,
+                  source: server.scope ?? "dynamic",
+                },
+              },
             );
             throw error;
           }
@@ -1717,6 +1741,16 @@ export class McpManager {
         success: true,
         content: textContentStr,
         output,
+        // `data`：CC 的 MCP 工具 Output 就是服务端原样回来的 content 块数组
+        // （`0172:13043` 的 `CallToolResult`：`content` 数组 + `structuredContent`
+        // + `_meta`）。`_meta` / `structuredContent` / `resourceLinks` 在 CC 的
+        // 转录里是 `data` 的**兄弟**字段 `mcpMeta`（`0633:176917-176920` 的
+        // `{ content, ...mcpMeta }`），我们的 `ToolResult` 没有这一格，所以这里
+        // 只带 content 块。
+        // 没有块（或服务端没给）时给 `null`，与上面 `output` 的「说了空就是
+        // null」同一口径。这一格只服务 PostToolUse 的 `tool_response` 与 REPL
+        // 脚本，不进转录：MCP 工具没有渲染器，落盘走 `ToolBlock.result`。
+        data: result.content ?? null,
         images: images.length > 0 ? images : undefined,
         serverName,
       };

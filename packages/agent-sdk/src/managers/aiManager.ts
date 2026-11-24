@@ -106,7 +106,7 @@ import {
   type ModPromptSection,
   type ModTokenTotals,
 } from "../types/mods.js";
-import { truncateForModEvent } from "../mods/text.js";
+import { toolResponseForModEvent, truncateForModEvent } from "../mods/text.js";
 import {
   buildSystemPromptBlocks,
   buildSystemPromptSections,
@@ -3450,12 +3450,13 @@ ${question}`;
 
             // Execute batches sequentially; within a safe batch, tools run in parallel
             // 形状照 CC：成功与否看 `tool_response` 在不在（曾经有一个自造的
-            // `ok`，按 CC 字段写的插件读不到它）。
+            // `ok`，按 CC 字段写的插件读不到它）。`tool_response` 是 `data`
+            // 本身（CC 的 `0172:9997-10002`），不是文本。
             const batchOutcomes: Array<{
               tool_name: string;
               tool_input: Record<string, unknown>;
               tool_use_id: string;
-              tool_response?: string;
+              tool_response?: unknown;
             }> = [];
             for (const batch of batches) {
               if (
@@ -3477,7 +3478,9 @@ ${question}`;
                   tool_name: call.function?.name || "",
                   tool_input: outcome.toolInput ?? {},
                   tool_use_id: call.id || "",
-                  // 失败的调用没有 `tool_response`（CC 同形）。
+                  // 失败的调用没有 `tool_response`（CC 的 PostToolBatch 同形：
+                  // 它的 schema 里 `tool_response` 是可选的，失败那次只有
+                  // `tool_use_id` 在）。
                   ...(outcome.toolResponse === undefined
                     ? {}
                     : { tool_response: outcome.toolResponse }),
@@ -4203,7 +4206,7 @@ ${question}`;
   ): Promise<{
     ok: boolean;
     toolInput?: Record<string, unknown>;
-    toolResponse?: string;
+    toolResponse?: unknown;
   }> {
     const toolId = functionToolCall.id || "";
 
@@ -4413,10 +4416,17 @@ ${question}`;
       return {
         ok: toolResult.success,
         toolInput: toolArgs,
-        // 失败的调用不给 `tool_response`（CC 的 PostToolBatch 同形：失败那次
-        // 只有 `tool_use_id` 在）。
+        // 成功的调用带 `data` 本身（CC 的 PostToolBatch 同形，`tool_response`
+        // 是可选的，失败那次只有 `tool_use_id` 在）。体积由
+        // `toolResponseForModEvent` 兜住：对象的 JSON 长度超过那份字符限额时
+        // 退回截断文本，别把一整份结果递进每个插件。
         ...(toolResult.success
-          ? { toolResponse: truncateForModEvent(toolResultContent) }
+          ? {
+              toolResponse: toolResponseForModEvent(
+                toolResult.data,
+                toolResultContent,
+              ),
+            }
           : {}),
       };
     } catch (toolError) {

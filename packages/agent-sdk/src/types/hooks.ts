@@ -240,6 +240,23 @@ export function isValidHookEventConfig(
   return true;
 }
 
+/**
+ * The MCP server a tool call belongs to, as it travels in the hook input
+ * (Claude Code's `mcp_server`).
+ *
+ * An object, not a bare name: Claude Code's schema is
+ * `{ name, source }` (`0172:9948` defines it, `:9985` puts it on PostToolUse;
+ * `0633:159665` fills it from the tool's `mcpInfo`), and a hook that has to tell
+ * a user-level server from a plugin-shipped one needs `source`. `source` is an
+ * open set there; we fill it with the config scope we know (`user` / `project` /
+ * `plugin`) and fall back to `dynamic` for a server registered at runtime, the
+ * same default Claude Code uses when a server has no scope.
+ */
+export interface HookMcpServerRef {
+  name: string;
+  source: string;
+}
+
 // JSON structure passed to hooks via stdin
 export interface HookJsonInput {
   // Required fields for all events
@@ -251,7 +268,27 @@ export interface HookJsonInput {
   // Optional fields based on event type
   tool_name?: string; // Present for PreToolUse, PostToolUse, PermissionRequest
   tool_input?: unknown; // Present for PreToolUse, PostToolUse, PermissionRequest
-  tool_response?: unknown; // Present for PostToolUse only
+  /**
+   * PostToolUse only: the tool's own structured result — `ToolResult.data`
+   * itself, not a wrapper and not the text the model read.
+   *
+   * Aligned with Claude Code, whose PostToolUse input is
+   * `tool_response: ie()` (= the tool's full Output object; the hook docs read
+   * `.tool_response.filePath` for Write). A tool that produces no structured
+   * data falls back to `{ content }` — see `toolResponsePayload` in
+   * `utils/toolResponse.ts`.
+   */
+  tool_response?: unknown;
+  /** PostToolUse only: the id of the `tool_use` block this result belongs to. */
+  tool_use_id?: string;
+  /**
+   * PostToolUse only: how long the call took, in ms. Measured from the moment
+   * the tool call entered the manager, so unlike Claude Code's it also covers
+   * the permission prompt (we have no separate permission-time clock).
+   */
+  duration_ms?: number;
+  /** PostToolUse only, MCP tools only: which server answered. */
+  mcp_server?: HookMcpServerRef;
   plan_file_path?: string; // Present when in plan mode
   user_prompt?: string; // Present for UserPromptSubmit only
   subagent_type?: string; // Present when hook is executed by a subagent
@@ -308,7 +345,10 @@ export interface ExtendedHookExecutionContext extends HookExecutionContext {
   transcriptPath?: string; // Path to session transcript file
   cwd?: string; // Current working directory
   toolInput?: unknown; // Tool input parameters (PreToolUse/PostToolUse)
-  toolResponse?: unknown; // Tool execution result (PostToolUse only)
+  toolResponse?: unknown; // PostToolUse only: the tool's `data`, already unwrapped
+  toolUseId?: string; // PostToolUse only: id of the tool_use block
+  durationMs?: number; // PostToolUse only: call duration in ms
+  mcpServer?: HookMcpServerRef; // PostToolUse only: the MCP server that answered
   env?: Record<string, string>; // Additional environment variables (from configuration)
   userPrompt?: string; // User prompt text (UserPromptSubmit only)
   subagentType?: string; // Subagent type when hook is executed by a subagent

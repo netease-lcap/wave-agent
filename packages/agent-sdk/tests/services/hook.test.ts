@@ -727,6 +727,56 @@ describe("Hook Services", () => {
       expect(parsedInput.hook_event_name).toBe("PostToolUse");
     });
 
+    it("sends PostToolUse's result identity and cost the way Claude Code shapes them", async () => {
+      // CC 的 PostToolUse 输入全集（`0172:9978-9987`）：四个公共字段之外还有
+      // `tool_response`（工具 Output 本身）、`tool_use_id`、`duration_ms`、
+      // `mcp_server`。`tool_response` 在这里是原样透传的 `data` —— 拆包发生在
+      // `hookManager`，不是这一层。
+      const mockProcess = new MockChildProcess();
+      const mockStdin = new MockStdin();
+      let stdinData = "";
+
+      vi.spyOn(mockStdin, "write").mockImplementation(
+        (_data?: string | Buffer | Uint8Array) => {
+          if (_data) {
+            stdinData += _data.toString();
+          }
+          return true;
+        },
+      );
+
+      mockProcess.stdin = mockStdin;
+      mockSpawn.mockReturnValue(mockProcess);
+
+      const resultPromise = executeCommand("echo test", {
+        ...mockContext,
+        sessionId: "test-session-123",
+        toolInput: { file_path: "/a.ts" },
+        toolResponse: { filePath: "/a.ts", linesAdded: 3 },
+        toolUseId: "toolu_01",
+        durationMs: 42,
+        mcpServer: { name: "github", source: "user" },
+      });
+
+      setImmediate(() => {
+        mockProcess.emit("close", 0);
+      });
+
+      await resultPromise;
+
+      const parsedInput = JSON.parse(stdinData);
+      expect(parsedInput.tool_response).toEqual({
+        filePath: "/a.ts",
+        linesAdded: 3,
+      });
+      expect(parsedInput.tool_use_id).toBe("toolu_01");
+      expect(parsedInput.duration_ms).toBe(42);
+      expect(parsedInput.mcp_server).toEqual({
+        name: "github",
+        source: "user",
+      });
+    });
+
     it("should include subagent_type in JSON input when executed by subagent", async () => {
       const mockProcess = new MockChildProcess();
       const mockStdin = new MockStdin();

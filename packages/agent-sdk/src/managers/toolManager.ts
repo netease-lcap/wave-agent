@@ -629,7 +629,7 @@ class ToolManager {
     const result = await trackCliOperation(
       "tool",
       recordContextOf(context, this.container),
-      () => this.executeTool(name, args, context),
+      () => this.executeTool(name, args, context, startedAt),
     );
     // 影子事件 `classic.PostToolUse` / `classic.PostToolUseFailure`（spec「影子
     // 事件」）：一次调用返回之后。放在这个壳里而不是内置工具那条路上 —— MCP 工
@@ -752,6 +752,7 @@ class ToolManager {
     name: string,
     args: Record<string, unknown>,
     context: ToolContext,
+    startedAt: number,
   ): Promise<ToolResult> {
     const permissionManager =
       this.container.get<PermissionManager>("PermissionManager");
@@ -1085,6 +1086,14 @@ class ToolManager {
           args,
           modOutcome,
           enhancedContext,
+          {
+            // PostToolUse 的 `tool_use_id` / `duration_ms`（CC 的
+            // `0172:9983-9984`）：id 是模型消息里那次调用的 id，耗时从进工具
+            // 算到此刻 —— 与 `classic.PostToolUse` 的 `duration_ms` 同一条口径
+            // （含内部的权限判定；CC 那个数不含权限提示时长，我们没有分开的钟）。
+            toolUseId: enhancedContext.toolCallId,
+            durationMs: Date.now() - startedAt,
+          },
         );
         return modOutcome;
       }
@@ -1109,6 +1118,10 @@ class ToolManager {
           args,
           outcome,
           enhancedContext,
+          {
+            toolUseId: enhancedContext.toolCallId,
+            durationMs: Date.now() - startedAt,
+          },
         );
       }
 

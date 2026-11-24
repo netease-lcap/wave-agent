@@ -68,6 +68,17 @@ export interface McpTool {
 export interface McpToolCallResult {
   success: boolean;
   content: string;
+  /**
+   * The tool's structured result: the server's `content` blocks as it returned
+   * them (Claude Code's MCP Output — see `mcpManager.executeToolOnConnection`).
+   *
+   * It exists for the two audiences `output` cannot serve: the PostToolUse
+   * hook's `tool_response` (which must be the tool's own data, not a text
+   * rendering) and a REPL script that wants the blocks. It never reaches the
+   * transcript: MCP tools have no entry in `tools/resultData/`, so the block
+   * still stores `result` text.
+   */
+  data?: unknown;
   output: unknown;
   serverName?: string;
   images?: Array<{ data: string; mediaType?: string }>;
