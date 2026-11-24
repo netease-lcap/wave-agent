@@ -3,8 +3,8 @@
  * model can act on:
  *
  * - `describeSyntaxError` — a parse failure: where it is, the line it sits on,
- *   and a note about the traps that make a script fail to parse for a reason
- *   the parser's own message cannot name.
+ *   the guarantee that nothing ran, and a note about the traps that make a
+ *   script fail to parse for a reason the parser's own message cannot name.
  * - `runtimeErrorHint` — one note hung under a runtime failure, for when the
  *   same trap reached the other end.
  *
@@ -19,6 +19,14 @@
  * Nothing here repairs the script: a failure stays a failure, and no statement's
  * intent is guessed.
  */
+
+/**
+ * The line Claude Code states before the details (2.1.331: the first line of its
+ * `ReplParseError` message). A model that only sees a position can act as if the
+ * statements above it ran; this says the whole script was rejected instead.
+ */
+const NOT_RUN_NOTE =
+  "The script did not run: it failed to parse, so nothing in it was executed.";
 
 const TEMPLATE_LITERAL_NOTE =
   "Hint: a template literal ends at the next backtick and `${` starts an interpolation, so text that contains either (a shell ${VAR}, RST ``code``, a Python f-string) is safer in a '…' or \"…\" string, or read from a file.";
@@ -45,7 +53,7 @@ export function describeSyntaxError(error: unknown, code: string): string {
   // parentheses, and the position is rendered below anyway.
   const cleaned = message.replace(/\s*\(\d+:\d+\)$/, "");
   const loc = record?.loc;
-  if (!loc) return `Script syntax error: ${cleaned}`;
+  if (!loc) return `Script syntax error: ${cleaned}\n${NOT_RUN_NOTE}`;
   const parts = [
     `Script syntax error: ${cleaned} at line ${loc.line}, column ${loc.column + 1}`,
   ];
@@ -53,6 +61,7 @@ export function describeSyntaxError(error: unknown, code: string): string {
   if (typeof lineText === "string" && lineText.trim() !== "") {
     parts.push(`    ${lineText.slice(0, 200)}`);
   }
+  parts.push(NOT_RUN_NOTE);
   if (code.includes("`")) parts.push(TEMPLATE_LITERAL_NOTE);
   if (code.includes("'''") || code.includes('"""')) {
     parts.push(TRIPLE_QUOTE_NOTE);

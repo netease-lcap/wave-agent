@@ -724,6 +724,11 @@ describe("repl sandbox: termination", () => {
     const broken = await sandbox.run("const = 1", opts());
     expect(broken.ok).toBe(false);
     expect((broken.error ?? "").toLowerCase()).toContain("syntax error");
+    // A position alone reads as "the statements above it ran"; the receipt has
+    // to say the whole script was rejected.
+    expect(broken.error ?? "").toContain(
+      "The script did not run: it failed to parse, so nothing in it was executed.",
+    );
     expect((await sandbox.run("return 3", opts())).value).toBe("3");
   });
 
