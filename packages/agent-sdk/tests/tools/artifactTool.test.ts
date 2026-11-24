@@ -172,9 +172,6 @@ describe("artifactTool", () => {
           "read_asset",
           "delete_asset",
           "copy_from",
-          "comments",
-          "reply",
-          "resolve",
         ]),
       );
       expect(properties.prompt).toBeDefined();

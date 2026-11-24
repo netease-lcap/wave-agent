@@ -122,9 +122,6 @@ describe("artifactTool list action", () => {
         "read_asset",
         "delete_asset",
         "copy_from",
-        "comments",
-        "reply",
-        "resolve",
       ]);
     });
 
@@ -157,16 +154,6 @@ describe("artifactTool list action", () => {
           asset_ids: ["a", "b"],
         }),
       ).toBe(`copy 2 asset(s) src → ${url}`);
-      expect(compact({ action: "comments", url })).toBe(`comments ${url}`);
-      expect(compact({ action: "reply", url, thread_id: "t1" })).toBe(
-        `reply t1 on ${url}`,
-      );
-      expect(
-        compact({ action: "resolve", url, thread_id: "t1", resolved: true }),
-      ).toBe(`resolve t1 on ${url}`);
-      expect(
-        compact({ action: "resolve", url, thread_id: "t1", resolved: false }),
-      ).toBe(`reopen t1 on ${url}`);
       expect(compact({ file_path: "a.md", url })).toBe(`a.md → ${url}`);
     });
   });

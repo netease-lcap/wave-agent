@@ -1,5 +1,6 @@
 import {
   AGENT_TOOL_NAME,
+  ARTIFACT_COMMENTS_TOOL_NAME,
   ARTIFACT_TOOL_NAME,
   BASH_TOOL_NAME,
   EDIT_TOOL_NAME,
@@ -13,7 +14,7 @@ export const subagents: Record<string, string> = {
   "subagents/explore.md": `---
 name: Explore
 description: 'Fast read-only search agent for locating code. Use it to find files by pattern (eg. "src/components/**/*.tsx"), grep for symbols or keywords (eg. "API endpoints"), or answer "where is X defined / which files reference Y." Do NOT use it for code review, design-doc auditing, cross-file consistency checks, or open-ended analysis — it reads excerpts rather than whole files and will miss content past its read window. When calling, specify search breadth: "quick" for a single targeted lookup, "medium" for moderate exploration, or "very thorough" to search across multiple locations and naming conventions.'
-disallowedTools: [${AGENT_TOOL_NAME}, ${ARTIFACT_TOOL_NAME}, ${EXIT_PLAN_MODE_TOOL_NAME}, ${EDIT_TOOL_NAME}, ${WRITE_TOOL_NAME}]
+disallowedTools: [${AGENT_TOOL_NAME}, ${ARTIFACT_TOOL_NAME}, ${ARTIFACT_COMMENTS_TOOL_NAME}, ${EXIT_PLAN_MODE_TOOL_NAME}, ${EDIT_TOOL_NAME}, ${WRITE_TOOL_NAME}]
 model: inherit
 omitAgentsMd: true
 ---
@@ -78,7 +79,7 @@ Guidelines:
   "subagents/plan.md": `---
 name: Plan
 description: Software architect agent for designing implementation plans. Use this when you need to plan the implementation strategy for a task. Returns step-by-step plans, identifies critical files, and considers architectural trade-offs.
-disallowedTools: [${AGENT_TOOL_NAME}, ${ARTIFACT_TOOL_NAME}, ${EXIT_PLAN_MODE_TOOL_NAME}, ${EDIT_TOOL_NAME}, ${WRITE_TOOL_NAME}]
+disallowedTools: [${AGENT_TOOL_NAME}, ${ARTIFACT_TOOL_NAME}, ${ARTIFACT_COMMENTS_TOOL_NAME}, ${EXIT_PLAN_MODE_TOOL_NAME}, ${EDIT_TOOL_NAME}, ${WRITE_TOOL_NAME}]
 model: inherit
 omitAgentsMd: true
 ---

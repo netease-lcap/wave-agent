@@ -698,7 +698,7 @@ model: fastModel
 - **name**：唯一标识
 - **description**：描述专长与适用场景（用于自动匹配）
 - **tools**：限定可用工具（只给必要的）
-- **disallowedTools**：工具黑名单（内置 Explore/Plan 就用它，除 Agent、Artifact、ExitPlanMode、Edit、Write 之外全部可用）；与 `tools` 同时写时以 `tools` 为池、再减掉黑名单，两个列表里都出现的工具一律不可用
+- **disallowedTools**：工具黑名单（内置 Explore/Plan 就用它，除 Agent、Artifact、ArtifactComments、ExitPlanMode、Edit、Write 之外全部可用）；与 `tools` 同时写时以 `tools` 为池、再减掉黑名单，两个列表里都出现的工具一律不可用
 - **model**：可选，指定专用模型（fastModel/visionModel 可解析对应环境变量，inherit 表示跟随主对话模型）
 - **omitAgentsMd**：可选，设为 `true` 时该子代理不注入项目 `AGENTS.md`（及 `CLAUDE.md` 回退）、用户记忆与 `.wave/rules` 无条件规则；Claude Code 的写法 `omitClaudeMd` 同样识别
 - **isolation**：可选，设为 `worktree` 时每次调用都在独立临时工作树中执行

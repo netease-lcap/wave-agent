@@ -22,6 +22,7 @@ import { webFetchTool } from "../tools/webFetchTool.js";
 import { sendUserFileTool } from "../tools/sendUserFileTool.js";
 import { artifactTool } from "../tools/artifactTool.js";
 import { replTool } from "../tools/replTool.js";
+import { artifactCommentsTool } from "../tools/artifactCommentsTool.js";
 import { pollTool } from "../tools/pollTool.js";
 import { isArtifactEnabled } from "../services/artifactAvailability.js";
 import { isKnowledgeBaseEnabled } from "../services/knowledgeBaseAvailability.js";
@@ -444,9 +445,11 @@ class ToolManager {
     }
 
     // Artifact is a feature-gated tool: on by default for a logged-in account,
-    // opt-in via enableArtifact: true for anyone else, opt-out via false.
+    // opt-in via enableArtifact: true for anyone else, opt-out via false. Its
+    // comment half is a second tool (`ArtifactComments`, deferred) that shares
+    // every gate with it — two tools, one feature switch.
     if (isArtifactEnabled(this.container.get<string>("CurrentWorkdir"))) {
-      builtInTools.push(artifactTool);
+      builtInTools.push(artifactTool, artifactCommentsTool);
     }
 
     // The REPL is on by default; `enableRepl: false` turns it off (the retired
@@ -499,8 +502,8 @@ class ToolManager {
 
   /**
    * Re-evaluate feature-gated built-in tools after a live configuration
-   * reload. Currently gates the Artifact tool on settings.json
-   * `enableArtifact`, the REPL tool on `enableRepl` (and, through the deferral
+   * reload. Currently gates the Artifact tools (`Artifact` plus its
+   * `ArtifactComments` sibling) on settings.json `enableArtifact`, the REPL tool on `enableRepl` (and, through the deferral
    * judgment, on `enableReplCoreTools`), the three knowledge-base
    * tools on `enableKnowledgeBase`, the four task-list tools on
    * `env.WAVE_ENABLE_TASK_TOOLS`, and the two shell tools on the shell gate
@@ -512,6 +515,7 @@ class ToolManager {
   public reloadFeatureGatedTools(): void {
     this.toolsRegistry.delete(artifactTool.name);
     this.toolsRegistry.delete(replTool.name);
+    this.toolsRegistry.delete(artifactCommentsTool.name);
     this.toolsRegistry.delete(pollTool.name);
     // Both shell tools are gate-dependent: enabling PowerShell on a machine
     // without Git Bash, or disabling it on one with Git Bash, changes which of
