@@ -104,9 +104,16 @@ export function parseSkillFile(
       result.frontmatter["user-invocable"] === true ||
       result.frontmatter["user-invocable"] === "true";
 
+    // `aliases`: other `/…` names for this skill's slash command. A bad entry
+    // is dropped with a warning rather than rejected: the skill itself is fine,
+    // and one mistyped shorthand must not take the skill out of the menu and
+    // the model's list with it.
+    const aliases = parseAliases(result.frontmatter.aliases, result.warnings);
+
     result.skillMetadata = {
       name: result.frontmatter.name,
       description: result.frontmatter.description,
+      ...(aliases && aliases.length > 0 ? { aliases } : {}),
       type: skillType,
       skillPath,
       allowedTools,
@@ -188,6 +195,44 @@ function parseToolRules(
     resolved.push(substituted);
   }
   return resolved;
+}
+
+/**
+ * Read the `aliases` frontmatter field: a YAML list or a comma-separated
+ * string, same two shapes `allowed-tools` accepts.
+ *
+ * Each entry is held to the same name rule as the skill's own name
+ * (`isValidSkillName`) because an alias becomes a `/…` command verbatim — a
+ * lowercase word with hyphens and nothing else. Invalid, blank and duplicate
+ * entries are dropped one by one with a warning; keeping the rest is the point
+ * (spec ecosystem/agent-skills 场景「写错一个别名不该让整个技能失效」).
+ */
+function parseAliases(
+  raw: string | string[] | undefined,
+  warnings: string[],
+): string[] | undefined {
+  const candidates = Array.isArray(raw)
+    ? raw.map((alias) => String(alias).trim())
+    : typeof raw === "string"
+      ? raw.split(",").map((alias) => alias.trim())
+      : [];
+
+  const aliases: string[] = [];
+  for (const alias of candidates) {
+    if (alias.length === 0) continue;
+    if (!isValidSkillName(alias)) {
+      warnings.push(
+        `aliases entry "${alias}" is not a valid command name (lowercase ` +
+          `letters, numbers and hyphens, at most 64 characters) — it is ` +
+          `ignored and the skill keeps its other names`,
+      );
+      continue;
+    }
+    if (aliases.includes(alias)) continue;
+    aliases.push(alias);
+  }
+
+  return aliases.length > 0 ? aliases : undefined;
 }
 
 /**

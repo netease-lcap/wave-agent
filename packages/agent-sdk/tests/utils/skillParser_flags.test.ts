@@ -265,4 +265,77 @@ allowed-tools:
       expect(result.skillMetadata.disallowedTools).toBeUndefined();
     });
   });
+
+  // spec ecosystem/agent-skills「给技能起几个短名字」
+  describe("aliases", () => {
+    it("parses a YAML list", () => {
+      const mockContent = `---
+name: test-skill
+description: A test skill
+aliases:
+  - ts
+  - t-skill
+---
+# Test Skill`;
+
+      mockReadFileSync.mockReturnValue(mockContent);
+
+      const result = parseSkillFile("/path/to/test-skill/SKILL.md");
+
+      expect(result.skillMetadata.aliases).toEqual(["ts", "t-skill"]);
+    });
+
+    it("parses a comma-separated string and drops duplicates", () => {
+      const mockContent = `---
+name: test-skill
+description: A test skill
+aliases: " ts , t-skill ,ts "
+---
+# Test Skill`;
+
+      mockReadFileSync.mockReturnValue(mockContent);
+
+      const result = parseSkillFile("/path/to/test-skill/SKILL.md");
+
+      expect(result.skillMetadata.aliases).toEqual(["ts", "t-skill"]);
+    });
+
+    it("drops an invalid alias with a warning but keeps the skill valid", () => {
+      const mockContent = `---
+name: test-skill
+description: A test skill
+aliases:
+  - TS
+  - ts
+---
+# Test Skill`;
+
+      mockReadFileSync.mockReturnValue(mockContent);
+
+      const result = parseSkillFile("/path/to/test-skill/SKILL.md");
+
+      // One mistyped shorthand must not take the skill out of the menu.
+      expect(result.isValid).toBe(true);
+      expect(result.skillMetadata.aliases).toEqual(["ts"]);
+      expect(result.warnings).toEqual([
+        expect.stringContaining(
+          'aliases entry "TS" is not a valid command name',
+        ),
+      ]);
+    });
+
+    it("leaves aliases unset when the skill declares none", () => {
+      const mockContent = `---
+name: test-skill
+description: A test skill
+---
+# Test Skill`;
+
+      mockReadFileSync.mockReturnValue(mockContent);
+
+      const result = parseSkillFile("/path/to/test-skill/SKILL.md");
+
+      expect(result.skillMetadata.aliases).toBeUndefined();
+    });
+  });
 });
