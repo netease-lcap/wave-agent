@@ -154,6 +154,9 @@ import type {
   BtwPanelState,
   BtwTurn,
 } from "../utils/sessionUiStore";
+import { derivePanelState } from "../utils/panelState";
+import { paneSessionKey } from "../utils/paneBindings";
+import type { DerivedPanelGroup } from "../utils/panelState";
 import {
   parkGroup,
   parkedGroupsFor,
@@ -507,6 +510,10 @@ function modPaneLayout(): ModSurfaceMetrics & {
 // prunePanelGroupCache from here for backward compatibility.
 export { prunePanelGroupCache } from "../utils/sessionUiStore";
 
+/** 一组标签里有多少个 preview tab（= 有几个 guest 需要保活，见 previewGuestKeep）。 */
+const previewTabCount = (tabs: PanelTab[] | undefined): number =>
+  (tabs ?? []).filter((t) => t.kind === "preview").length;
+
 /**
  * Desktop sidebar collapsed → the leftmost chat header shows this expand button
  * (spec 「侧边栏收起/展开」scenario 4). Built by every instance that occupies the
@@ -684,10 +691,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // BRANCH_LIST_LOADING_DELAY_MS (the query still has no reply), so a fast
   // local reply never renders a placeholder while a slow remote one does
   // (desktop-sessions.md 场景 7/8/25). Cleared by the reply for this workdir.
-  const [paneBranchesQuery, setPaneBranchesQuery] = useState<{
-    workdir: string;
-    loading: boolean;
-  } | null>(null);
+  // 只记「哪个 workdir 的查询已经等超时了」。这一条是整组状态里唯一推不出来的
+  // 事实（它由时间而非输入决定），其余都按 pickerWorkdir 派生。
+  const [branchesOverdueFor, setBranchesOverdueFor] = useState<string | null>(
+    null,
+  );
   // The pane's effective cwd: its own session workdir wins; a new-session pane
   // (state.workdir empty during spawn) falls back to the most recently selected
   // repo root from recents — never to the host-level workdir, which follows the
@@ -725,6 +733,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         : (host?.recentWorkdirs?.[0] ?? host?.workdir)
       : effectiveWorkdir;
   const isDesktop = host?.type === "desktop";
+  // 「这一轮查询还没回包、且已经过了延迟」才算加载中：workdir 一换，旧值自然
+  // 不匹配，不需要再由 effect 显式清一次。
+  const branchesOverdue =
+    isDesktop &&
+    pickerWorkdir !== undefined &&
+    branchesOverdueFor === pickerWorkdir;
   // 会话目录缺失（spec desktop/desktop-sessions.md「会话目录缺失后的恢复（换文件夹
   // 继续）」场景 1/2）：宿主探测到这条会话的目录已不存在，会话本身仍可进入（读历史），
   // 但输入框位置要换成恢复提示——先把「用什么目录继续」解决掉。字段只有桌面端下发，
@@ -916,11 +930,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // Loading placeholder for the branch/worktree controls: only once the delay
   // has elapsed for the CURRENT picker workdir (never a stale one — the query
   // status is scoped by workdir exactly like gitBranches above).
-  const branchesLoading =
-    isDesktop &&
-    !gitBranches &&
-    paneBranchesQuery?.loading === true &&
-    paneBranchesQuery.workdir === pickerWorkdir;
+  const branchesLoading = isDesktop && !gitBranches && branchesOverdue;
   const effectiveWorkdirRef = useRef(effectiveWorkdir);
   // Settings full-page 归属守卫用的「当前项目」镜像（root 实例与 host.workdir
   // 一致，见 settingsWorkdir 注释；pane 实例 == effectiveWorkdirRef）。
@@ -1041,12 +1051,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       (groupKey ? sessionUi.get(groupKey)?.diffSelection : undefined) ?? {
         kind: "all",
       },
-  );
-  // Desktop plan panel: the ExitPlanMode plan content a setInitialState replay
-  // carried for a re-activated session, staged until the swap-effect ordering
-  // settles (see the routing effect below). Null = nothing staged.
-  const [planReplayContent, setPlanReplayContent] = useState<string | null>(
-    null,
   );
   // The pane's current remote port forward (see RemoteForwardRef above). State
   // rather than a ref because a pane rebinding to another session must drop its
@@ -1425,18 +1429,31 @@ export const ChatApp: React.FC<ChatAppProps> = ({
 
   // 回滚回填的图片字节只服务于那一份草稿（它不会进宿主草稿）：换会话就当它没
   // 发生过，别让上一会话的图片留在内存里等一次文本巧合。
-  useEffect(() => {
+  const [rewindSource, setRewindSource] = useState(state.currentSession?.id);
+  if (rewindSource !== state.currentSession?.id) {
+    setRewindSource(state.currentSession?.id);
     setRewindDraft(null);
-  }, [state.currentSession?.id]);
+  }
 
   // 建议的前提是「一轮没在跑、草稿是空的」：开跑或换会话之后它就不成立了，
   // 留着会让用户按 Tab 把上一轮的建议填进新一轮的输入框。
-  useEffect(() => {
-    if (state.isStreaming) setModSuggestion(null);
-  }, [state.isStreaming]);
-  useEffect(() => {
-    setModSuggestion(null);
-  }, [state.currentSession?.id]);
+  const [suggestionSource, setSuggestionSource] = useState({
+    streaming: state.isStreaming,
+    sessionId: state.currentSession?.id,
+  });
+  if (
+    suggestionSource.streaming !== state.isStreaming ||
+    suggestionSource.sessionId !== state.currentSession?.id
+  ) {
+    const startedStreaming = !suggestionSource.streaming && state.isStreaming;
+    const switchedSession =
+      suggestionSource.sessionId !== state.currentSession?.id;
+    setSuggestionSource({
+      streaming: state.isStreaming,
+      sessionId: state.currentSession?.id,
+    });
+    if (startedStreaming || switchedSession) setModSuggestion(null);
+  }
 
   useEffect(() => {
     effectiveWorkdirRef.current = effectiveWorkdir;
@@ -1506,12 +1523,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     btwPanel,
   ]);
 
-  // Session switch: swap in the incoming session's remembered panel group
-  // (empty when it has none — panels never leak across sessions). Only the
-  // layout/check state is restored; panel content rebuilds for the new
-  // context (diff refetches, preview reloads, terminal respawns). A pane's
-  // new-session bucket migrates to the session id once the first message
+  // Session switch **without a snapshot**: swap in the incoming session's
+  // remembered panel group (empty when it has none — panels never leak across
+  // sessions). Only the layout/check state is restored; panel content rebuilds
+  // for the new context (diff refetches, preview reloads, terminal respawns). A
+  // pane's new-session bucket migrates to the session id once the first message
   // binds one, keeping the setup made before sending it.
+  //
+  // 有快照的切换不归这里：消息处理器（activatePanelGroup）会先认领它，把组键
+  // 提前写到 groupKeyRef，于是下面的守卫让本 effect 早退——播种、新会话桶迁移与
+  // 停靠都在那一次提交里做完了。留下这个 effect 是为了「绑定变了但没有快照」
+  // 的路径（会话被删/被释放、主机切换、恢复取消），它们的播种口径与
+  // activatePanelGroup 共用 derivePanelState，两条路不会分叉。
   useEffect(() => {
     if (!paneId || !groupKey || groupKey === groupKeyRef.current) return;
     const prevKey = groupKeyRef.current;
@@ -1535,38 +1558,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     // PM bug 3465519197988352「预览全屏叉掉后对话框消失」). Switching is the
     // universal escape hatch even if a close path ever misses its own reset.
     setPreviewFullscreen(false);
-    setPreviewForwardError(group?.forwardError ?? null);
-    setCurrentForward(group?.forward ?? null);
     // 新会话的 tabs 一起换掉，stateGroupKey 必须跟着同一个批换（见其声明处）——
     // 慢一个批就会在中间那一个提交里「新组名 + 旧 tabs」。
     setStateGroupKey(groupKey);
-    setTabs(group?.checked ?? []);
-    setPanelWidth(group?.panelWidth ?? PANEL_DEFAULT_WIDTH);
-    setPanelWidthManual(group?.panelWidthManual ?? false);
-    // Expanded/collapsed is remembered per session like the tabs and width
-    // (spec 场景 10) — a session the user collapsed keeps its slot hidden on
-    // return even though its tabs are still open; a session without a cached
-    // entry starts collapsed, the empty state needs an explicit expand.
-    setPanelExpanded(group?.panelExpanded ?? (group?.checked?.length ?? 0) > 0);
-    // The restored active tab must be one of the restored open tabs; a stale
-    // cache entry (active pointing at a closed tab) falls back to the first.
-    const restoredActive = group?.activePanel ?? null;
-    const active =
-      restoredActive !== null &&
-      (group?.checked ?? []).some((t) => t.id === restoredActive)
-        ? restoredActive
-        : (group?.checked?.[0]?.id ?? null);
-    setActiveTabId(active);
-    setPlanContent(group?.planContent ?? null);
-    setDiffTreeVisible(group?.diffTreeVisible ?? true);
-    setFileTreeVisible(group?.fileTreeVisible ?? true);
-    setFileTreeWidth(group?.fileTreeWidth ?? FILE_TREE_DEFAULT_WIDTH);
-    setDiffSelection(group?.diffSelection ?? { kind: "all" });
+    // 与 activatePanelGroup 同一个归约入口（这里没有回放的 plan）。
+    applyPanelGroup(derivePanelState(group, null, [], 0).group);
     // 切走的会话：它的 preview guest 不销毁，登记为停靠组保活（无上限、不逐出，
     // 见 utils/previewGuestKeep.ts）。登记必须落在这一个提交里——晚一个提交，槽位
     // 已按新会话重建，guest 会被连同销毁，「切走再切回不重载」就失效了。
-    const previewTabCount = (list: PanelTab[] | undefined) =>
-      (list ?? []).filter((t) => t.kind === "preview").length;
     if (prevKey) {
       parkGroup(
         guestOwnerRef.current,
@@ -1611,53 +1610,133 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     return () => releaseParkedGroups(owner);
   }, []);
 
-  // Desktop plan panel: ExitPlanMode plans that arrive via the setInitialState
-  // replay of a re-activated session are routed HERE instead of in the message
-  // handler. The host pushes `desktopPanes` + the session snapshot back-to-back
-  // (activateAgentInPane), so the renderer usually batches them into ONE commit:
-  // routing eagerly would run BEFORE the swap effect above re-seeds tabs/
-  // planContent from the incoming session's cache and the reseed would wipe the
-  // just-opened plan tab. Deferring past the swap effect means the plan opens
-  // on top of the restored group (and the same effect handles the un-batched
-  // case where the snapshot lands in its own commit).
-  useEffect(() => {
-    if (planReplayContent === null) return;
-    setPlanReplayContent(null);
-    setPlanContent(planReplayContent);
+  // ── 会话激活：面板组在哪一批里换 ──────────────────────────────────────
+  //
+  // 宿主把「这个 pane 现在绑哪条会话」放在 `desktopPanes` 里推，把会话快照（含
+  // 待恢复的 ExitPlanMode plan）放在 `setInitialState` 里推。两条消息可能落进
+  // 同一个 React 提交（宿主背靠背发），也可能各占一个提交。此前「从缓存播种整个
+  // 面板组」写在 swap effect 里、「把 plan 打开成标签」写在另一个 effect 里，靠
+  // 「后者声明在前者之后」仲裁——正确性押在 React 保证同一次提交内 effect 按声明
+  // 顺序执行上，改一次声明顺序就会静默丢掉刚打开的 plan 标签。
+  //
+  // 现在不押顺序：快照的消息处理器自己认领这次切换——从绑定的同步镜像
+  // （utils/paneBindings.ts）取出即将生效的组键、按纯函数（utils/panelState.ts）
+  // 归约出整份面板状态、连同 plan 路由一次提交；同时把 groupKeyRef 先指到新键，
+  // 于是 groupKey 变化触发的 swap effect 自然早退（它只剩「没有快照的绑定变化」
+  // 这一种情形）。
+  /** 把一整组面板状态应用到本地镜像（React 会把这一批 setState 合成一次提交）。 */
+  const applyPanelGroup = (group: DerivedPanelGroup): void => {
+    setTabs(group.tabs);
+    setActiveTabId(group.activeTabId);
+    setPanelExpanded(group.panelExpanded);
+    setPlanContent(group.planContent);
+    setPanelWidth(group.panelWidth);
+    setPanelWidthManual(group.panelWidthManual);
+    setDiffTreeVisible(group.diffTreeVisible);
+    setFileTreeVisible(group.fileTreeVisible);
+    setFileTreeWidth(group.fileTreeWidth);
+    setDiffSelection(group.diffSelection);
+    setCurrentForward(group.forward);
+    setPreviewForwardError(group.forwardError);
+  };
+
+  /**
+   * 认领一次会话激活：换组键 + 播种面板组 + 路由回放的 plan，全在同一批里。
+   * 调用方是 setInitialState 的消息处理器（`nextKey` 来自绑定镜像、且确实换了组）。
+   */
+  const activatePanelGroup = (
+    nextKey: string,
+    replayPlan: string | null,
+  ): void => {
+    const prevKey = groupKeyRef.current;
+    // 先指到新键：`groupKey` 随 `desktopPanes` 变成新会话的那次渲染之后，
+    // swap effect 看到两者相等就直接早退——播种已经在这里做完了。
+    groupKeyRef.current = nextKey;
+    // 与 swap effect 同一套缓存读取/迁移：新会话桶 `new:<paneId>` 在首个消息
+    // 绑定会话那一次搬到 sessionId 名下。
+    let group = sessionUi.get(nextKey);
+    if (
+      !group &&
+      prevKey?.startsWith("new:") &&
+      !nextKey.startsWith("new:") &&
+      sentFromNewSessionRef.current
+    ) {
+      group = sessionUi.move(prevKey, nextKey);
+    }
+    sentFromNewSessionRef.current = false;
+    const derived = derivePanelState(
+      group,
+      replayPlan,
+      tabsRef.current,
+      tabSeqRef.current.plan,
+    );
+    tabSeqRef.current.plan = derived.planSeq;
+    // 切走的会话：它的 preview guest 不销毁，登记为停靠组保活（无上限、不逐出，
+    // 见 utils/previewGuestKeep.ts）。同步调用、与下面的 setState 同一批——比放在
+    // swap effect 里更直接，也不再有「登记晚一个提交，槽位已按新会话重建、guest
+    // 被连同销毁」的窗口。
+    if (prevKey) {
+      parkGroup(
+        guestOwnerRef.current,
+        prevKey,
+        previewTabCount(sessionUi.get(prevKey)?.checked),
+      );
+    }
+    // 全屏属于上一条会话的预览 tab：换会话一律退出（理由见 swap effect）。
+    setPreviewFullscreen(false);
+    // `stateGroupKey` 必须与上面那批 state 同批切换（见其声明处）。
+    setStateGroupKey(nextKey);
+    applyPanelGroup(derived.group);
+    if (derived.planRoute === "guarded") {
+      // 目标组缓存里没有 plan 标签、屏幕上也没有：走带守卫的打开路径（标签上限
+      // + 空间守卫）。它追加到上面刚排队的播种结果之后。
+      ensureTabRef.current("plan");
+    }
+  };
+
+  /**
+   * 把快照带回来的 ExitPlanMode plan 落到面板上。三条规则在
+   * {@link derivePanelState} 里；这里只负责选目标组并把结果应用掉。
+   */
+  const routeReplayPlan = (replayPlan: string): void => {
+    const prevKey = groupKeyRef.current;
+    // 即将生效的组键 = 宿主最后一次推来的绑定（utils/paneBindings.ts 的同步
+    // 镜像）。不用快照里的 session id：宿主是「先推绑定、再推快照」，快照到达
+    // 时绑定已经是新的，但两次推送可能落进同一个提交，此刻 props 还是旧的。
+    // 恢复途中（快照带着恢复目标、绑定还没换）镜像里也还是旧绑定，于是这里算
+    // 出的就是旧键——正是那条路要的「plan 落在屏幕上这一组」，不需要额外判据。
+    const nextKey = paneId ? paneSessionKey(paneId) : undefined;
+    if (nextKey && nextKey !== prevKey) {
+      activatePanelGroup(nextKey, replayPlan);
+      return;
+    }
+    // 没有换会话（或者根本不是 pane 实例）：plan 落在屏幕上这一组上。
+    setPlanContent(replayPlan);
     if (!groupKey) {
-      // Single view (no pane/session group): the committed tabs are current and
-      // the guarded open path used by routePlanToPanel applies.
+      // 插件端 / 远控页没有面板组、也没有 swap effect 会播种 tabs：committed
+      // 列表就是当前这一份，缺 plan 标签就走带守卫的打开路径。（远控页本来就
+      // 不显示 plan 面板，isRemotePage 在消息处理器里已拦掉。）
       if (!tabsRef.current.some((t) => t.kind === "plan")) {
         ensureTabRef.current("plan");
       }
       return;
     }
-    const restored = sessionUi.get(groupKey)?.checked;
-    const planInCache = restored?.some((t) => t.kind === "plan") ?? false;
-    const planInCommitted = tabsRef.current.some((t) => t.kind === "plan");
-    if (planInCache) {
-      // The restored group already shows a plan tab — only the content updates
-      // (the reseed restored that tab and its active position).
-      return;
-    }
-    if (planInCommitted) {
-      // A same-commit session flip re-seeds tabs from the incoming group's
-      // cache, dropping the committed (outgoing) plan tab — a cache without a
-      // plan tab while the committed tabs have one only happens on a flip (the
-      // cache effect skipped that commit). ensureTabRef would consult the stale
-      // committed list and merely "activate" the tab being dropped — append a
-      // fresh one to the re-seeded list instead.
-      tabSeqRef.current.plan += 1;
-      const planId = `plan-${tabSeqRef.current.plan}`;
-      setTabs((prev) => [...prev, { kind: "plan", id: planId }]);
-      setActiveTabId(planId);
-      setPanelExpanded(true);
-    } else {
-      // No plan tab anywhere: open one through the guarded path (it reads the
-      // committed tabs, which match the re-seeded list when no flip happened).
+    const derived = derivePanelState(
+      sessionUi.get(groupKey),
+      replayPlan,
+      tabsRef.current,
+      tabSeqRef.current.plan,
+    );
+    tabSeqRef.current.plan = derived.planSeq;
+    if (derived.planRoute === "flip") {
+      // 缓存落后于屏幕（没有 plan 标签、屏幕上却有）：按归约结果整体替换。
+      setTabs(derived.group.tabs);
+      setActiveTabId(derived.group.activeTabId);
+      setPanelExpanded(derived.group.panelExpanded);
+    } else if (derived.planRoute === "guarded") {
       ensureTabRef.current("plan");
     }
-  }, [planReplayContent, groupKey]);
+  };
 
   useEffect(() => {
     paneIdRef.current = paneId;
@@ -1672,10 +1751,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
 
   // Desktop: reset the worktree controls when the branch list changes (i.e. the
   // workdir was re-queried). Default to the repo's current branch, checked.
-  useEffect(() => {
+  const [worktreeSource, setWorktreeSource] = useState<unknown>(undefined);
+  if (worktreeSource !== gitBranches) {
+    setWorktreeSource(gitBranches);
     setWorktreeBranch(gitBranches?.current ?? "");
     setWorktreeChecked(true);
-  }, [gitBranches]);
+  }
 
   // Handle messages from VS Code extension. The listener is registered once
   // via useHostMessage (stable listener, latest handler per render); every
@@ -2044,9 +2125,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // Clear the loading state only for the workdir this reply is for — a
         // late reply for a directory the user already switched away from must
         // not hide the placeholder of the in-flight query for the new one.
-        setPaneBranchesQuery((cur) =>
-          cur && cur.workdir === message.workdir ? null : cur,
-        );
+        setBranchesOverdueFor((cur) => (cur === message.workdir ? null : cur));
         break;
       case "desktopWorktreeCreated":
         // Worktree creation finished (success or failure) — clear the
@@ -2909,21 +2988,24 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         }
         // Desktop plan panel: replayed pending confirmations (pane rebind to a
         // session whose ExitPlanMode fired while the conversation was in the
-        // background) carry the plan as well, so they need the same two-step
-        // treatment showConfirmation gives it: stage the text for the plan pane,
-        // and hand the reducer a copy WITHOUT it — otherwise a re-activated
+        // background) carry the plan as well, so the plan pane must open for it
+        // — and the reducer gets a copy WITHOUT it, otherwise a re-activated
         // session shows the whole plan inside the dialog while the pane opens
-        // next to it (the dialog is meant to stay compact). Staged — not routed
-        // here — because a same-batch pane rebind re-seeds tabs from the
-        // incoming cache after this handler runs and would wipe an eagerly
-        // opened plan tab (see the routing effect).
+        // next to it (the dialog is meant to stay compact).
+        //
+        // 路由就在这条消息的处理器里做，不另起一个 effect：消息到达时「这个 pane
+        // 现在绑哪条会话」与「有一个 plan 要显示」都是已知的（前者读
+        // utils/paneBindings.ts 的同步镜像），于是整份面板状态（含 plan 路由）在
+        // 同一批里归约、同一次提交里落地，与 effect 的声明顺序无关（见
+        // routeReplayPlan 与 utils/panelState.ts）。
         //
         // Skipped on the remote-control Web page: there the plan is rendered
-        // inside the confirmation dialog itself, so staging it for the pane
+        // inside the confirmation dialog itself, so routing it to the pane
         // system would open a second carrier for the same plan.
         const replayedConfirmations =
           message.pendingConfirmations ||
           (message.pendingConfirmation ? [message.pendingConfirmation] : []);
+        let replayedPlan: string | null = null;
         for (const c of replayedConfirmations) {
           if (
             !isRemotePage &&
@@ -2931,9 +3013,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             typeof c.planContent === "string" &&
             c.planContent.trim() !== ""
           ) {
-            setPlanReplayContent(c.planContent);
+            // 同一份快照里只可能有一条待批准的 plan；多条时取最后一条（与旧的
+            // 「后写覆盖前写」一致，但只路由一次，不会开出两个 plan 标签）。
+            replayedPlan = c.planContent;
           }
         }
+        if (replayedPlan !== null) routeReplayPlan(replayedPlan);
         setHasEarlier(message.hasEarlier === true);
         setIsLoadingEarlier(false);
         earlierAnchorAttemptsRef.current = 0;
@@ -3430,20 +3515,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // directory (not in recents), so pickerWorkdir stays on the user's repo — and
   // the query signal never fires before the first message hides the pickers.
   useEffect(() => {
-    if (!isDesktop || !pickerWorkdir) {
-      setPaneBranchesQuery(null);
-      return;
-    }
-    // Mark this workdir's query as in flight; the placeholder only becomes
-    // visible if the delay elapses without a reply (see paneBranchesQuery).
-    setPaneBranchesQuery({ workdir: pickerWorkdir, loading: false });
-    const timer = setTimeout(() => {
-      setPaneBranchesQuery((cur) =>
-        cur && cur.workdir === pickerWorkdir
-          ? { workdir: pickerWorkdir, loading: true }
-          : cur,
-      );
-    }, BRANCH_LIST_LOADING_DELAY_MS);
+    if (!isDesktop || !pickerWorkdir) return;
+    // The placeholder only becomes visible if the delay elapses without a reply
+    // (see branchesOverdue). Written from the timer, never synchronously.
+    const timer = setTimeout(
+      () => setBranchesOverdueFor(pickerWorkdir),
+      BRANCH_LIST_LOADING_DELAY_MS,
+    );
     postToHost({
       command: "desktopListGitBranches",
       workdir: pickerWorkdir,
@@ -3581,19 +3659,24 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         })()
       : null;
 
-  useEffect(() => {
-    if (!focusedSessionKey) return;
-    setToasts((prev) => {
-      const next = prev.filter(
-        (t) =>
-          !(
-            t.action?.type === "focusSession" &&
-            `${t.action.host}:${t.action.sessionId}` === focusedSessionKey
-          ),
-      );
-      return next.length === prev.length ? prev : next;
-    });
-  }, [focusedSessionKey]);
+  // 切到某条会话后，指向它的「打开会话」提示就没有意义了。删（而不是渲染时过滤）
+  // 是对的：切走之后再切回来也不该让它复活。首次渲染不用清——那时还没有提示。
+  const [toastFocusSource, setToastFocusSource] = useState(focusedSessionKey);
+  if (toastFocusSource !== focusedSessionKey) {
+    setToastFocusSource(focusedSessionKey);
+    if (focusedSessionKey) {
+      setToasts((prev) => {
+        const next = prev.filter(
+          (t) =>
+            !(
+              t.action?.type === "focusSession" &&
+              `${t.action.host}:${t.action.sessionId}` === focusedSessionKey
+            ),
+        );
+        return next.length === prev.length ? prev : next;
+      });
+    }
+  }
 
   const handleLogin = useCallback(() => {
     vscode.postMessage({ command: "login" });
@@ -4712,10 +4795,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // 整组清空并重拉一次带。清空是因为它们描述「此刻这个会话的界面」，上一个会话
   // 的 mod 状态画在新会话里就是错的；重拉是因为带是**拉取式**的，新会话就绪后
   // 不问就永远不会出现（mod 的 `$.state` 才是真相，它自己不会推树过来）。
-  useEffect(() => {
+  const [modSourceSession, setModSourceSession] = useState(
+    state.currentSession?.id,
+  );
+  if (modSourceSession !== state.currentSession?.id) {
+    setModSourceSession(state.currentSession?.id);
     setModBands([]);
     setModStatuses([]);
     setModToasts([]);
+  }
+  useEffect(() => {
     for (const timer of modToastTimersRef.current.values()) {
       window.clearTimeout(timer);
     }

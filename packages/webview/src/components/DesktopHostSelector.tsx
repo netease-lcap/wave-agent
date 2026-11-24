@@ -50,6 +50,9 @@ export interface DesktopHostSelectorProps {
   onDeleteSshConnection: (id: string, requestId: string) => void;
 }
 
+/** 菜单收起（或没有分组）时的上限表：空数组，稳定引用。 */
+const NO_ITEM_CAPS: number[] = [];
+
 /** Group header text per host kind; `local` never gets a header. */
 const GROUP_LABEL: Record<"ssh" | "wsl", string> = {
   wsl: "WSL",
@@ -261,7 +264,9 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
 
   // 每个分组条目区的高度上限，按上面 fairShareHeights 算（与 scrollBlocks 同序）。
   // 只有一组时留空，交给 flex 自己分配。
-  const [itemCaps, setItemCaps] = useState<number[]>([]);
+  // 各分组条目区的高度上限 —— 只记**量出来的结果**；菜单关掉时没有上限可言，
+  // 由派生式 `itemCaps` 统一收成空数组（见下面 effect 之后）。
+  const [measuredItemCaps, setMeasuredItemCaps] = useState<number[]>([]);
   // 窗口尺寸变了上限也跟着变（.desktop-host-menu 是 min(340px, 40vh)）。
   const [resizeTick, setResizeTick] = useState(0);
   useEffect(() => {
@@ -272,10 +277,7 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
   }, [open]);
 
   useLayoutEffect(() => {
-    if (!open) {
-      setItemCaps((prev) => (prev.length === 0 ? prev : []));
-      return;
-    }
+    if (!open) return;
     const menu =
       menuRef.current?.querySelector<HTMLElement>(".desktop-host-menu");
     if (!menu) return;
@@ -284,7 +286,7 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
     );
     // 单组（只有 SSH 主机，或只有 WSL 发行版）：flex 的 1 1 auto 就够，不必量。
     if (lists.length < 2) {
-      setItemCaps((prev) => (prev.length === 0 ? prev : []));
+      setMeasuredItemCaps((prev) => (prev.length === 0 ? prev : []));
       return;
     }
     const style = getComputedStyle(menu);
@@ -314,19 +316,23 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
     // 还没量到高度时（首帧、菜单隐在触发层下方未布局），别把上限算成 0
     // 把条目压没。
     if (!(available > 0)) {
-      setItemCaps((prev) => (prev.length === 0 ? prev : []));
+      setMeasuredItemCaps((prev) => (prev.length === 0 ? prev : []));
       return;
     }
     const caps = fairShareHeights(
       lists.map((list) => list.scrollHeight),
       available,
     );
-    setItemCaps((prev) =>
+    setMeasuredItemCaps((prev) =>
       prev.length === caps.length && prev.every((v, i) => v === caps[i])
         ? prev
         : caps,
     );
   }, [open, scrollBlocks, resizeTick]);
+
+  // 菜单收起时没有「分组条目区」可言（上限只在菜单挂着时才有意义）：空数组
+  // 直接派生，不必再靠 effect 把测量结果清掉。
+  const itemCaps = open ? measuredItemCaps : NO_ITEM_CAPS;
 
   const renderOption = (row: OptionRow) => {
     const showTip = desktopHost && truncated.includes(row.option.id);

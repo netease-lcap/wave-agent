@@ -100,7 +100,7 @@ const DesktopSettingsSelect: React.FC<SettingsSelectProps> = ({
   // 上下都放不下才收到可用高度并让菜单内部滚动。原来这里写死「始终向下」，
   // 窗口一矮（实测 700px 高时溢出视口 11px）末项就被切掉。
   const anchorRect = useAnchorRect(triggerRef, open);
-  const menuStyle = useAnchoredMenuStyle(
+  const { style: menuStyle, attachRef: menuAttachRef } = useAnchoredMenuStyle(
     menuRef,
     anchorRect ?? EMPTY_ANCHOR_RECT,
     anchorRect ? anchorRect.right - anchorRect.left : 0,
@@ -139,7 +139,7 @@ const DesktopSettingsSelect: React.FC<SettingsSelectProps> = ({
       </button>
       {open && anchorRect && (
         <div
-          ref={menuRef}
+          ref={menuAttachRef}
           className="settings-select-menu"
           role="listbox"
           aria-label={label}

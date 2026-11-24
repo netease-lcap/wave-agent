@@ -268,16 +268,19 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
   }, [marketplaces]);
 
   // 市场默认选中第一个；当前选中市场被移除（或首次加载）时切到剩余第一个
-  // （spec 场景 5、17）；全部移除后置空 → 走空态引导。
-  useEffect(() => {
-    if (marketplaces.length === 0) {
-      if (activeMarket !== "") setActiveMarket("");
-      return;
-    }
-    if (!marketplaces.some((m) => m.name === activeMarket)) {
-      setActiveMarket(marketplaces[0].name);
-    }
-  }, [marketplaces, activeMarket]);
+  // （spec 场景 5、17）；全部移除后置空 → 走空态引导。这条不变量在 render 期
+  // 校正：列表一变（移除市场）选中项当帧就跟着落位，不留「选中一个已不存在的
+  // 市场」的中间帧。
+  // 落位目标与现值相等时必须跳过：render 期的 setState 不享受 dispatch 期那个
+  // 「同值 bailout」，照旧会再跑一轮 render，空市场列表下就会自己转成死循环
+  // （React 25 轮后抛 Too many re-renders）。
+  const fallbackMarket = marketplaces[0]?.name ?? "";
+  if (
+    activeMarket !== fallbackMarket &&
+    !marketplaces.some((m) => m.name === activeMarket)
+  ) {
+    setActiveMarket(fallbackMarket);
+  }
 
   // 选中的切换项必须在可视区里（spec 场景 18）：宿主添加市场成功后视图会自动切到
   // 新市场，而它通常追加在切换条最右端、可能落在可视区之外——不滚过去用户只会看到

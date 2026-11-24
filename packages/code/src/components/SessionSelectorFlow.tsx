@@ -22,6 +22,14 @@ export interface SessionSelectorResult {
 
 type SessionItem = SessionMetadata & { firstMessage?: string };
 
+/** 列表落地前的纯映射。挂载路径与事件路径共用，两处只负责发起。 */
+function toSessionItems(raw: SessionMetadata[]): SessionItem[] {
+  return raw.map((s) => ({
+    ...s,
+    firstMessage: truncateContent(s.firstMessage || "No content", 80),
+  }));
+}
+
 /**
  * Interactive session picker.
  *
@@ -82,17 +90,14 @@ export function SessionSelectorFlow({
     [worktreePaths, currentWorkdir],
   );
 
-  const reload = useCallback(
+  /** 拉一次会话列表并落地 loading。**开头不置 loading**：挂载那次的
+   *  「Loading conversations…」由 state 初值（loading: true）承担，于是挂载路径上
+   *  不写 state。 */
+  const fetchSessions = useCallback(
     async (allProjects: boolean, allWorktrees: boolean) => {
-      setLoading(true);
       try {
         const result = await loadSessions(allProjects, allWorktrees);
-        setSessions(
-          result.map((s) => ({
-            ...s,
-            firstMessage: truncateContent(s.firstMessage || "No content", 80),
-          })),
-        );
+        setSessions(toSessionItems(result));
       } finally {
         setLoading(false);
       }
@@ -100,10 +105,30 @@ export function SessionSelectorFlow({
     [loadSessions],
   );
 
-  // Initial load: current directory scope
+  /** 切换范围时的重新加载：先置 loading（调用方是按键处理器）再拉。 */
+  const reload = useCallback(
+    async (allProjects: boolean, allWorktrees: boolean) => {
+      setLoading(true);
+      await fetchSessions(allProjects, allWorktrees);
+    },
+    [fetchSessions],
+  );
+
+  // Initial load: current directory scope. 落地写在 effect 自己那条异步链的续体
+  // 里（不是 effect 的同步段），并带 `ignore` 守卫：卸载后到达的回包不再写 state。
   useEffect(() => {
-    void reload(false, false);
-  }, [reload]);
+    let ignore = false;
+    void loadSessions(false, false)
+      .then((result) => {
+        if (!ignore) setSessions(toSessionItems(result));
+      })
+      .finally(() => {
+        if (!ignore) setLoading(false);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [loadSessions]);
 
   const handleToggleAllProjects = useCallback(
     (value: boolean) => {

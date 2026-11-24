@@ -25,9 +25,19 @@ export const FileEditor: React.FC<FileEditorProps> = ({
 }) => {
   const hostRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<CodeEditorHandle | null>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "failed">(
-    "loading",
+  // 「当前这个 path 的编辑器建好了 / 建失败」——界面状态由它派生，effect 里就
+  // 不必先 setStatus("loading") 一次。换 path 时把上一轮结论清掉（render 期，
+  // 与 path 同一帧）：否则回到一个曾经失败的 path 会先挂一帧旧失败，而这一轮
+  // 其实还在加载（编辑器 chunk 加载失败后允许重试，见 editorLoader）。
+  const [editorOutcome, setEditorOutcome] = useState<"ready" | "failed" | null>(
+    null,
   );
+  const [outcomePath, setOutcomePath] = useState(path);
+  if (outcomePath !== path) {
+    setOutcomePath(path);
+    if (editorOutcome !== null) setEditorOutcome(null);
+  }
+  const status = editorOutcome ?? "loading";
   // Latest callbacks, so a re-render never forces a remount.
   const handlersRef = useRef({ onChange, onSave });
   handlersRef.current = { onChange, onSave };
@@ -39,7 +49,6 @@ export const FileEditor: React.FC<FileEditorProps> = ({
 
   useEffect(() => {
     let disposed = false;
-    setStatus("loading");
     loadEditorLib()
       .then((lib) => {
         if (disposed || !hostRef.current) return;
@@ -50,11 +59,11 @@ export const FileEditor: React.FC<FileEditorProps> = ({
           onChange: (value) => handlersRef.current.onChange(value),
           onSave: () => handlersRef.current.onSave(),
         });
-        setStatus("ready");
+        setEditorOutcome("ready");
         handleRef.current.focus();
       })
       .catch(() => {
-        if (!disposed) setStatus("failed");
+        if (!disposed) setEditorOutcome("failed");
       });
     return () => {
       disposed = true;

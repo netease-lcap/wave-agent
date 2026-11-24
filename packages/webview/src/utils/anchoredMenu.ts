@@ -1,4 +1,10 @@
-import { CSSProperties, RefObject, useLayoutEffect, useState } from "react";
+import {
+  CSSProperties,
+  RefObject,
+  useCallback,
+  useLayoutEffect,
+  useState,
+} from "react";
 import { viewportSize } from "./viewport";
 
 /** 菜单与视口边缘之间保留的最小留白（上下左右同值）。 */
@@ -12,6 +18,12 @@ export const MENU_ANCHOR_GAP = 4;
  * 因此这个值由调用方按族传入，默认仍是菜单族的 4。
  */
 export const SELECT_MENU_ANCHOR_GAP = 2;
+
+/**
+ * 可写 ref。hook 要把节点写回调用方那个 ref，而 `RefObject.current` 在类型上是只读的
+ * （运行时它就是普通对象，React 自己也是这么写的）。
+ */
+type WritableRef<T> = { current: T };
 
 export interface MenuAnchorRect {
   top: number;
@@ -110,27 +122,30 @@ export function useAnchorRect(
   anchorRef: RefObject<HTMLElement | null>,
   open: boolean,
 ): MenuAnchorRect | null {
-  const [rect, setRect] = useState<MenuAnchorRect | null>(null);
+  // 只记「打开期间量到的矩形」；菜单关着就没有矩形可言，由派生返回值统一收成
+  // null，不必再用 effect 把 state 清一遍。
+  const [measuredRect, setMeasuredRect] = useState<MenuAnchorRect | null>(null);
 
   useLayoutEffect(() => {
-    if (!open) {
-      setRect(null);
-      return;
-    }
+    if (!open) return;
     const read = (): MenuAnchorRect | null => {
       const r = anchorRef.current?.getBoundingClientRect();
       return r
         ? { top: r.top, bottom: r.bottom, left: r.left, right: r.right }
         : null;
     };
-    let last = read();
-    setRect(last);
+    // 首次读数与后续逐帧同步走同一条路：打开这一帧不比较（state 里还是上一次
+    // 打开留下的值），之后再按 sameRect 决定要不要写。
+    let last: MenuAnchorRect | null = null;
+    let published = false;
     const sync = () => {
       const next = read();
-      if (sameRect(next, last)) return;
+      if (published && sameRect(next, last)) return;
+      published = true;
       last = next;
-      setRect(next);
+      setMeasuredRect(next);
     };
+    sync();
     let raf = requestAnimationFrame(function tick() {
       sync();
       raf = requestAnimationFrame(tick);
@@ -144,7 +159,7 @@ export function useAnchorRect(
     };
   }, [anchorRef, open]);
 
-  return rect;
+  return open ? measuredRect : null;
 }
 
 /**
@@ -167,24 +182,29 @@ function naturalHeight(el: HTMLElement): number {
  * 之后由 `ResizeObserver` 盯着菜单：菜单项增减导致高度变化时会重新量。窗口缩放
  * 时先更新取景尺寸，避免开着的菜单被新视口挤出边界。
  *
- * 调用方保持自己的 `menuRef`（同一个 ref 还要交给键盘漫游与点外部关闭）。
+ * 调用方保持自己的 `menuRef`（同一个 ref 还要交给键盘漫游与点外部关闭），但**挂在
+ * 元素上的得是本 hook 回给的 `attachRef`**：菜单常常是「打开后才挂载」的
+ * （`{open && <div ref=…>}`），调用方的 ref 在首次渲染时还是空的，只有回调 ref 能在
+ * 提交阶段被告知「节点来了」。`attachRef` 会把节点同时写回调用方的 `menuRef`，
+ * 所以键盘漫游与点外部关闭读到的还是同一个 ref。
  */
 export function useAnchoredMenuStyle(
-  menuRef: RefObject<HTMLElement | null>,
+  menuRef: WritableRef<HTMLElement | null>,
   anchorRect: MenuAnchorRect,
   width: number,
   align: "right" | "left" = "right",
   gap: number = MENU_ANCHOR_GAP,
-): CSSProperties {
+): { style: CSSProperties; attachRef: (node: HTMLElement | null) => void } {
   const [menuHeight, setMenuHeight] = useState(0);
   const [viewport, setViewport] = useState(viewportSize);
-  // 菜单常常是「打开后才挂载」的（`{open && <div ref=…>}`），调用方传进来的 ref 在
-  // 首次渲染时还是空的。所以每轮渲染把节点同步进 state：节点没变时 setState 不触发
-  // 重渲，变成节点后下面那个测量 effect 才会跑起来（只依赖 ref 的话永远量不到）。
   const [menuEl, setMenuEl] = useState<HTMLElement | null>(null);
-  useLayoutEffect(() => {
-    setMenuEl(menuRef.current);
-  });
+  const attachRef = useCallback(
+    (node: HTMLElement | null) => {
+      menuRef.current = node;
+      setMenuEl(node);
+    },
+    [menuRef],
+  );
 
   useLayoutEffect(() => {
     if (!menuEl) return;
@@ -213,11 +233,14 @@ export function useAnchoredMenuStyle(
   );
 
   return {
-    position: "fixed",
-    top: placement.top,
-    left: placement.left,
-    width,
-    maxHeight: placement.maxHeight,
-    overflowY: placement.maxHeight === undefined ? undefined : "auto",
+    style: {
+      position: "fixed",
+      top: placement.top,
+      left: placement.left,
+      width,
+      maxHeight: placement.maxHeight,
+      overflowY: placement.maxHeight === undefined ? undefined : "auto",
+    },
+    attachRef,
   };
 }

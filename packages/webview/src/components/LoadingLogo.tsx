@@ -52,13 +52,22 @@ const WMark: React.FC<{ size: number }> = ({ size }) => (
 const LoadingStageText: React.FC<{ text?: string | null }> = ({ text }) => {
   const [shown, setShown] = useState<string | null>(null);
 
+  // text 变化的两种即时反应都在 render 期做完（与 props 同一帧），effect 里只剩
+  // 那颗「延迟现身」的定时器：
+  // - text 变 null：立刻清空（阶段流结束时文案必须和加载态一起消失），并且把
+  //   「已现过身」标记一起复位 —— 下一次文案要重新走 300ms 阈值；
+  // - text 换成另一段：已经现过身就立刻换字，不重新计时（否则相邻两个慢阶段
+  //   之间会先空白 300ms，看起来像闪断）。
+  const nextText = text ? text : null;
+  const [syncedText, setSyncedText] = useState<string | null>(nextText);
+  if (nextText !== syncedText) {
+    setSyncedText(nextText);
+    if (nextText === null) setShown(null);
+    else if (shown !== null) setShown(nextText);
+  }
+
   useEffect(() => {
-    if (!text) {
-      setShown(null);
-      return;
-    }
-    // 已经现过身：立刻换字（下面的定时器随后写入同一个值，无副作用）。
-    setShown((current) => (current === null ? current : text));
+    if (!text) return;
     const timer = setTimeout(() => setShown(text), STAGE_REVEAL_DELAY_MS);
     return () => clearTimeout(timer);
   }, [text]);

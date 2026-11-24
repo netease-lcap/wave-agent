@@ -209,13 +209,14 @@ export const SessionBoard: React.FC<SessionBoardProps> = ({
   // 窗口一矮末项会被视口切掉。
   const filterMenuRect = useAnchorRect(filterWrapRef, filterMenuOpen);
 
-  const filterMenuStyle = useAnchoredMenuStyle(
-    filterMenuRef,
-    filterMenuRect ?? EMPTY_ANCHOR_RECT,
-    filterMenuRect ? filterMenuRect.right - filterMenuRect.left : 0,
-    "right",
-    SELECT_MENU_ANCHOR_GAP,
-  );
+  const { style: filterMenuStyle, attachRef: filterMenuAttachRef } =
+    useAnchoredMenuStyle(
+      filterMenuRef,
+      filterMenuRect ?? EMPTY_ANCHOR_RECT,
+      filterMenuRect ? filterMenuRect.right - filterMenuRect.left : 0,
+      "right",
+      SELECT_MENU_ANCHOR_GAP,
+    );
 
   return (
     <div className="session-board" data-testid="session-board">
@@ -338,7 +339,7 @@ export const SessionBoard: React.FC<SessionBoardProps> = ({
                 role="listbox"
                 aria-label="筛选项目"
                 data-testid="session-board-filter-menu"
-                ref={filterMenuRef}
+                ref={filterMenuAttachRef}
                 style={filterMenuStyle}
               >
                 {filterMenuOptions.map((option, index) => (

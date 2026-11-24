@@ -27,7 +27,12 @@ export const DelegatedTooltip: React.FC = () => {
     text: string;
     rect: DOMRect;
   } | null>(null);
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  // 量出来的落位（只在气泡挂着时有意义）；「气泡收掉 ⇒ 无落位」由渲染期
+  // 派生的 `pos` 兜住，不必靠 effect 把 state 清回 null。
+  const [measuredPos, setMeasuredPos] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const enabled = isDesktopHost();
 
@@ -97,10 +102,7 @@ export const DelegatedTooltip: React.FC = () => {
   // 先量气泡自身再定位：`<Tooltip>` 用的是 rAF，这里用 `useLayoutEffect`（同一帧内
   // 落位、首帧不闪）。锚点在下方 4px 处居中，出界后往视口内收。
   useLayoutEffect(() => {
-    if (!tip) {
-      setPos(null);
-      return;
-    }
+    if (!tip) return;
     const box = boxRef.current;
     if (!box) return;
     const rect = box.getBoundingClientRect();
@@ -108,7 +110,7 @@ export const DelegatedTooltip: React.FC = () => {
     const margin = 4;
     const left = tip.rect.left + tip.rect.width / 2 - rect.width / 2;
     const top = tip.rect.bottom + gap;
-    setPos({
+    setMeasuredPos({
       left: Math.min(
         Math.max(left, margin),
         Math.max(window.innerWidth - rect.width - margin, margin),
@@ -119,6 +121,8 @@ export const DelegatedTooltip: React.FC = () => {
       ),
     });
   }, [tip]);
+
+  const pos = tip ? measuredPos : null;
 
   if (!enabled || !tip) return null;
 

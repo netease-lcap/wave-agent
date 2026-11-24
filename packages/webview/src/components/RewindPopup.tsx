@@ -25,13 +25,20 @@ export const RewindPopup: React.FC<RewindPopupProps> = ({
   onSelect,
   onClose,
 }) => {
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  // 键盘/悬停选中的那一颗，连同「它是照着哪一份列表选的」一起记：列表换了一份
+  // （重新加载）就回到「最后一条」，不必再靠 effect 在列表变化后改写 index ——
+  // 那会先画一帧「选中第一条」再跳走。
+  const [nav, setNav] = useState<{
+    index: number;
+    from: RewindCheckpoint[];
+  } | null>(null);
+  // Default selection is the most recent checkpoint (last chronologically), and
+  // it is where every freshly loaded list starts again.
+  const selectedIndex =
+    nav && nav.from === checkpoints
+      ? nav.index
+      : Math.max(0, checkpoints.length - 1);
   const popupRef = useRef<HTMLDivElement>(null);
-
-  // Select the most recent checkpoint whenever the list (re)loads.
-  useEffect(() => {
-    setSelectedIndex(Math.max(0, checkpoints.length - 1));
-  }, [checkpoints]);
 
   // Grab keyboard focus while open; the container owns the keydown handler.
   useEffect(() => {
@@ -66,13 +73,14 @@ export const RewindPopup: React.FC<RewindPopupProps> = ({
       switch (event.key) {
         case "ArrowUp":
           event.preventDefault();
-          setSelectedIndex((prev) => Math.max(0, prev - 1));
+          setNav({ index: Math.max(0, selectedIndex - 1), from: checkpoints });
           break;
         case "ArrowDown":
           event.preventDefault();
-          setSelectedIndex((prev) =>
-            Math.min(checkpoints.length - 1, prev + 1),
-          );
+          setNav({
+            index: Math.min(checkpoints.length - 1, selectedIndex + 1),
+            from: checkpoints,
+          });
           break;
         case "Enter":
           event.preventDefault();
@@ -114,7 +122,7 @@ export const RewindPopup: React.FC<RewindPopupProps> = ({
               key={checkpoint.id}
               className={`rewind-popup-item ${index === selectedIndex ? "selected" : ""}`}
               onClick={() => onSelect(checkpoint.id)}
-              onMouseEnter={() => setSelectedIndex(index)}
+              onMouseEnter={() => setNav({ index, from: checkpoints })}
             >
               {checkpoint.content}
             </li>

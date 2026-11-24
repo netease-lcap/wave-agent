@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useInput } from "ink";
 
 export interface UseLineScrollOptions {
@@ -54,9 +54,14 @@ export function useLineScroll({
   const halfPage = Math.max(1, Math.ceil(visibleCount / 2));
   const canScroll = totalLines > visibleCount;
 
-  useEffect(() => {
+  // Compared during render (the same `Object.is` an effect's dependency list
+  // would use) instead of resetting from an effect: the first frame of the new
+  // content set is then already at the top.
+  const [lastResetKey, setLastResetKey] = useState(resetKey);
+  if (!Object.is(lastResetKey, resetKey)) {
+    setLastResetKey(resetKey);
     setScrollOffset(0);
-  }, [resetKey]);
+  }
 
   useInput((input, key) => {
     // Nothing to scroll: leave every key to the surrounding UI instead of

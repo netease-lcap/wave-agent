@@ -473,7 +473,7 @@ const ViewMenu: React.FC<{
   // 菜单 148 比按钮 110 宽，右侧会多出 38px，仍在页头留白内、不触视口夹取。
   // 纵向「下 → 翻上 → 夹取并内部滚动」与会话行菜单同一份实现
   // （spec desktop-sessions.md「会话行菜单完整可见」场景 3），未动。
-  const menuStyle = useAnchoredMenuStyle(
+  const { style: menuStyle, attachRef: menuAttachRef } = useAnchoredMenuStyle(
     menuRef,
     anchorRect,
     menuWidth,
@@ -481,7 +481,7 @@ const ViewMenu: React.FC<{
   );
   return createPortal(
     <div
-      ref={menuRef}
+      ref={menuAttachRef}
       className="desktop-session-menu"
       role="menu"
       style={menuStyle}
@@ -541,10 +541,14 @@ const CategoryItemMenu: React.FC<{
 
   // 与会话行菜单同宽同位置规则：右对齐触发按钮 + 夹进视口（纵向同一份实现）。
   const menuWidth = 148;
-  const menuStyle = useAnchoredMenuStyle(menuRef, anchorRect, menuWidth);
+  const { style: menuStyle, attachRef: menuAttachRef } = useAnchoredMenuStyle(
+    menuRef,
+    anchorRect,
+    menuWidth,
+  );
   return (
     <div
-      ref={menuRef}
+      ref={menuAttachRef}
       className="desktop-session-menu"
       role="menu"
       style={menuStyle}
@@ -615,7 +619,7 @@ const RowActionsMenu: React.FC<{
   // 再按视口夹一次，保证不越界；纵向「下 → 翻上 → 夹取并内部滚动」与会话行菜单
   // 同一份实现。
   const menuWidth = width;
-  const menuStyle = useAnchoredMenuStyle(
+  const { style: menuStyle, attachRef: menuAttachRef } = useAnchoredMenuStyle(
     menuRef,
     anchorRect,
     menuWidth,
@@ -626,7 +630,7 @@ const RowActionsMenu: React.FC<{
   // （浅色档实测只露出白框、文字全被压掉）。
   return createPortal(
     <div
-      ref={menuRef}
+      ref={menuAttachRef}
       className="desktop-session-menu"
       role="menu"
       style={menuStyle}
@@ -918,7 +922,9 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
   // toast 水平居中于**本页**（= 右侧主区）而不是视口：桌面侧栏 260px 固定，
   // 视口中心会比主区中心左 130px（实测主区 x=260 / w=1180 ⇒ 中心 850）。
   // 量不到时回退 CSS 的 left:50%（视口中心）。
-  const [toastCenterX, setToastCenterX] = useState<number | null>(null);
+  const [toastCenterMeasured, setToastCenterMeasured] = useState<number | null>(
+    null,
+  );
   const pageRef = useRef<HTMLDivElement>(null);
 
   const listRequestRef = useRef<string | null>(null);
@@ -935,7 +941,10 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
   // 原来它固定排在 tab 末尾，分类名一长、tab 行溢出，它就被推到行外并压到搜索框
   // 底下（搜索框在 DOM 里更靠后 ⇒ 命中它是输入框），表现正是她说的「添加无法操作」。
   const tabsStripRef = useRef<HTMLDivElement>(null);
-  const [categoryAddPinned, setCategoryAddPinned] = useState(false);
+  // 「添加分类」键该贴外吗 —— 这是下面 useLayoutEffect 量出来的结果（放不下就
+  // 搬到滚动区外）。视图不是「自定义分类」时根本不需要量，派生式
+  // `categoryAddPinned` 会把这种情况统一收成「贴内」。
+  const [categoryAddOverflow, setCategoryAddOverflow] = useState(false);
   // 登录态（null = 还没收到过）。只用来识别「未登录 → 已登录 / 已登录 → 未登录」
   // 这两个翻转：列表与分类都是账号级数据，翻转时必须重取，否则页面会一直停在
   // 打开那一刻的结果上（PM 缺陷 3500345467492608）。
@@ -956,10 +965,7 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
   // 宽度比较，跟 `DesktopPanelTabs` 的判定式同一个思路 —— 拿内容需求宽度比容器，
   // 而不是比当前模式下的剩余空间，键在两处之间移动时才不会来回抖。
   useLayoutEffect(() => {
-    if (view !== "custom") {
-      setCategoryAddPinned(false);
-      return;
-    }
+    if (view !== "custom") return;
     const strip = tabsStripRef.current;
     if (!strip) return;
     const measure = () => {
@@ -970,7 +976,7 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
       // .artifacts-tabs 的 gap 2 + 「＋」自身 24 + margin-left 2
       const needed = tabsTotal + Math.max(0, tabEls.length - 1) * 2 + 26;
       const next = needed > strip.clientWidth + 1;
-      setCategoryAddPinned((prev) => (prev === next ? prev : next));
+      setCategoryAddOverflow((prev) => (prev === next ? prev : next));
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -980,6 +986,9 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
       .forEach((el) => ro.observe(el));
     return () => ro.disconnect();
   }, [view, categories]);
+
+  // 只有「自定义分类」视图才可能贴外 —— 其它视图没有这条 tab 行，恒为「贴内」。
+  const categoryAddPinned = view === "custom" && categoryAddOverflow;
 
   // 选中那颗 tab 自动滚进视野（同预览面板页签的浏览器语义，设计师 2026-11-13
   // 「现在可以继续添加，但是不会自动滚动到选项」）：新建分类总排在末尾、且被自动
@@ -1061,15 +1070,15 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
   // 定位：toast 出现时量一次本页中心（layout effect ⇒ 在首次绘制前落定，
   // 不会先闪在视口中心）。
   useLayoutEffect(() => {
-    if (!toast) {
-      setToastCenterX(null);
-      return;
-    }
+    if (!toast) return;
     const el = pageRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    setToastCenterX(Math.round(rect.left + rect.width / 2));
+    setToastCenterMeasured(Math.round(rect.left + rect.width / 2));
   }, [toast]);
+
+  // 没有 toast 时恒为 null（= CSS 回退到视口中心），不必靠 effect 清掉。
+  const toastCenterX = toast ? toastCenterMeasured : null;
 
   useEffect(() => {
     if (toast === null) return;
@@ -1097,6 +1106,7 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
   }, [postMessage]);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- 这条调用路径上 requestList(isRefresh=false) 写的 loading=true / error=null 与 state 初值相同（dispatch 期同值 bailout、不调度渲染），requestCategories() 只写 ref + 发消息；规则做了保守假设
     requestList();
     requestCategories();
   }, [requestList, requestCategories]);
@@ -2404,7 +2414,18 @@ const ShareDialog: React.FC<ShareDialogProps> = ({
   >([]);
   const [memberQuery, setMemberQuery] = useState("");
   const [candidates, setCandidates] = useState<ArtifactMemberCandidate[]>([]);
-  const [memberError, setMemberError] = useState<string | null>(null);
+  // 成员搜索的错误挂在「是哪一版搜索」上：mode / 关键词 / 重试次数任一变化就是新的
+  // 一版，上一版的错误提示在 render 期自动失效 —— 不必在发请求时先 setState 清空。
+  const [memberSearchRetry, setMemberSearchRetry] = useState(0);
+  const memberSearchKey = `${mode}\u0000${memberQuery}\u0000${memberSearchRetry}`;
+  const [memberErrorFor, setMemberErrorFor] = useState<{
+    key: string;
+    message: string;
+  } | null>(null);
+  const memberError =
+    memberErrorFor !== null && memberErrorFor.key === memberSearchKey
+      ? memberErrorFor.message
+      : null;
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -2416,7 +2437,6 @@ const ShareDialog: React.FC<ShareDialogProps> = ({
     (query: string) => {
       const requestId = nextRequestId();
       memberRequestRef.current = requestId;
-      setMemberError(null);
       postMessage({
         command: "desktopArtifactMembersSearch",
         requestId,
@@ -2435,7 +2455,7 @@ const ShareDialog: React.FC<ShareDialogProps> = ({
   useEffect(() => {
     if (mode !== "users") return;
     requestMembers(memberQuery);
-  }, [mode, memberQuery, requestMembers]);
+  }, [mode, memberQuery, memberSearchRetry, requestMembers]);
 
   useHostMessage((message) => {
     const data = message as { command?: string; requestId?: string };
@@ -2472,10 +2492,10 @@ const ShareDialog: React.FC<ShareDialogProps> = ({
         error?: string;
       };
       if (payload.error) {
-        setMemberError(payload.error);
+        setMemberErrorFor({ key: memberSearchKey, message: payload.error });
         return;
       }
-      setMemberError(null);
+      setMemberErrorFor(null);
       setCandidates(payload.members ?? []);
       return;
     }
@@ -2620,7 +2640,7 @@ const ShareDialog: React.FC<ShareDialogProps> = ({
                   <button
                     type="button"
                     className="artifacts-link-btn"
-                    onClick={() => requestMembers(memberQuery)}
+                    onClick={() => setMemberSearchRetry((n) => n + 1)}
                   >
                     重试
                   </button>

@@ -275,7 +275,10 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [addressEditing, setAddressEditing] = useState(false);
   const [editingUrl, setEditingUrl] = useState("");
-  const [pickerActive, setPickerActive] = useState(false);
+  // 元素拾取器：pickerActive 是**派生值**（用户请求过 && 没停靠），state 只存用户的
+  // 拾取请求 —— 停靠时它会被 render 期的复位清掉（见下方 parked 那段），所以抬起
+  // 停靠后不会自己亮回来。
+  const [pickerRequested, setPickerRequested] = useState(false);
   const [pickerUnsupported, setPickerUnsupported] = useState(false);
   const webviewRef = useRef<WebviewTagElement | null>(null);
   // URL the guest is currently showing — follows in-guest navigation.
@@ -285,6 +288,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   // Guest preload announces { type: 'ready' }; if it never arrives the page
   // can't host the picker (injection failed).
   const pickerReadyRef = useRef(false);
+  const pickerActive = pickerRequested && !parked;
   const pickerActiveRef = useRef(pickerActive);
   pickerActiveRef.current = pickerActive;
   const onAddCommentRef = useRef(onAddComment);
@@ -400,15 +404,21 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
 
   const deactivatePicker = useCallback(() => {
     pickerActiveRef.current = false;
-    setPickerActive(false);
+    setPickerRequested(false);
     sendPicker("deactivate");
   }, [sendPicker]);
 
-  // 转入停靠 → 立刻关掉拾取器（见 `parked` 注释）。回到可见态不自动打开：用户
-  // 的拾取意图在切走时已经结束，重新打开会让切回来的面板「自己亮着」。
+  // 转入停靠 → 关掉拾取器（见 `parked` 注释）。这件事拆成两半：
+  // · 「停靠了就不是激活态」由上面的派生值承担 —— 与停靠同帧，不需要任何 effect
+  //   去 setState；
+  // · effect 里只剩「通知 guest」这个外部动作 + 把用户的拾取请求清掉。清请求是
+  //   render 期的带守卫复位（只有真的还请求着才写，至多两轮收敛）：不清的话抬起
+  //   停靠时派生值会重新变 true，面板「自己亮着」，而用户的拾取意图在切走那刻
+  //   已经结束了。
+  if (parked && pickerRequested) setPickerRequested(false);
   useEffect(() => {
-    if (parked) deactivatePicker();
-  }, [parked, deactivatePicker]);
+    if (parked) sendPicker("deactivate");
+  }, [parked, sendPicker]);
 
   // Wire the <webview> once. `src` is set imperatively (never from JSX) so
   // React re-renders can't reload the guest; later navigations use loadURL.
@@ -436,7 +446,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
       // Fresh document → guest preload restarts inactive.
       pickerReadyRef.current = false;
       pickerActiveRef.current = false;
-      setPickerActive(false);
+      setPickerRequested(false);
       setPickerUnsupported(false);
       // Fresh document → any fit zoom is stale: back to 100% and let the fit
       // pass after did-finish-load re-shrink if the new page overflows.
@@ -639,7 +649,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
     }
     setPickerUnsupported(false);
     pickerActiveRef.current = next;
-    setPickerActive(next);
+    setPickerRequested(next);
     sendPicker(next ? "activate" : "deactivate");
   };
 

@@ -86,13 +86,19 @@ export function useCodeCommentEntry({
   }, [enabled, syncChip]);
 
   // A view that stops offering comments (switching to an image, entering the
-  // editor) must not leave a stale menu or button behind.
-  useEffect(() => {
-    if (enabled) return;
-    setMenu(null);
-    setChip(null);
-    setAnchor(null);
-  }, [enabled]);
+  // editor) must not leave a stale menu or button behind — and must not bring one
+  // back when comments return (the anchor points into the previous view). The reset
+  // happens in the render pass that sees `enabled` flip: same frame as the prop
+  // change, and no extra commit.
+  const [wasEnabled, setWasEnabled] = useState(enabled);
+  if (wasEnabled !== enabled) {
+    setWasEnabled(enabled);
+    if (!enabled) {
+      setMenu(null);
+      setChip(null);
+      setAnchor(null);
+    }
+  }
 
   const onContextMenu = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {

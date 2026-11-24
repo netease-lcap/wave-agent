@@ -98,12 +98,16 @@ const FullscreenModal: React.FC<FullscreenModalProps> = ({
   const modalRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  // 关窗时把缩放与位移复位（下次打开从 100%、居中开始）。复位在 render 期做完：
+  // isOpen 翻成 false 的同一帧状态就归位，不必再等一次 effect 提交。
+  const [wasOpen, setWasOpen] = useState(isOpen);
+  if (wasOpen !== isOpen) {
+    setWasOpen(isOpen);
     if (!isOpen) {
       setScale(1);
       setPosition({ x: 0, y: 0 });
     }
-  }, [isOpen]);
+  }
 
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
@@ -231,7 +235,14 @@ export const MermaidRenderer: React.FC<MermaidRendererProps> = ({
   const [themeVersion, setThemeVersion] = useState(0);
 
   useEffect(() => {
-    const observer = new MutationObserver(() => setThemeVersion((v) => v + 1));
+    // 主题翻转（body class / <html data-theme> 变化）⇒ 已渲染的 SVG 作废：图里的
+    // 颜色是 mermaid 在 render 期烤进 SVG 的，主题变了必须重渲一次。作废的两步与
+    // 版本号一起放在 MutationObserver 回调里（真正的事件源），effect 体只留订阅本身。
+    const observer = new MutationObserver(() => {
+      lastRenderedContent.current = "";
+      setSvgContent("");
+      setThemeVersion((v) => v + 1);
+    });
     if (document.body) {
       observer.observe(document.body, {
         attributes: true,
@@ -334,12 +345,6 @@ export const MermaidRenderer: React.FC<MermaidRendererProps> = ({
     }
   }, []);
 
-  // Force re-render when host theme flips
-  useEffect(() => {
-    lastRenderedContent.current = "";
-    setSvgContent("");
-  }, [themeVersion]);
-
   // Render mermaid diagram when switching to preview or content changes
   useEffect(() => {
     if (activeTab === "preview" && cleanedContent.current.trim()) {
@@ -385,17 +390,11 @@ export const MermaidRenderer: React.FC<MermaidRendererProps> = ({
     };
   }, [activeTab, content, svgContent, themeVersion, renderMermaid]);
 
-  // Update DOM when SVG content changes
-  useEffect(() => {
-    if (mermaidRef.current && svgContent) {
-      try {
-        mermaidRef.current.innerHTML = svgContent;
-      } catch (err) {
-        console.error("Error updating DOM with SVG content:", err);
-        setError("Error displaying diagram. Please try refreshing.");
-      }
-    }
-  }, [svgContent]);
+  // 已渲染的 SVG 由 React 直接写进容器（见 `renderPreviewTab` 里的
+  // `dangerouslySetInnerHTML`），不再用 effect 手动 `innerHTML =`。字符串就是
+  // `mermaid.render()` 的产物（`securityLevel: "strict"` + dompurify 洗过），
+  // 全屏预览那颗同一份 SVG 本来就是这么渲染的。原先那个 effect 的 catch 是死代码：
+  // 给 `innerHTML` 赋字符串按 HTML 规范只会解析、不会抛。
 
   const renderPreviewTab = () => {
     // 全屏那颗图标按钮：桌面端提示交给自绘气泡，`title` 只留给插件端宿主
@@ -465,6 +464,7 @@ export const MermaidRenderer: React.FC<MermaidRendererProps> = ({
           onClick={() => svgContent && setIsFullscreen(true)}
           style={{ cursor: svgContent ? "pointer" : "default" }}
           title={svgContent ? "点击全屏查看" : ""}
+          dangerouslySetInnerHTML={{ __html: svgContent }}
         />
         {!svgContent && !isRendering && (
           <div className="mermaid-empty">

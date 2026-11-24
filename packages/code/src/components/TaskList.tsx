@@ -153,6 +153,24 @@ export const TaskList: React.FC = () => {
     activeTasks.length > 0 &&
     activeTasks.every((t) => t.status === "completed");
 
+  // 自动隐藏这两条边都在 render 期算（判据就是上面这个 `allCompleted` 与
+  // `hadIncompleteRef`），不放进下面那个 effect：effect 会先提交一帧错的 ——
+  // 新任务已经出现、列表却还隐着；或者加载时就已经全部完成的会话先闪一下。
+  //
+  // - 有任务重新跑起来：取消隐藏（否则下一次全部完成会立刻藏掉，丢掉那 5 秒）；
+  // - 一帧未完成都没见过（加载/恢复到已全部完成的会话）：直接隐掉。
+  //
+  // 下面的 effect 仍要在这两支里记 `hadIncompleteRef`（区分「在眼前完成」与
+  // 「加载时已全部完成」），只是不再改 state。
+  if (activeTasks.length > 0) {
+    if (!allCompleted && autoHidden) {
+      setAutoHidden(false);
+    }
+    if (allCompleted && !hadIncompleteRef.current && !autoHidden) {
+      setAutoHidden(true);
+    }
+  }
+
   // 观察到任务从“存在未完成”变为“全部完成”时保留 5 秒再隐藏；
   // 加载或恢复到已全部完成的会话时立即隐藏，避免先闪现再消失
   React.useEffect(() => {
@@ -162,15 +180,10 @@ export const TaskList: React.FC = () => {
     }
     if (!allCompleted) {
       hadIncompleteRef.current = true;
-      if (autoHidden) {
-        setAutoHidden(false);
-      }
       return;
     }
+    // 这一支的隐藏已由 render 期那一支做掉，这里只剩「不用排 5 秒的定时器」。
     if (!hadIncompleteRef.current) {
-      if (!autoHidden) {
-        setAutoHidden(true);
-      }
       return;
     }
     if (!autoHidden) {

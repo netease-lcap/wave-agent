@@ -11,6 +11,7 @@ import {
   livePanelGroupKeys,
   pruneParkedGroups,
 } from "../utils/previewGuestKeep";
+import { setPaneBindings } from "../utils/paneBindings";
 import { DesktopChromeProvider } from "./DesktopChromeContext";
 import { useHostMessage } from "../utils/useHostMessage";
 import { withDraftGuard } from "../utils/fileDraftGuard";
@@ -95,6 +96,9 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
     } else if (message.command === "desktopPanes") {
       const nextPanes: DesktopPane[] = message.panes ?? [];
       panesRef.current = nextPanes;
+      // 同步镜像给 ChatApp 的消息处理器读（见 utils/paneBindings.ts）：下一次
+      // 提交之前到达的 setInitialState 也要知道这个 pane 刚绑到了哪条会话。
+      setPaneBindings(nextPanes);
       setPanes(nextPanes);
       prunePanels();
       setRowHeights(message.rowHeights);
@@ -103,6 +107,9 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
   });
 
   useEffect(() => {
+    // 布局镜像属于这个窗口：挂载时先清空，别把上一个窗口（或上一份渲染树）
+    // 的绑定留给消息处理器（见 utils/paneBindings.ts）。
+    setPaneBindings([]);
     vscode.postMessage({ command: "desktopReady" });
   }, [vscode]);
 

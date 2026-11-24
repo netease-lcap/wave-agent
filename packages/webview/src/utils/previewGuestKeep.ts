@@ -55,10 +55,11 @@ const listeners = new Set<() => void>();
 const snapshots = new Map<object, string[]>();
 
 /**
- * 台账变更后的通知（同步）。注意：登记发生在 ChatApp 的会话 swap effect 里，同步
- * 通知会让 React 插一次只带这条高优先级更新的渲染——那次渲染的 `tabs` 还是上一
- * 会话的。渲染侧必须能承受这种「新组名 + 旧 tabs」的提交：guest 的 key 只跟
- * state 自己声明的组（ChatApp 的 stateGroupKey）走，不跟 groupKey/groupKeyRef。
+ * 台账变更后的通知（同步）。注意：登记发生在 ChatApp 的会话切换里（消息处理器认
+ * 领的激活、没有快照的 swap effect），同步通知会让 React 插一次只带这条高优先级
+ * 更新的渲染——那次渲染的 `tabs` 还是上一会话的。渲染侧必须能承受这种「新组名 +
+ * 旧 tabs」的提交：guest 的 key 只跟 state 自己声明的组（ChatApp 的 stateGroupKey）
+ * 走，不跟 groupKey/groupKeyRef。
  */
 function invalidate(): void {
   snapshots.clear();

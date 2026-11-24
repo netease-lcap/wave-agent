@@ -137,22 +137,23 @@ function useAnchorCenterX(
   anchorSelector: string | null | undefined,
   active: boolean,
 ): number | null {
-  const [centerX, setCenterX] = useState<number | null>(null);
+  // 只记「量到的容器中心」；不需要锚点的场合（没有顶部 toast / 没给选择器 /
+  // 选择器当时查不到元素）由下面的派生返回值统一收成 null，让 CSS left:50%
+  // 回退到视口中心 —— 不必再用 effect 把 state 清一遍。
+  const [measuredCenterX, setMeasuredCenterX] = useState<number | null>(null);
   useLayoutEffect(() => {
-    if (!active || !anchorSelector) {
-      setCenterX(null);
-      return;
-    }
+    if (!active || !anchorSelector) return;
     const el = document.querySelector(anchorSelector);
-    if (!el) {
-      setCenterX(null);
-      return;
-    }
     const update = () => {
+      if (!el) {
+        setMeasuredCenterX(null);
+        return;
+      }
       const r = el.getBoundingClientRect();
-      setCenterX(Math.round(r.left + r.width / 2));
+      setMeasuredCenterX(Math.round(r.left + r.width / 2));
     };
     update();
+    if (!el) return;
     const ro = new ResizeObserver(update);
     ro.observe(el);
     window.addEventListener("resize", update);
@@ -161,7 +162,7 @@ function useAnchorCenterX(
       window.removeEventListener("resize", update);
     };
   }, [active, anchorSelector]);
-  return centerX;
+  return active && anchorSelector ? measuredCenterX : null;
 }
 
 /**
