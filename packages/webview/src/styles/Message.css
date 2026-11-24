@@ -717,6 +717,13 @@ button.reasoning-header {
   overflow-wrap: anywhere;
 }
 
+/* 工具卡片里「给人读的代码」纵向上限：命令行、REPL 脚本、以及它们下面的输出区
+   共用这一个值（specs/ui/message-rendering-system.md「REPL 工具块的脚本与输出」
+   场景 14）。分开写两份数值曾经漂成 120 / 240 —— 收敛成一处，改一处三边同步。 */
+:root {
+  --tool-code-max-height: 120px;
+}
+
 .bash-command-input {
   display: flex;
   align-items: flex-start;
@@ -726,7 +733,7 @@ button.reasoning-header {
   line-height: 1.2;
   border-radius: 6px;
   border: 1px solid var(--vscode-panel-border);
-  max-height: 120px;
+  max-height: var(--tool-code-max-height);
   overflow-y: auto;
   font-family: var(--vscode-editor-font-family);
 }
@@ -774,7 +781,7 @@ button.reasoning-header {
   line-height: 1.2;
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 120px;
+  max-height: var(--tool-code-max-height);
   overflow-y: auto;
   font-weight: normal;
   font-family: var(--vscode-editor-font-family);
@@ -792,17 +799,9 @@ button.reasoning-header {
 
 /* ---- REPL 工具块 ----
    （specs/ui/message-rendering-system.md「REPL 工具块的脚本与输出」）
-   几何与配色沿用上面 Bash 的 unified 卡片，只有两处不同：脚本区比命令行高
-   （一段脚本常有几十行，120px 只够看开头），返回值单独占一行、带一枚 `=>`
-   前缀好和 `self.log` 的输出分开。 */
-.repl-block .bash-command-input {
-  max-height: 240px;
-}
-
-/* 脚本长行照 Bash 那条折行（`pre-wrap` + `word-break: break-word`），不另立横滚：
-   模型写的脚本常常整段就是一行（`A(); B(); C();` 全塞在一行里），横滚等于让用户
-   一路横向拖。折行后超宽行按宽度软折，纵向由上面 240px 上限 + 滚动兜住（仍是
-   Bash 命令区 120px 的两倍，一段脚本几十行时多看十来行）。 */
+   几何与配色完全沿用上面 Bash 的 unified 卡片——脚本区就是一段代码，没理由比
+   命令行多露行数（上限、折行、padding 都走基础规则），唯一多出来的形态是返回值：
+   单独占一行、带一枚 `=>` 前缀，好和 `self.log` 的输出分开。 */
 
 .repl-result {
   margin-top: 2px;

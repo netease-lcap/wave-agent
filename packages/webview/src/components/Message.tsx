@@ -1700,6 +1700,7 @@ export const Message: React.FC<MessageProps> = React.memo(
         </div>
       );
 
+      // 还没有输出时只画脚本（场景 10）。
       if (!logText && !resultText && !notice) return input;
 
       return (
