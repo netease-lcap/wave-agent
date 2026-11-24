@@ -6,7 +6,7 @@ paths:
 - `packages/*/tests` directories contain test files that are easy to mock, can run locally and on CI/CD
   - Testing framework is vitest
   - Run test use `cd packages/xxx && pnpm test test_file`
-  - Run only the files you touched; a package-wide `test` or whole-repo run needs the user to ask for it
+  - **只跑相关测试，尽量不要跑全量**（按改到的源文件反查测试文件）。包级 `test` 或全仓跑要用户点名
   - Use HookTester to test hooks
   - Ink components render through the in-repo harness `packages/code/tests/helpers/inkHarness.ts` (`render` / `cleanup`, a drop-in for the retired `ink-testing-library`); after a key press, a `rerender` or a synchronous callback use `await settle()`, which flushes until the output stops changing — no polling and no `sleep`
   - Reserve `vi.waitFor` for changes an **async** source still owes you (a promise, a timer, a socket), not for frames. It polls every 50ms by default and that interval is hard-coded in vitest, so `packages/code` and `packages/desktop` wrap it to 5ms in their `tests/setup.ts` (~35% / ~52% faster suites, 2026-10-23). Don't lower it further: the remaining cost is `sleep()` and rendering, not polling
