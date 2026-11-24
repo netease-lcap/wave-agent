@@ -1,6 +1,6 @@
 import { readFileSync } from "fs";
-import { dirname } from "path";
-import { parseFrontmatterYaml, splitFrontmatter } from "./frontmatterYaml.js";
+import { basename, dirname } from "path";
+import { readFrontmatterYaml, splitFrontmatter } from "./frontmatterYaml.js";
 import {
   findUnresolvedDirectoryPlaceholders,
   substituteDirectoryPlaceholders,
@@ -47,17 +47,48 @@ export function parseSkillFile(
     result.content = content;
 
     // Parse YAML frontmatter
-    const { yaml } = splitFrontmatter(content);
+    const { yaml, body } = splitFrontmatter(content);
     if (yaml === null) {
       result.validationErrors.push("Missing YAML frontmatter");
       return result;
     }
 
-    result.frontmatter = parseYamlFrontmatter(yaml);
+    const parsed = parseYamlFrontmatter(yaml, filePath);
+    result.frontmatter = parsed.frontmatter;
+
+    if (parsed.parseError) {
+      // A block that does not parse leaves the skill loadable with every field
+      // dropped: the name falls back to the directory and the description to the
+      // body's first line, so `hooks`, `allowed-tools` and
+      // `disable-model-invocation` stop applying while the skill keeps showing
+      // up in the menu and the model's list. That is Claude Code's behaviour
+      // (its own doctor skill: "still loads, but with EVERY field dropped … and
+      // `allowed-tools`, `model`, and `disable-model-invocation` silently stop
+      // applying"), and it is the one that keeps a mistyped file visible to the
+      // author who has to fix it. The failure itself was logged with the file's
+      // path by `readFrontmatterYaml`; the warning surfaces it where skill
+      // warnings are already shown (spec ecosystem/agent-skills).
+      const fallbackName = basename(basePath || dirname(filePath));
+      const firstBodyLine =
+        body
+          .split("\n")
+          .map((line) => line.trim())
+          .find((line) => line.length > 0) ?? "";
+      result.frontmatter = {
+        ...result.frontmatter,
+        name: fallbackName,
+        description: firstBodyLine,
+      };
+      result.warnings.push(
+        `frontmatter failed to parse (${parsed.parseError}) — the skill loads as "${fallbackName}" with the first body line as its description, and every frontmatter field (hooks, allowed-tools, model, …) is ignored until it is fixed`,
+      );
+    }
 
     if (!result.frontmatter.name || !result.frontmatter.description) {
       result.validationErrors.push(
-        "Missing required fields: name and description",
+        parsed.parseError
+          ? `frontmatter failed to parse (${parsed.parseError}) and the body has no first line to fall back to as a description`
+          : "Missing required fields: name and description",
       );
       return result;
     }
@@ -518,20 +549,29 @@ function parseAliases(
  * way (block scalars included — see spec `ecosystem/agent-skills` 场景 2).
  * Here we only narrow the result to the fields a skill declares.
  */
-function parseYamlFrontmatter(yamlContent: string): SkillFrontmatter {
-  const parsed = parseFrontmatterYaml(yamlContent);
+function parseYamlFrontmatter(
+  yamlContent: string,
+  sourcePath?: string,
+): { frontmatter: SkillFrontmatter; parseError?: string } {
+  const { frontmatter: parsed, parseError } = readFrontmatterYaml(
+    yamlContent,
+    sourcePath,
+  );
   const asString = (key: string): string | undefined => {
     const value = parsed[key];
     return typeof value === "string" ? value : undefined;
   };
 
   return {
-    ...parsed,
-    // Required fields must be strings: a bare `name:` / `description:` key
-    // parses to "" (a key with no value), and anything nested is not a name,
-    // either way validation reports the field as missing.
-    name: asString("name") ?? "",
-    description: asString("description") ?? "",
+    frontmatter: {
+      ...parsed,
+      // Required fields must be strings: a bare `name:` / `description:` key
+      // parses to "" (a key with no value), and anything nested is not a name,
+      // either way validation reports the field as missing.
+      name: asString("name") ?? "",
+      description: asString("description") ?? "",
+    },
+    ...(parseError !== undefined ? { parseError } : {}),
   };
 }
 

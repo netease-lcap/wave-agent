@@ -3,7 +3,9 @@
  * automation/skill-hooks 用户故事 1 + 场景 4): what reaches
  * `SkillMetadata.hooks`, what is dropped with a warning, and the promise that a
  * structurally broken `hooks` value never costs the author their skill — while a
- * syntactically broken frontmatter block does cost them the skill.
+ * syntactically broken block costs them every field but not the skill itself
+ * (Claude Code's behaviour: name from the directory, description from the
+ * body's first line, `hooks` / `allowed-tools` silently unapplied).
  *
  * Real files on disk on purpose: the job here is turning the author's YAML into
  * a table, so a mocked `readFileSync` would let a reader/validator mismatch pass
@@ -403,28 +405,63 @@ describe("skillParser hooks", () => {
     expect(result.warnings).toEqual([]);
   });
 
-  it("rejects the skill when the frontmatter block itself is not valid YAML", () => {
+  it("keeps a skill whose frontmatter block is not valid YAML, with every field dropped", () => {
     // An unclosed flow list makes the parser throw, and a real parser is
-    // all-or-nothing: the whole block comes back empty, the required fields are
-    // gone, and the skill is invalid. Spec scenario 4 draws the line exactly
-    // here — a *structurally* broken hooks value keeps the skill (the case
-    // above), a *syntactically* broken block does not salvage half a YAML block
-    // just to save the hooks.
-    const result = parseSkillFile(
-      writeSkill(
-        [
-          "name: demo",
-          "description: d",
-          "hooks:",
-          "  PostToolUse:",
-          "    - hooks: [ {type: command, command: echo hi }",
-        ].join("\n"),
-      ),
+    // all-or-nothing: the whole block comes back empty. What happens next is
+    // Claude Code's behaviour (spec ecosystem/agent-skills) — the skill keeps
+    // loading with the name taken from its directory and the description from
+    // the body's first line, while `hooks`, `allowed-tools` and the model gates
+    // simply stop applying. Dropping the skill instead would hide the mistyped
+    // file from the very author who has to fix it.
+    const dir = path.join(root, "broken-yaml");
+    fs.mkdirSync(dir, { recursive: true });
+    const filePath = path.join(dir, "SKILL.md");
+    fs.writeFileSync(
+      filePath,
+      [
+        "---",
+        "name: demo",
+        "description: d",
+        "hooks:",
+        "  PostToolUse:",
+        "    - hooks: [ {type: command, command: echo hi }",
+        "---",
+        "",
+        "# Broken skill",
+        "",
+        "Body of the skill.",
+        "",
+      ].join("\n"),
     );
 
-    expect(result.isValid).toBe(false);
-    expect(result.validationErrors).toContain(
-      "Missing required fields: name and description",
+    const result = parseSkillFile(filePath);
+
+    expect(result.isValid).toBe(true);
+    expect(result.validationErrors).toEqual([]);
+    expect(result.skillMetadata.name).toBe("broken-yaml");
+    expect(result.skillMetadata.description).toBe("# Broken skill");
+    expect(result.skillMetadata.hooks).toBeUndefined();
+    expect(
+      result.warnings.some((w) => w.includes("frontmatter failed to parse")),
+    ).toBe(true);
+  });
+
+  it("rejects a skill whose broken frontmatter leaves no body line to describe it", () => {
+    // Nothing left to fall back to: the block is gone and the body has no first
+    // line, so there is no description and no name that means anything.
+    const dir = path.join(root, "empty-body");
+    fs.mkdirSync(dir, { recursive: true });
+    const filePath = path.join(dir, "SKILL.md");
+    fs.writeFileSync(
+      filePath,
+      ["---", "name: demo", "hooks: [ unclosed", "---", ""].join("\n"),
     );
+
+    const result = parseSkillFile(filePath);
+
+    expect(result.isValid).toBe(false);
+    expect(result.validationErrors).toEqual([
+      expect.stringContaining("frontmatter failed to parse"),
+    ]);
   });
 });

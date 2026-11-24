@@ -24,7 +24,10 @@ interface ParsedMarkdownFile {
  * `frontmatterYaml.ts` (spec `ui/slash-commands` 场景 3,
  * `core/memory-management` 场景 4/13).
  */
-export function parseFrontmatter(content: string): {
+export function parseFrontmatter(
+  content: string,
+  sourcePath?: string,
+): {
   frontmatter?: Record<string, unknown>;
   content: string;
 } {
@@ -34,7 +37,13 @@ export function parseFrontmatter(content: string): {
     return { content };
   }
 
-  return { frontmatter: parseFrontmatterYaml(yaml), content: body };
+  // `sourcePath` only reaches the log line: a memory rule whose frontmatter does
+  // not parse loses its `paths` scope and is then applied to every file, which is
+  // exactly the kind of silent widening the file name has to make traceable.
+  return {
+    frontmatter: parseFrontmatterYaml(yaml, sourcePath),
+    content: body,
+  };
 }
 
 /**
@@ -43,7 +52,7 @@ export function parseFrontmatter(content: string): {
 export function parseMarkdownFile(filePath: string): ParsedMarkdownFile {
   try {
     const fileContent = readFileSync(filePath, "utf-8");
-    const { frontmatter, content } = parseFrontmatter(fileContent);
+    const { frontmatter, content } = parseFrontmatter(fileContent, filePath);
 
     let config: CustomSlashCommandConfig | undefined;
 

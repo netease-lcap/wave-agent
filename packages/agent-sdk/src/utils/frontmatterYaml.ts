@@ -18,11 +18,16 @@ import { logger } from "./globalLogger.js";
  * `released: 2024-01-02` line stays the string, not midnight UTC.
  *
  * A block that is not valid YAML is not half-read: the whole frontmatter comes
- * back empty, so the artifact that owns it is rejected with a warning instead of
- * silently losing a field or two. That is what Claude Code does (a skill whose
- * frontmatter fails to parse is skipped, not loaded with defaults), and the one
- * file this used to punish — the built-in `code-review` skill, whose description
- * carries an unquoted colon — now quotes its value.
+ * back empty, and the failure travels out as `parseError` so the owner can say
+ * what happened. What each owner does with it is its own call, and it mirrors
+ * Claude Code: a skill keeps loading with every field dropped (name from the
+ * directory, description from the body's first line — which is also why the
+ * built-in `code-review` skill quotes its description rather than leaning on
+ * that fallback), a memory rule loses its `paths` scope and therefore applies to
+ * every file, a subagent is rejected. The failure is logged at error level, with
+ * the file's path whenever the caller knows it, because "every field silently
+ * stopped applying" is otherwise invisible: CC writes the same line for custom
+ * commands, and its rules loader is the one that says nothing at all.
  */
 export type FrontmatterValue =
   | string
@@ -49,33 +54,63 @@ export function splitFrontmatter(content: string): {
   return { yaml: match[1], body: match[2] ?? "" };
 }
 
+export interface FrontmatterParseResult {
+  frontmatter: ParsedFrontmatter;
+  /** The parser's message when the block is not valid YAML; absent otherwise. */
+  parseError?: string;
+}
+
 /**
- * Parse a frontmatter block (without the `---` delimiters) into key/value
- * pairs. Never throws: a block that is not valid YAML, or that parses to
- * something other than a table (a bare scalar, a list, nothing at all), yields
- * an empty object — the caller reports the missing required fields, which is how
- * a broken frontmatter takes its artifact down.
+ * Read a frontmatter block (without the `---` delimiters) and keep the parser's
+ * complaint, for the owners that react to it rather than just reading fields
+ * (a skill falls back to its directory name and its body's first line, spec
+ * `ecosystem/agent-skills`; the rest only need the fields and call
+ * {@link parseFrontmatterYaml}).
+ *
+ * Never throws: a block that is not valid YAML, or that parses to something
+ * other than a table (a bare scalar, a list, nothing at all), yields an empty
+ * table. `sourcePath` is the file the block came from — only used to say which
+ * file in the log line.
  */
-export function parseFrontmatterYaml(yamlContent: string): ParsedFrontmatter {
+export function readFrontmatterYaml(
+  yamlContent: string,
+  sourcePath?: string,
+): FrontmatterParseResult {
   let document: unknown;
   try {
     document = parse(yamlContent);
   } catch (error) {
-    // Same diagnosis Claude Code logs: the artifact is skipped, but the reason
-    // ("Nested mappings are not allowed in compact mappings at line 4, ...")
-    // has to be discoverable.
-    logger.warn(
-      `Failed to parse YAML frontmatter: ${error instanceof Error ? error.message : String(error)}`,
+    const message = error instanceof Error ? error.message : String(error);
+    // Error, not warn: the artifact keeps working with every field dropped
+    // (allowed-tools, model, hooks … silently stop applying), so this line is
+    // the only trace an author gets. Claude Code words it the same way for
+    // custom commands — "YAML frontmatter in <path> failed to parse and was
+    // ignored" — and says nothing for rules at all, which is the behaviour this
+    // one line exists to avoid.
+    logger.error(
+      `Failed to parse YAML frontmatter${sourcePath ? ` in ${sourcePath}` : ""}: ${message}`,
     );
-    return {};
+    return { frontmatter: {}, parseError: message };
   }
-  if (!isTable(document)) return {};
+  if (!isTable(document)) return { frontmatter: {} };
   const frontmatter: ParsedFrontmatter = {};
   const visiting = new Set<object>();
   for (const [key, value] of Object.entries(document)) {
     frontmatter[key] = toFrontmatterValue(value, visiting);
   }
-  return frontmatter;
+  return { frontmatter };
+}
+
+/**
+ * The fields alone, for the owners that only read them. A block that is not
+ * valid YAML comes back empty — see {@link readFrontmatterYaml} for the failure
+ * itself.
+ */
+export function parseFrontmatterYaml(
+  yamlContent: string,
+  sourcePath?: string,
+): ParsedFrontmatter {
+  return readFrontmatterYaml(yamlContent, sourcePath).frontmatter;
 }
 
 /**

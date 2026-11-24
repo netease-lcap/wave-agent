@@ -169,7 +169,7 @@ monorepo 场景里，子系统/子包会自带技能（`packages/api/.wave/skill
 
 **验收场景**：
 
-1. **假设**我创建了带有无效 YAML frontmatter 的 SKILL.md 文件，**当**Wave 尝试加载该技能时，**则**它应该提供关于需要修复内容的清晰错误消息
+1. **假设**我创建了带有无效 YAML frontmatter 的 SKILL.md 文件，**当**Wave 尝试加载该技能时，**则**技能仍然可用（名字取所在目录名、描述取正文第一行非空行），但整块 frontmatter 失效——`hooks` / `allowed-tools` / `model` / `disable-model-invocation` 等全部不生效——并给出一条带文件路径的错误级日志（外加技能 `warnings` 里的一条），说清要修的是哪个文件的哪块 YAML；正文里连一行内容都没有时技能才判为无效
 2. **假设**我有多个可用技能，**当**我请求有关技能的信息时，**则**Wave 应该能够列出并描述可用的个人和项目技能
 3. **假设**我修改了技能的 SKILL.md 文件，**当**我与 Wave 交互时，**则**它应该自动重新加载更新后的技能定义
 
@@ -263,7 +263,7 @@ monorepo 场景里，子系统/子包会自带技能（`packages/api/.wave/skill
 
 ### 边界情况
 
-- 当技能的 SKILL.md 文件有格式错误的 YAML frontmatter 时会发生什么？
+- **格式错误的 YAML frontmatter 会毁掉整个技能吗？** 不会毁技能，会毁字段。解析器是全有或全无（坏一块就整块作废，不抢救半个 YAML），但作废的是 metadata 而不是技能本身：名字回退为所在目录名、描述回退为正文第一行非空行，技能照旧出现在斜杠命令与模型的技能清单里，只是 `hooks` / `allowed-tools` / `model` / `disable-model-invocation` 静默失效。形态与 Claude Code 一致（它的体检技能原话：坏块「still loads, but with EVERY field dropped」，正常 verbosity 下不提示），差别只在提示：我方额外给一条带文件路径的错误级日志，让作者看得见要修哪个文件。正文没有任何内容可作描述时，技能才判为无效。
 - Wave 如何处理同名的个人技能和项目技能之间的冲突？
 - 当引用的辅助文件（脚本、模板）缺失或不可访问时会发生什么？
 - Wave 如何处理辅助文件中有循环引用的技能？

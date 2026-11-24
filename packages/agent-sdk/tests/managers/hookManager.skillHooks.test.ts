@@ -128,6 +128,81 @@ describe("HookManager skill hooks", () => {
     });
   });
 
+  describe("duplicate hooks inside one source", () => {
+    it("keeps one copy when a skill lists the same hook twice", async () => {
+      // Spec 故事③场景 2: one source listing a hook twice means it once. Claude
+      // Code collapses it the same way (its session registry replaces an equal
+      // entry in the same matcher bucket instead of appending).
+      manager.registerSkillHooks(SKILL_ROOT, "demo", {
+        UserPromptSubmit: [
+          {
+            hooks: [
+              { type: "command", command: "echo twice" },
+              { type: "command", command: "echo twice" },
+            ],
+          },
+        ],
+      });
+
+      expect(
+        manager.getConfiguration()?.UserPromptSubmit?.[0]?.hooks,
+      ).toHaveLength(1);
+
+      await manager.executeHooks("UserPromptSubmit", context);
+      expect(mockExecuteCommand).toHaveBeenCalledTimes(1);
+    });
+
+    it("collapses the duplicate across two configs of the same source", async () => {
+      // The same command split into two entries — as an author editing the file
+      // leaves it — is still one hook.
+      manager.registerSkillHooks(SKILL_ROOT, "demo", {
+        UserPromptSubmit: [hookConfig("echo twice"), hookConfig("echo twice")],
+      });
+
+      expect(manager.getConfiguration()?.UserPromptSubmit).toHaveLength(1);
+
+      await manager.executeHooks("UserPromptSubmit", context);
+      expect(mockExecuteCommand).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps both copies under different matchers", () => {
+      manager.registerSkillHooks(SKILL_ROOT, "demo", {
+        PostToolUse: [
+          { matcher: "Bash", hooks: [{ type: "command", command: "echo x" }] },
+          { matcher: "Write", hooks: [{ type: "command", command: "echo x" }] },
+        ],
+      });
+
+      expect(manager.getConfiguration()?.PostToolUse).toHaveLength(2);
+    });
+
+    it("keeps both copies when only one of them is `once`", () => {
+      // Same text, different run mode: not the same registration.
+      manager.registerSkillHooks(SKILL_ROOT, "demo", {
+        UserPromptSubmit: [
+          hookConfig("echo x"),
+          hookConfig("echo x", { once: true }),
+        ],
+      });
+
+      expect(manager.getConfiguration()?.UserPromptSubmit).toHaveLength(2);
+    });
+
+    it("keeps a settings copy and a skill copy of the same hook apart", async () => {
+      manager.loadConfigurationFromWaveConfig({
+        hooks: { UserPromptSubmit: [hookConfig("echo same")] },
+      });
+      manager.registerSkillHooks(SKILL_ROOT, "demo", {
+        UserPromptSubmit: [hookConfig("echo same")],
+      });
+
+      expect(manager.getConfiguration()?.UserPromptSubmit).toHaveLength(2);
+
+      await manager.executeHooks("UserPromptSubmit", context);
+      expect(mockExecuteCommand).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe("unregisterSkillHooks", () => {
     it("removes the skill's hooks from the merged configuration", () => {
       manager.registerSkillHooks(SKILL_ROOT, "demo", {

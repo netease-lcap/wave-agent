@@ -42,7 +42,10 @@ export class MemoryRuleService {
     filePath: string,
     source: "project" | "user",
   ): MemoryRule {
-    const { frontmatter, content: bodyContent } = parseFrontmatter(content);
+    const { frontmatter, content: bodyContent } = parseFrontmatter(
+      content,
+      filePath,
+    );
 
     const metadata: MemoryRuleMetadata = {};
     if (frontmatter) {

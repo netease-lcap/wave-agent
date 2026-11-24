@@ -1,8 +1,28 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import * as path from "path";
 import {
   parseFrontmatterYaml,
+  readFrontmatterYaml,
   splitFrontmatter,
 } from "../../src/utils/frontmatterYaml.js";
+import { logger } from "../../src/utils/globalLogger.js";
+
+// A broken block is not a stack trace on the console: the parser reports it to
+// the logger, and the test asserts on that line instead of letting it print.
+vi.mock("../../src/utils/globalLogger.js", () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
+const mockLogError = vi.mocked(logger.error);
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 /**
  * Skills, subagents, custom slash commands, memory rules and memory files all
@@ -192,12 +212,36 @@ describe("parseFrontmatterYaml on the yaml package", () => {
   it("returns {} for a block that is not valid YAML", () => {
     // An unquoted ": " inside a plain scalar, an unterminated flow sequence, a
     // duplicate key — the parser rejects each of them, and the whole block goes
-    // with it. Reading such a block partially would load the artifact with some
-    // fields and not others; Claude Code drops the artifact instead, and so do we.
+    // with it. Reading such a block partially would hand the artifact some
+    // fields and not others; what the owner does with the empty table is its own
+    // call (a skill keeps loading with every field dropped, a subagent is
+    // rejected, a memory rule loses its `paths` scope).
     expect(parseFrontmatterYaml("description: Use this when: foo")).toEqual({});
     expect(parseFrontmatterYaml("name: demo\na: [1")).toEqual({});
     expect(() => parseFrontmatterYaml("name: a\nname: b")).not.toThrow();
     expect(parseFrontmatterYaml("name: a\nname: b")).toEqual({});
+  });
+
+  it("reports the failure at error level, naming the file", () => {
+    // The artifact keeps working with every field dropped, so this line is the
+    // only trace an author gets — Claude Code words it the same way for custom
+    // commands ("YAML frontmatter in <path> failed to parse and was ignored").
+    const sourcePath = path.join("/rules", "orders.md");
+
+    const result = readFrontmatterYaml("name: demo\na: [1", sourcePath);
+
+    expect(result.frontmatter).toEqual({});
+    expect(result.parseError).toEqual(expect.any(String));
+    expect(mockLogError).toHaveBeenCalledTimes(1);
+    expect(mockLogError.mock.calls[0]?.[0]).toContain(
+      `Failed to parse YAML frontmatter in ${sourcePath}`,
+    );
+  });
+
+  it("leaves parseError unset for a block that parses", () => {
+    expect(readFrontmatterYaml("name: demo").parseError).toBeUndefined();
+    expect(readFrontmatterYaml("a: [1").parseError).toBeDefined();
+    expect(mockLogError).toHaveBeenCalledTimes(1);
   });
 
   it("returns {} for an empty block", () => {

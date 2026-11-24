@@ -226,16 +226,102 @@ export class HookManager {
    */
   private rebuildConfiguration(): void {
     const rebuilt: PartialHookConfiguration = {};
-    this.mergeHooksConfiguration(rebuilt, this.programmaticHooks);
-    for (const hooks of this.pluginHooks.values()) {
-      this.mergeHooksConfiguration(rebuilt, hooks);
+    // One rebuild's worth of "already contributed", so the first copy of a
+    // command wins inside its own source and nothing else has to remember it.
+    const seen = new Set<string>();
+    this.mergeSourceHooks(
+      rebuilt,
+      seen,
+      "programmatic",
+      this.programmaticHooks,
+    );
+    for (const [root, hooks] of this.pluginHooks) {
+      this.mergeSourceHooks(rebuilt, seen, `plugin:${root}`, hooks);
     }
-    this.mergeHooksConfiguration(rebuilt, this.waveConfigHooks);
-    for (const hooks of this.skillHooks.values()) {
-      this.mergeHooksConfiguration(rebuilt, hooks);
+    this.mergeSourceHooks(rebuilt, seen, "settings", this.waveConfigHooks);
+    for (const [root, hooks] of this.skillHooks) {
+      this.mergeSourceHooks(rebuilt, seen, `skill:${root}`, hooks);
     }
     this.dropExhaustedOnceHooks(rebuilt);
     this.configuration = Object.keys(rebuilt).length > 0 ? rebuilt : undefined;
+  }
+
+  /**
+   * Merge one source into the rebuilt view, keeping out the commands that source
+   * already contributed.
+   *
+   * A source that lists the same hook twice means it once (spec
+   * `automation/skill-hooks` 故事③场景 2) — Claude Code collapses such duplicates
+   * the same way, its session hook registry replacing an equal entry in the same
+   * `matcher` bucket instead of appending. Two sources writing the same command
+   * stay two hooks: each has its own directory, its own budget and its own
+   * failure notice (故事③场景 1), which is why the source is part of the
+   * identity and why the set is only alive for one rebuild.
+   *
+   * A config that loses a command is copied, and its source keeps the original —
+   * the same trade `dropExhaustedOnceHooks` makes, so that the command the
+   * executor runs is still by reference the object sitting in its source
+   * (`removeExecutedOnceHook` relies on it).
+   */
+  private mergeSourceHooks(
+    target: PartialHookConfiguration,
+    seen: Set<string>,
+    source: string,
+    hooks: PartialHookConfiguration,
+  ): void {
+    for (const [event, configs] of Object.entries(hooks)) {
+      if (!isValidHookEvent(event)) continue;
+      const keptConfigs: HookEventConfig[] = [];
+      for (const config of configs) {
+        const commands = config.hooks.filter((command) => {
+          const identity = HookManager.commandIdentity(
+            source,
+            event,
+            config.matcher,
+            command,
+          );
+          if (seen.has(identity)) return false;
+          seen.add(identity);
+          return true;
+        });
+        if (commands.length === 0) continue;
+        keptConfigs.push(
+          commands.length === config.hooks.length
+            ? config
+            : { ...config, hooks: commands },
+        );
+      }
+      if (keptConfigs.length === 0) continue;
+      target[event] = target[event]
+        ? [...target[event], ...keptConfigs]
+        : [...keptConfigs];
+    }
+  }
+
+  /**
+   * Identity of "the same hook": the source that owns it, the event, the matcher
+   * and the fields that change what runs.
+   *
+   * Deliberately finer than {@link onceFingerprint}, which folds the programmatic
+   * and settings sources together: for "has this already run" they are one hook,
+   * for "is this the same registration" they are two.
+   */
+  private static commandIdentity(
+    source: string,
+    event: HookEvent,
+    matcher: string | undefined,
+    command: HookCommand,
+  ): string {
+    return [
+      source,
+      event,
+      matcher ?? "",
+      command.command,
+      String(command.timeout ?? ""),
+      command.async ? "async" : "",
+      command.asyncRewake ? "rewake" : "",
+      command.once ? "once" : "",
+    ].join("\u0000");
   }
 
   /**
