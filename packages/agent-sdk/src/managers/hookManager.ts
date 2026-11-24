@@ -6,6 +6,7 @@
  */
 
 import {
+  type HookCommand,
   type HookEvent,
   type HookEventConfig,
   type HookExecutionContext,
@@ -16,6 +17,7 @@ import {
   type SessionEndSource,
   type SessionStartSource,
   HookConfigurationError,
+  HOOK_SOURCE_LIMITS,
   isValidHookEvent,
   isValidHookEventConfig,
 } from "../types/hooks.js";
@@ -25,6 +27,7 @@ import type {
 } from "../types/configuration.js";
 import { HookMatcher } from "../utils/hookMatcher.js";
 import { executeCommand, isCommandSafe } from "../services/hook.js";
+import { basename } from "path";
 import type { MessageManager } from "./messageManager.js";
 import type { MessageQueue } from "./messageQueue.js";
 import { taskNotificationToXml } from "../utils/notificationXml.js";
@@ -46,6 +49,33 @@ function summarizeHookResults(results: HookExecutionResult[]) {
     timedOut: r.timedOut,
     stderr: r.stderr,
   }));
+}
+
+/**
+ * Where a hook came from, as the user-facing error notice words it.
+ *
+ * Only the sources that are not the session's own get a label: a skill's hook
+ * must say `skill:<name>` (its author cannot see the user's settings, and the
+ * user cannot tell a skill's interception from their own), a plugin's says
+ * `plugin:<dir>`. A `settings.json` / AgentOptions hook returns undefined and
+ * reads exactly as before — labelling the default everywhere would be noise.
+ *
+ * The name is the skill's own `name` (not the directory) because that is what
+ * the user invoked; the path is only a fallback for a command that lost its
+ * stamp on the way (e.g. one registered outside `registerSkillHooks`).
+ */
+function hookSourceLabel(command: {
+  skillRoot?: string;
+  skillName?: string;
+  pluginRoot?: string;
+}): string | undefined {
+  if (command.skillRoot) {
+    return `skill:${command.skillName ?? basename(command.skillRoot)}`;
+  }
+  if (command.pluginRoot) {
+    return `plugin:${basename(command.pluginRoot)}`;
+  }
+  return undefined;
 }
 
 /** Append one hook's text to a running collector, newline-separated. */
@@ -77,7 +107,26 @@ export class HookManager {
    * exactly one plugin's hooks (and re-registering would double them).
    */
   private pluginHooks = new Map<string, PartialHookConfiguration>();
+  /**
+   * Skill hooks grouped by the skill's absolute directory path. Keyed by path
+   * rather than by skill name because a name identifies nothing here: two
+   * skills may carry the same one, and a hot reload re-parses the same skill
+   * from a new directory. The path is what a re-register can replace exactly,
+   * so one skill never ends up with two registrations and a stale one can be
+   * dropped without touching its namesake.
+   */
+  private skillHooks = new Map<string, PartialHookConfiguration>();
   private waveConfigHooks: PartialHookConfiguration = {};
+  /**
+   * Fingerprints of `once` commands that already ran successfully in this
+   * session. Retiring the command from its source is not enough on its own:
+   * every reload path re-registers from configuration that still says
+   * `once: true` (a skills-dir file change re-parses the skill, a settings
+   * reload rebuilds the wave config), and a fresh copy has no memory of having
+   * run. The set is what makes "once" mean once per session rather than once
+   * per registration (spec `automation/skill-hooks` 边界情况).
+   */
+  private readonly exhaustedOnceHooks = new Set<string>();
   private readonly matcher: HookMatcher;
   private readonly workdir: string;
 
@@ -161,18 +210,180 @@ export class HookManager {
   }
 
   /**
-   * Rebuild the full configuration from all sources:
-   * programmatic (AgentOptions.hooks) + plugin + wave config (settings.json)
-   * Order determines precedence on conflict (later sources append).
+   * Rebuild the full configuration from all sources, in execution order:
+   * programmatic (AgentOptions.hooks) → plugin → wave config (settings.json) →
+   * skill.
+   *
+   * The order is the spec's, not an accident (spec `automation/skill-hooks`
+   * 故事③场景 3): settings always runs before a skill's hooks. Hooks are never
+   * merged across sources — every source appends — so this order is the only
+   * thing that decides who runs first.
+   *
+   * Merging concatenates the per-event config arrays and clones nothing, so
+   * each config object and each command object in the rebuilt view *is* the
+   * object held by its source. That is what lets `removeExecutedOnceHook`
+   * find a command by reference.
    */
   private rebuildConfiguration(): void {
     const rebuilt: PartialHookConfiguration = {};
-    this.mergeHooksConfiguration(rebuilt, this.programmaticHooks);
-    for (const hooks of this.pluginHooks.values()) {
-      this.mergeHooksConfiguration(rebuilt, hooks);
+    // One rebuild's worth of "already contributed", so the first copy of a
+    // command wins inside its own source and nothing else has to remember it.
+    const seen = new Set<string>();
+    this.mergeSourceHooks(
+      rebuilt,
+      seen,
+      "programmatic",
+      this.programmaticHooks,
+    );
+    for (const [root, hooks] of this.pluginHooks) {
+      this.mergeSourceHooks(rebuilt, seen, `plugin:${root}`, hooks);
     }
-    this.mergeHooksConfiguration(rebuilt, this.waveConfigHooks);
+    this.mergeSourceHooks(rebuilt, seen, "settings", this.waveConfigHooks);
+    for (const [root, hooks] of this.skillHooks) {
+      this.mergeSourceHooks(rebuilt, seen, `skill:${root}`, hooks);
+    }
+    this.dropExhaustedOnceHooks(rebuilt);
     this.configuration = Object.keys(rebuilt).length > 0 ? rebuilt : undefined;
+  }
+
+  /**
+   * Merge one source into the rebuilt view, keeping out the commands that source
+   * already contributed.
+   *
+   * A source that lists the same hook twice means it once (spec
+   * `automation/skill-hooks` 故事③场景 2) — Claude Code collapses such duplicates
+   * the same way, its session hook registry replacing an equal entry in the same
+   * `matcher` bucket instead of appending. Two sources writing the same command
+   * stay two hooks: each has its own directory, its own budget and its own
+   * failure notice (故事③场景 1), which is why the source is part of the
+   * identity and why the set is only alive for one rebuild.
+   *
+   * A config that loses a command is copied, and its source keeps the original —
+   * the same trade `dropExhaustedOnceHooks` makes, so that the command the
+   * executor runs is still by reference the object sitting in its source
+   * (`removeExecutedOnceHook` relies on it).
+   */
+  private mergeSourceHooks(
+    target: PartialHookConfiguration,
+    seen: Set<string>,
+    source: string,
+    hooks: PartialHookConfiguration,
+  ): void {
+    for (const [event, configs] of Object.entries(hooks)) {
+      if (!isValidHookEvent(event)) continue;
+      const keptConfigs: HookEventConfig[] = [];
+      for (const config of configs) {
+        const commands = config.hooks.filter((command) => {
+          const identity = HookManager.commandIdentity(
+            source,
+            event,
+            config.matcher,
+            command,
+          );
+          if (seen.has(identity)) return false;
+          seen.add(identity);
+          return true;
+        });
+        if (commands.length === 0) continue;
+        keptConfigs.push(
+          commands.length === config.hooks.length
+            ? config
+            : { ...config, hooks: commands },
+        );
+      }
+      if (keptConfigs.length === 0) continue;
+      target[event] = target[event]
+        ? [...target[event], ...keptConfigs]
+        : [...keptConfigs];
+    }
+  }
+
+  /**
+   * Identity of "the same hook": the source that owns it, the event, the matcher
+   * and the fields that change what runs.
+   *
+   * Deliberately finer than {@link onceFingerprint}, which folds the programmatic
+   * and settings sources together: for "has this already run" they are one hook,
+   * for "is this the same registration" they are two.
+   */
+  private static commandIdentity(
+    source: string,
+    event: HookEvent,
+    matcher: string | undefined,
+    command: HookCommand,
+  ): string {
+    return [
+      source,
+      event,
+      matcher ?? "",
+      command.command,
+      String(command.timeout ?? ""),
+      command.async ? "async" : "",
+      command.asyncRewake ? "rewake" : "",
+      command.once ? "once" : "",
+    ].join("\u0000");
+  }
+
+  /**
+   * Remove the commands this session already ran as `once` from the view an
+   * execution sees. Merging is the single funnel every source goes through, so
+   * filtering here covers a re-registered skill, a reloaded settings file and a
+   * re-registered plugin alike — without any of them having to know the set
+   * exists.
+   *
+   * A config that loses nothing keeps its own object (and its own `hooks`
+   * array), so the identity lookup in {@link removeExecutedOnceHook} still
+   * points at the source's command. A config that does lose a command gets a
+   * copy: its source keeps the original for the next merge, and the exhausted
+   * fingerprint — not the removal — is what keeps the command out.
+   */
+  private dropExhaustedOnceHooks(
+    configuration: PartialHookConfiguration,
+  ): void {
+    if (this.exhaustedOnceHooks.size === 0) return;
+    for (const [event, configs] of Object.entries(configuration)) {
+      if (!isValidHookEvent(event)) continue;
+      const kept = configs
+        .map((config) => {
+          const hooks = config.hooks.filter(
+            (command) =>
+              !this.exhaustedOnceHooks.has(
+                HookManager.onceFingerprint(event, config.matcher, command),
+              ),
+          );
+          return hooks.length === config.hooks.length
+            ? config
+            : { ...config, hooks };
+        })
+        .filter((config) => config.hooks.length > 0);
+      if (kept.length === 0) {
+        delete configuration[event];
+      } else {
+        configuration[event] = kept;
+      }
+    }
+  }
+
+  /**
+   * Identity of a `once` command: the source that owns it, the event, the
+   * matcher and the command text. Two sources holding the same hook text are
+   * separate commands (故事③场景 1), while an edit to the skill's own command
+   * text is a new command that has not run yet.
+   */
+  private static onceFingerprint(
+    event: HookEvent,
+    matcher: string | undefined,
+    command: HookCommand,
+  ): string {
+    // Hooks with no stamp are the session's own (settings.json / AgentOptions);
+    // they share one key, which is right: the same command written in both is
+    // the same hook as far as "has this already run" goes.
+    const source = command.skillRoot
+      ? `skill:${command.skillRoot}`
+      : command.pluginRoot
+        ? `plugin:${command.pluginRoot}`
+        : "session";
+    return [source, event, matcher ?? "", command.command].join("\u0000");
   }
 
   /**
@@ -223,33 +434,45 @@ export class HookManager {
         continue;
       }
 
-      // Execute all commands for this configuration
-      for (
-        let commandIndex = 0;
-        commandIndex < config.hooks.length;
-        commandIndex++
-      ) {
-        const hookCommand = config.hooks[commandIndex];
-
+      // Execute all commands for this configuration. The commands are
+      // snapshotted because a `once` hook retires itself mid-loop, and the
+      // rebuilt view shares this very `hooks` array with its source (merging
+      // only concatenates the config arrays), so a splice would shift the next
+      // command under the index and skip it.
+      for (const [commandIndex, hookCommand] of [...config.hooks].entries()) {
         try {
           const options = hookCommand.timeout
             ? { timeout: hookCommand.timeout * 1000 }
             : undefined;
 
-          // Build execution context with WAVE_PLUGIN_ROOT if this is a plugin hook
+          // Build execution context with WAVE_PLUGIN_ROOT / WAVE_SKILL_DIR when
+          // this hook came from a plugin or a skill.
           let command = hookCommand.command;
-          const execContext: typeof context = hookCommand.pluginRoot
-            ? {
-                ...context,
-                env: {
-                  ...("env" in context ? (context.env ?? {}) : {}),
+          const sourceEnv = {
+            ...("env" in context ? (context.env ?? {}) : {}),
+            ...(hookCommand.pluginRoot
+              ? {
                   WAVE_PLUGIN_ROOT: hookCommand.pluginRoot,
                   CLAUDE_PLUGIN_ROOT: hookCommand.pluginRoot,
-                },
-              }
-            : context;
+                }
+              : {}),
+            ...(hookCommand.skillRoot
+              ? {
+                  WAVE_SKILL_DIR: hookCommand.skillRoot,
+                  CLAUDE_SKILL_DIR: hookCommand.skillRoot,
+                }
+              : {}),
+          };
+          const execContext: typeof context =
+            hookCommand.pluginRoot || hookCommand.skillRoot
+              ? { ...context, env: sourceEnv }
+              : context;
 
-          // Substitute ${WAVE_PLUGIN_ROOT} and ${CLAUDE_PLUGIN_ROOT} in the command string
+          // Substitute the directory placeholders in the command string.
+          // ${WAVE_SKILL_DIR} is substituted here as well even though the skill
+          // parse already resolved it: other sources (programmatic hooks) can
+          // carry the token too, and a literal token reaches the shell as a
+          // broken path instead of a visible error.
           if (hookCommand.pluginRoot) {
             command = command.replace(
               /\$\{WAVE_PLUGIN_ROOT\}/g,
@@ -258,6 +481,16 @@ export class HookManager {
             command = command.replace(
               /\$\{CLAUDE_PLUGIN_ROOT\}/g,
               hookCommand.pluginRoot,
+            );
+          }
+          if (hookCommand.skillRoot) {
+            command = command.replace(
+              /\$\{WAVE_SKILL_DIR\}/g,
+              hookCommand.skillRoot,
+            );
+            command = command.replace(
+              /\$\{CLAUDE_SKILL_DIR\}/g,
+              hookCommand.skillRoot,
             );
           }
 
@@ -284,12 +517,37 @@ export class HookManager {
                 );
               });
             }
-            // Async hooks are not included in results to prevent blocking
+            // Async hooks are not included in results to prevent blocking.
+            // `once` is deliberately not honoured here: an async hook's result
+            // arrives after the loop has moved on (and possibly after the turn
+            // ended), so there is no synchronous success to retire it on —
+            // retiring on spawn alone would drop a hook that never ran.
             continue;
           }
 
           const result = await executeCommand(command, execContext, options);
-          results.push({ ...result, command });
+          results.push({
+            ...result,
+            command,
+            source: hookSourceLabel(hookCommand),
+          });
+
+          // `once`: a successful run has done its job for the session, so the
+          // command leaves its own source and the next match skips it. Only
+          // success counts — a non-zero exit or a timeout leaves the
+          // registration in place so a transient failure cannot silently
+          // remove an interception hook.
+          if (hookCommand.once && result.success) {
+            // Two records, on purpose: the removal keeps this source clean for
+            // `getSkillHooks()` and the tests that read it, while the
+            // fingerprint survives a re-registration from configuration that
+            // still says `once: true` — that is what makes it once per
+            // session rather than once per registration.
+            this.exhaustedOnceHooks.add(
+              HookManager.onceFingerprint(event, config.matcher, hookCommand),
+            );
+            this.removeExecutedOnceHook(hookCommand);
+          }
 
           // Continue with next command even if this one fails
           // This allows for non-critical hooks to fail without stopping the workflow
@@ -307,6 +565,7 @@ export class HookManager {
             duration: 0,
             timedOut: false,
             command: hookCommand.command,
+            source: hookSourceLabel(hookCommand),
           });
         }
       }
@@ -831,6 +1090,19 @@ export class HookManager {
   /**
    * Handle blocking error (exit code 2) - behavior varies by hook type
    */
+  /**
+   * The text a user-facing error notice shows for a failed hook.
+   *
+   * Same stderr as before, prefixed with the source when the hook has one, so a
+   * notice about a skill's interception reads `[skill:verify] …` instead of
+   * looking like one of the user's own settings hooks. The model-facing strings
+   * are deliberately left alone (see `HookExecutionResult.source`).
+   */
+  private hookNoticeText(result: HookExecutionResult): string {
+    const text = result.stderr?.trim() || "Hook execution failed";
+    return result.source ? `[${result.source}] ${text}` : text;
+  }
+
   private handleBlockingError(
     event: HookEvent,
     result: HookExecutionResult,
@@ -844,7 +1116,7 @@ export class HookManager {
     switch (event) {
       case "UserPromptSubmit":
         // Block prompt processing, show error to user, erase prompt
-        messageManager.addNoticeBlock(errorMessage, "error");
+        messageManager.addNoticeBlock(this.hookNoticeText(result), "error");
         messageManager.removeLastUserMessage();
         return {
           shouldBlock: true,
@@ -861,7 +1133,7 @@ export class HookManager {
 
       case "PermissionRequest":
         // For permission request hooks with exit code 2, show stderr in error block and block (deny) permission
-        messageManager.addNoticeBlock(errorMessage, "error");
+        messageManager.addNoticeBlock(this.hookNoticeText(result), "error");
         return { shouldBlock: true, errorMessage };
 
       case "SubagentStop":
@@ -874,32 +1146,32 @@ export class HookManager {
 
       case "WorktreeCreate":
         // Non-blocking for now, just show error in error block
-        messageManager.addNoticeBlock(errorMessage, "error");
+        messageManager.addNoticeBlock(this.hookNoticeText(result), "error");
         return { shouldBlock: false };
 
       case "WorktreeRemove":
         // Non-blocking for cleanup, log error but don't block
-        messageManager.addNoticeBlock(errorMessage, "error");
+        messageManager.addNoticeBlock(this.hookNoticeText(result), "error");
         return { shouldBlock: false };
 
       case "SessionStart":
         // Non-blocking for startup, show error in error block
-        messageManager.addNoticeBlock(errorMessage, "error");
+        messageManager.addNoticeBlock(this.hookNoticeText(result), "error");
         return { shouldBlock: false };
 
       case "SessionEnd":
         // Blocking error (exit code 2): show in error block, don't block shutdown
-        messageManager.addNoticeBlock(errorMessage, "error");
+        messageManager.addNoticeBlock(this.hookNoticeText(result), "error");
         return { shouldBlock: false };
 
       case "PreCompact":
         // Non-blocking for compaction, show error in error block
-        messageManager.addNoticeBlock(errorMessage, "error");
+        messageManager.addNoticeBlock(this.hookNoticeText(result), "error");
         return { shouldBlock: false };
 
       case "PostCompact":
         // Non-blocking for compaction, show error in error block
-        messageManager.addNoticeBlock(errorMessage, "error");
+        messageManager.addNoticeBlock(this.hookNoticeText(result), "error");
         return { shouldBlock: false };
 
       default:
@@ -914,8 +1186,7 @@ export class HookManager {
     result: HookExecutionResult,
     messageManager: MessageManager,
   ): void {
-    const errorMessage = result.stderr?.trim() || "Hook execution failed";
-    messageManager.addNoticeBlock(errorMessage, "error");
+    messageManager.addNoticeBlock(this.hookNoticeText(result), "error");
   }
 
   /**
@@ -1445,6 +1716,181 @@ export class HookManager {
       this.mergeHooksConfiguration(merged, hooks);
     }
     return merged;
+  }
+
+  /**
+   * Register the hooks a skill declared in its `SKILL.md` frontmatter.
+   *
+   * Session-scoped and idempotent, exactly like `registerPluginHooks`: the
+   * registration is keyed by `skillRoot` and replaces the previous one, so
+   * calling the same skill twice in one session leaves one copy of its hooks
+   * (spec `automation/skill-hooks` 故事②场景 2).
+   *
+   * A source over {@link HOOK_SOURCE_LIMITS} registers nothing at all — not even
+   * the part that fits — and drops whatever it had registered before: a skill
+   * that grew past the budget while a session is running must not keep an older,
+   * smaller set alive, since the author would see interception that no longer
+   * matches the file on disk (故事④).
+   *
+   * @returns the declared volume alongside `registered`, so the caller can tell
+   *   the model *why* a skill's hooks are missing instead of guessing.
+   */
+  registerSkillHooks(
+    skillRoot: string,
+    skillName: string,
+    hooks: PartialHookConfiguration,
+  ): { registered: boolean; hookCount: number; matcherChars: number } {
+    // Measured on what the skill declared, before the event-name filter below:
+    // the budget exists to stop one source from flooding every tool call, and
+    // an event we happen to reject does not make the declaration smaller.
+    let hookCount = 0;
+    let matcherChars = 0;
+    for (const configs of Object.values(hooks)) {
+      for (const config of configs) {
+        hookCount += config.hooks.length;
+        matcherChars += config.matcher?.length ?? 0;
+      }
+    }
+
+    if (
+      hookCount > HOOK_SOURCE_LIMITS.maxHooks ||
+      matcherChars > HOOK_SOURCE_LIMITS.maxMatcherChars
+    ) {
+      this.skillHooks.delete(skillRoot);
+      this.rebuildConfiguration();
+      return { registered: false, hookCount, matcherChars };
+    }
+
+    // Stamp the origin on each command: it is what execution uses for
+    // ${WAVE_SKILL_DIR} and what a permission card or failure log shows as
+    // `skill:<name>`.
+    const stampedHooks: PartialHookConfiguration = {};
+    for (const [event, configs] of Object.entries(hooks)) {
+      if (!isValidHookEvent(event)) continue;
+      stampedHooks[event] = configs.map((config) => ({
+        ...config,
+        hooks: config.hooks.map((cmd) => ({ ...cmd, skillRoot, skillName })),
+      }));
+    }
+
+    // Replace (not append), so re-registering the same skill never doubles its
+    // hooks — the hot-reload path re-registers on every reshape.
+    this.skillHooks.set(skillRoot, stampedHooks);
+    this.rebuildConfiguration();
+    return { registered: true, hookCount, matcherChars };
+  }
+
+  /**
+   * Drop every hook contributed by a skill, addressed by its directory path.
+   * Used when a skill is removed or reshaped into one without hooks.
+   * @returns true if this skill had hooks registered
+   */
+  unregisterSkillHooks(skillRoot: string): boolean {
+    const removed = this.skillHooks.delete(skillRoot);
+    if (removed) {
+      this.rebuildConfiguration();
+    }
+    return removed;
+  }
+
+  /**
+   * Skill directories with a live registration — the hot-update path rebuilds
+   * exactly these.
+   */
+  getRegisteredSkillRoots(): string[] {
+    return [...this.skillHooks.keys()];
+  }
+
+  /**
+   * Get hooks registered by skills (read-only view for tests and the UI).
+   * Skill hooks carry skillRoot / skillName on each command.
+   */
+  getSkillHooks(): PartialHookConfiguration {
+    const merged: PartialHookConfiguration = {};
+    for (const hooks of this.skillHooks.values()) {
+      this.mergeHooksConfiguration(merged, hooks);
+    }
+    return merged;
+  }
+
+  /**
+   * Retire a `once` command from the source that owns it.
+   *
+   * Lookup is by object reference (`===`) and that is sound because
+   * `rebuildConfiguration()` reuses every object it collects: merging only
+   * concatenates the per-event config arrays and clones neither the config nor
+   * the command, so the command the executor just ran *is* the object sitting in
+   * its source. Anything looser — command text, matcher — would also hit a
+   * second source holding an identical hook, and cross-source hooks must not
+   * touch each other (故事③场景 1).
+   */
+  private removeExecutedOnceHook(hookCommand: HookCommand): boolean {
+    let removed = HookManager.removeCommandFromSource(
+      this.programmaticHooks,
+      hookCommand,
+    );
+
+    for (const [root, hooks] of this.pluginHooks) {
+      if (HookManager.removeCommandFromSource(hooks, hookCommand)) {
+        removed = true;
+        // An empty registration keeps showing up in the source map; drop it so
+        // introspection reflects "this plugin contributes nothing".
+        if (Object.keys(hooks).length === 0) this.pluginHooks.delete(root);
+      }
+    }
+
+    if (
+      HookManager.removeCommandFromSource(this.waveConfigHooks, hookCommand)
+    ) {
+      removed = true;
+    }
+
+    for (const [skillRoot, hooks] of this.skillHooks) {
+      if (HookManager.removeCommandFromSource(hooks, hookCommand)) {
+        removed = true;
+        if (Object.keys(hooks).length === 0) this.skillHooks.delete(skillRoot);
+      }
+    }
+
+    if (removed) {
+      this.rebuildConfiguration();
+    }
+    return removed;
+  }
+
+  /**
+   * Remove one command (in place) from a single source's registration, then
+   * clear the containers it leaves empty: the config when it has no commands
+   * left, the event when it has no configs left.
+   * @returns true when the command was found in this source
+   */
+  private static removeCommandFromSource(
+    source: PartialHookConfiguration,
+    hookCommand: HookCommand,
+  ): boolean {
+    for (const [event, configs] of Object.entries(source)) {
+      if (!isValidHookEvent(event)) continue;
+
+      for (
+        let configIndex = configs.length - 1;
+        configIndex >= 0;
+        configIndex--
+      ) {
+        const config = configs[configIndex];
+        const hookIndex = config.hooks.indexOf(hookCommand);
+        if (hookIndex === -1) continue;
+
+        config.hooks.splice(hookIndex, 1);
+        if (config.hooks.length === 0) {
+          configs.splice(configIndex, 1);
+        }
+        if (configs.length === 0) {
+          delete source[event];
+        }
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

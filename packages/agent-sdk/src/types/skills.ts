@@ -3,6 +3,8 @@
  * Dependencies: Core (Logger)
  */
 
+import type { PartialHookConfiguration } from "./configuration.js";
+
 export interface SkillMetadata {
   name: string;
   description: string;
@@ -38,6 +40,20 @@ export interface SkillMetadata {
    * `disallowed-tools` to `alwaysDenyRules` (two buckets, deny resolved first).
    */
   disallowedTools?: string[];
+  /**
+   * Hooks that come with this skill (frontmatter `hooks`), registered when the
+   * skill is invoked. **Exactly the same shape** as `settings.json`'s `hooks` —
+   * a table may be moved between the two files unchanged (spec
+   * `automation/skill-hooks`).
+   *
+   * Parsing has already resolved the directory placeholders inside every
+   * `command` (the same rules `allowedTools` follows): `${WAVE_SKILL_DIR}` /
+   * `${CLAUDE_SKILL_DIR}` became this skill's directory and
+   * `${WAVE_PLUGIN_ROOT}` / `${CLAUDE_PLUGIN_ROOT}` its plugin root. Entries
+   * that could not be read were dropped at parse time and reported as warnings;
+   * they never invalidate the skill itself.
+   */
+  hooks?: PartialHookConfiguration;
   context?: "fork";
   agent?: string;
   model?: string;
@@ -83,6 +99,16 @@ export interface SkillFrontmatter {
   "disable-model-invocation"?: boolean | string;
   "user-invocable"?: boolean | string;
   "argument-hint"?: string;
+  /**
+   * The skill's own hooks, same shape as `settings.json`'s `hooks`.
+   *
+   * Whatever the block held: the shared frontmatter reader keeps nested
+   * containers but stringifies every scalar, so `timeout` / `async` arrive as
+   * text here. The validated, placeholder-resolved table is
+   * `SkillMetadata.hooks` (see `parseSkillHooks` in `skillParser.ts`) — read
+   * that one, not this.
+   */
+  hooks?: unknown;
   [key: string]: unknown;
 }
 

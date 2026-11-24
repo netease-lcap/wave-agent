@@ -18,9 +18,11 @@ import type {
   SkillInvocationContext,
 } from "../types/index.js";
 import { parseSkillFile, formatSkillError } from "../utils/skillParser.js";
+import { splitFrontmatter } from "../utils/frontmatterYaml.js";
 import { findNestedSkillRoots } from "../utils/nestedSkills.js";
 import { substituteDirectoryPlaceholders } from "../utils/directoryPlaceholders.js";
 import { substituteCommandParameters } from "../utils/commandArgumentParser.js";
+import { HOOK_SOURCE_LIMITS } from "../types/hooks.js";
 import {
   parseBashCommands,
   replaceBashCommandsWithOutput,
@@ -28,6 +30,7 @@ import {
 } from "../utils/markdownParser.js";
 import { createBashCommandGate } from "../utils/bashCommandGate.js";
 import type { PermissionManager } from "./permissionManager.js";
+import type { HookManager } from "./hookManager.js";
 import type { ModManager } from "./modManager.js";
 import { getBuiltinSkillsDir } from "../utils/configPaths.js";
 import { isArtifactEnabled } from "../services/artifactAvailability.js";
@@ -229,7 +232,47 @@ export class SkillManager extends EventEmitter {
     this.skillMetadata = nextMetadata;
     this.skillContent = nextContent;
 
+    this.syncRegisteredSkillHooks();
+
     this.emit("refreshed", Array.from(this.skillMetadata.values()));
+  }
+
+  /**
+   * Rebuild the hook registrations whose skill was just re-parsed.
+   *
+   * A rescan replaces every `Skill` object, so a registration left untouched
+   * would keep running the pre-refresh parse — and would survive even a skill
+   * that disappeared or lost its `hooks` (spec automation/skill-hooks
+   * 「技能热更新」: 旧条目不得残留).
+   *
+   * Only the roots that already have a live registration are revisited.
+   * Re-registering every skill in the new snapshot would activate skills the
+   * session never invoked, and hooks are session-scoped *from the moment of
+   * invocation* (故事②): the watcher fires on any skill edit, including one
+   * this session has never called, and one edit would then silently turn on
+   * hooks nobody asked for.
+   *
+   * `registerSkillHooks` replaces this root's entry, so rebuilding never
+   * accumulates a second copy of the same skill's hooks.
+   */
+  private syncRegisteredSkillHooks(): void {
+    const hookManager = this.container.has("HookManager")
+      ? this.container.get<HookManager>("HookManager")
+      : undefined;
+    if (!hookManager) return;
+
+    for (const skillRoot of hookManager.getRegisteredSkillRoots()) {
+      const skill = Array.from(this.skillContent.values()).find(
+        (candidate) => candidate.skillPath === skillRoot,
+      );
+      if (skill?.hooks) {
+        hookManager.registerSkillHooks(skillRoot, skill.name, skill.hooks);
+      } else {
+        // Gone from disk, or reshaped into one without hooks: either way the
+        // old registration must not outlive the file that justified it.
+        hookManager.unregisterSkillHooks(skillRoot);
+      }
+    }
   }
 
   /**
@@ -703,6 +746,37 @@ export class SkillManager extends EventEmitter {
       return { content: prepared.content };
     }
 
+    // A skill's hooks and its `allowed-tools` live and die together.
+    // `hooks` are how a skill watches what its own steps do; `allowed-tools` is
+    // the author's claim that those steps are safe to run unconfirmed. When the
+    // per-source budget refuses the hooks (spec automation/skill-hooks 故事④),
+    // keeping that pre-authorization would hand the model exactly the commands
+    // the skill meant to supervise, with the supervision gone — and a partially
+    // registered set would be no better, since the author would believe the
+    // dropped ones are still enforcing.
+    //
+    // Deny is the deliberate exception: `disallowed-tools` narrows what the
+    // model may do, so registering it without the hooks can only make the
+    // session stricter than the author asked for. Dropping it "for symmetry"
+    // would silently widen permissions at the exact moment the skill's own
+    // guard rails failed to install.
+    const hookManager = this.container.has("HookManager")
+      ? this.container.get<HookManager>("HookManager")
+      : undefined;
+    const declaredHooks = prepared.skill.hooks;
+    // `skillPath` is the skill's *directory*, which is what a hook command
+    // needs (${WAVE_SKILL_DIR}) and what a re-register replaces.
+    const registration =
+      hookManager && declaredHooks
+        ? hookManager.registerSkillHooks(
+            prepared.skill.skillPath,
+            prepared.skill.name,
+            declaredHooks,
+          )
+        : undefined;
+    // No hooks declared is not a failure; only an explicit refusal is.
+    const skillHooksRegistered = registration?.registered ?? true;
+
     // Register the skill's own `allowed-tools` BEFORE its injected commands
     // run, so a skill that declares e.g. `Bash(git push*)` authorizes its own
     // `!`git push``. The skill tool registers the same list again afterwards;
@@ -710,14 +784,18 @@ export class SkillManager extends EventEmitter {
     const permissionManager = this.container.has("PermissionManager")
       ? this.container.get<PermissionManager>("PermissionManager")
       : undefined;
-    const allowedTools = prepared.skill.allowedTools;
+    const allowedTools = skillHooksRegistered
+      ? prepared.skill.allowedTools
+      : undefined;
     if (permissionManager && allowedTools?.length) {
       permissionManager.addTemporaryRules(allowedTools);
     }
     // `disallowed-tools` lands in the same place and the same moment, because
     // deny is resolved before allow: whatever this skill bans is banned even
     // for a tool it also listed in `allowed-tools` (spec ecosystem/agent-skills
-    //「技能里的工具黑名单」).
+    //「技能里的工具黑名单」). Registered whether or not the hooks made it in:
+    // deny only takes options away, so applying it can never widen what the
+    // model may do at the moment the skill's own guard rails failed to install.
     const disallowedTools = prepared.skill.disallowedTools;
     if (permissionManager && disallowedTools?.length) {
       permissionManager.addTemporaryDeniedRules(disallowedTools);
@@ -727,15 +805,24 @@ export class SkillManager extends EventEmitter {
       const finalContent = await this.executeBashInSkillContent(
         prepared.content,
       );
+      const budgetNotice =
+        registration && !registration.registered
+          ? SkillManager.skillHooksBudgetNotice(registration)
+          : "";
 
       return {
         // 正文定型（参数替换、`!`cmd`` 展开都跑完）之后才问插件：把 hook 放在
         // 前面就会让插件写的文本进宿主 shell。
-        content: await this.applySkillPrompt(prepared.skill, finalContent),
+        content:
+          (await this.applySkillPrompt(prepared.skill, finalContent)) +
+          budgetNotice,
         context: {
           skillName: skill_name,
         },
-        allowedTools: prepared.skill.allowedTools,
+        // `undefined` keeps `skillTool` from re-applying the list it would
+        // otherwise register a second time (see the budget-refusal comment
+        // above): the skill's commands must ask for confirmation.
+        allowedTools,
         disallowedTools: prepared.skill.disallowedTools,
       };
     } catch (error) {
@@ -744,6 +831,28 @@ export class SkillManager extends EventEmitter {
         content: `**Error executing skill**: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
+  }
+
+  /**
+   * What the model is told when a skill's hooks did not fit the per-source
+   * budget.
+   *
+   * The refusal has to be visible for a reason that is not cosmetic: a skill
+   * that ships `hooks` usually means "these steps are supervised", and the
+   * supervision is now absent while the skill body still reads as if it were
+   * there. Saying it only in a debug log would leave the user believing the
+   * interception is on (spec automation/skill-hooks 故事④).
+   */
+  private static skillHooksBudgetNotice(registration: {
+    hookCount: number;
+    matcherChars: number;
+  }): string {
+    return (
+      "\n\n> **This skill's hooks were not registered.** The skill declares " +
+      `${registration.hookCount} hooks (${registration.matcherChars} matcher characters) for one session, ` +
+      `over the per-skill limit of ${HOOK_SOURCE_LIMITS.maxHooks} hooks / ${HOOK_SOURCE_LIMITS.maxMatcherChars} matcher characters. ` +
+      "None of them are active, and its `allowed-tools` were not applied either — its own commands will ask for confirmation. Tell the user, and suggest trimming the skill's `hooks` field."
+    );
   }
 
   /**
@@ -830,11 +939,11 @@ export class SkillManager extends EventEmitter {
   private prepareSkillContent(skill: Skill, argsString: string): string {
     const skillPath = `Base directory for this skill: ${skill.skillPath}\n\n`;
 
-    // Extract content after frontmatter
-    const contentMatch = skill.content.match(
-      /^---\r?\n[\s\S]*?\r?\n---\r?\n([\s\S]*)$/,
-    );
-    let mainContent = contentMatch ? contentMatch[1].trim() : skill.content;
+    // Strip the frontmatter with the same splitter the parser used, so the
+    // body handed to the model can never disagree with the metadata read out
+    // of it. A file without frontmatter keeps its content as-is.
+    const { yaml, body } = splitFrontmatter(skill.content);
+    let mainContent = yaml === null ? skill.content : body.trim();
 
     // 1. Substitute parameters ($1, $ARGUMENTS, etc.)
     mainContent = substituteCommandParameters(mainContent, argsString);
@@ -1044,6 +1153,17 @@ export class SkillManager extends EventEmitter {
       );
       this.skillMetadata.delete(name);
       this.skillContent.delete(name);
+    }
+
+    // Belt and braces on the registration: the rescan above already drops a
+    // root whose skill is gone, but if it failed, the catch branch keeps only
+    // the in-memory entry removal — and a skill that no longer exists on disk
+    // must not keep running hooks in this session (spec automation/skill-hooks
+    // 「删除/禁用技能不执行它的 hooks」).
+    if (this.container.has("HookManager")) {
+      this.container
+        .get<HookManager>("HookManager")
+        ?.unregisterSkillHooks(metadata.skillPath);
     }
 
     logger?.debug(`Deleted skill '${name}' at ${metadata.skillPath}`);

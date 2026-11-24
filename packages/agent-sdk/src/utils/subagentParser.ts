@@ -64,7 +64,10 @@ interface SubagentFrontmatter {
  * Value parsing is shared with skills, custom slash commands and memory files —
  * see `frontmatterYaml.ts` (spec `multi-agent/subagent` 场景 6).
  */
-function parseFrontmatter(content: string): {
+function parseFrontmatter(
+  content: string,
+  sourcePath?: string,
+): {
   frontmatter: SubagentFrontmatter;
   body: string;
 } {
@@ -75,7 +78,7 @@ function parseFrontmatter(content: string): {
   }
 
   return {
-    frontmatter: toSubagentFrontmatter(parseFrontmatterYaml(yaml)),
+    frontmatter: toSubagentFrontmatter(parseFrontmatterYaml(yaml, sourcePath)),
     body: body.trim(),
   };
 }
@@ -129,7 +132,13 @@ function normalizeTools(
   value: FrontmatterValue | undefined,
 ): string[] | undefined {
   if (Array.isArray(value)) {
-    return value.map((item) => item.trim()).filter(Boolean);
+    // Frontmatter values nest now (a skill's `hooks` table needs it), so a
+    // list item is only a tool name when it is a scalar — a nested mapping in
+    // `tools:` is not one.
+    return value
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter(Boolean);
   }
   if (typeof value !== "string") {
     return undefined;
@@ -189,7 +198,7 @@ function parseSubagentFile(
 ): SubagentConfiguration {
   try {
     const content = readFileSync(filePath, "utf-8");
-    const { frontmatter, body } = parseFrontmatter(content);
+    const { frontmatter, body } = parseFrontmatter(content, filePath);
 
     // Use filename as default name if not specified in frontmatter
     if (!frontmatter.name) {

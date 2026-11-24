@@ -1,6 +1,6 @@
 import { readFileSync } from "fs";
-import { dirname } from "path";
-import { parseFrontmatterYaml, splitFrontmatter } from "./frontmatterYaml.js";
+import { basename, dirname } from "path";
+import { readFrontmatterYaml, splitFrontmatter } from "./frontmatterYaml.js";
 import {
   findUnresolvedDirectoryPlaceholders,
   substituteDirectoryPlaceholders,
@@ -11,6 +11,12 @@ import type {
   SkillFrontmatter,
   SkillMetadata,
 } from "../types/index.js";
+import { isValidHookEvent, isValidHookEventConfig } from "../types/hooks.js";
+import type {
+  HookCommand,
+  HookEventConfig,
+  PartialHookConfiguration,
+} from "../types/hooks.js";
 
 /**
  * Parse a SKILL.md file and validate its contents
@@ -41,17 +47,48 @@ export function parseSkillFile(
     result.content = content;
 
     // Parse YAML frontmatter
-    const { yaml } = splitFrontmatter(content);
+    const { yaml, body } = splitFrontmatter(content);
     if (yaml === null) {
       result.validationErrors.push("Missing YAML frontmatter");
       return result;
     }
 
-    result.frontmatter = parseYamlFrontmatter(yaml);
+    const parsed = parseYamlFrontmatter(yaml, filePath);
+    result.frontmatter = parsed.frontmatter;
+
+    if (parsed.parseError) {
+      // A block that does not parse leaves the skill loadable with every field
+      // dropped: the name falls back to the directory and the description to the
+      // body's first line, so `hooks`, `allowed-tools` and
+      // `disable-model-invocation` stop applying while the skill keeps showing
+      // up in the menu and the model's list. That is Claude Code's behaviour
+      // (its own doctor skill: "still loads, but with EVERY field dropped … and
+      // `allowed-tools`, `model`, and `disable-model-invocation` silently stop
+      // applying"), and it is the one that keeps a mistyped file visible to the
+      // author who has to fix it. The failure itself was logged with the file's
+      // path by `readFrontmatterYaml`; the warning surfaces it where skill
+      // warnings are already shown (spec ecosystem/agent-skills).
+      const fallbackName = basename(basePath || dirname(filePath));
+      const firstBodyLine =
+        body
+          .split("\n")
+          .map((line) => line.trim())
+          .find((line) => line.length > 0) ?? "";
+      result.frontmatter = {
+        ...result.frontmatter,
+        name: fallbackName,
+        description: firstBodyLine,
+      };
+      result.warnings.push(
+        `frontmatter failed to parse (${parsed.parseError}) — the skill loads as "${fallbackName}" with the first body line as its description, and every frontmatter field (hooks, allowed-tools, model, …) is ignored until it is fixed`,
+      );
+    }
 
     if (!result.frontmatter.name || !result.frontmatter.description) {
       result.validationErrors.push(
-        "Missing required fields: name and description",
+        parsed.parseError
+          ? `frontmatter failed to parse (${parsed.parseError}) and the body has no first line to fall back to as a description`
+          : "Missing required fields: name and description",
       );
       return result;
     }
@@ -93,6 +130,16 @@ export function parseSkillFile(
       { skillPath, pluginRoot, warnings: result.warnings },
     );
 
+    // `hooks`: the skill's own hooks, registered when the skill is invoked
+    // (spec automation/skill-hooks). Same shape as `settings.json`'s `hooks`;
+    // the shared frontmatter reader hands the nested table over as it was
+    // written, so this only validates, resolves and drops.
+    const hooks = parseSkillHooks(result.frontmatter.hooks, {
+      skillPath,
+      pluginRoot,
+      warnings: result.warnings,
+    });
+
     // Extract disable-model-invocation
     const disableModelInvocation =
       result.frontmatter["disable-model-invocation"] === true ||
@@ -118,6 +165,7 @@ export function parseSkillFile(
       skillPath,
       allowedTools,
       disallowedTools,
+      ...(hooks ? { hooks } : {}),
       context: result.frontmatter.context,
       agent: result.frontmatter.agent,
       model: result.frontmatter.model as string | undefined,
@@ -198,6 +246,264 @@ function parseToolRules(
 }
 
 /**
+ * The only command fields a SKILL.md may set, besides `type` and `command`.
+ *
+ * `pluginRoot` / `skillRoot` / `skillName` are stamped by
+ * `HookManager.registerSkillHooks` on the commands it owns — they decide where a
+ * hook is attributed and what ${WAVE_SKILL_DIR} resolves to at run time, so an
+ * author must not be able to set them. Together with `matcher` (the one field on
+ * the event entry) this list is the whole whitelist: every other key is dropped,
+ * because a field the parser does not understand must not reach the registration
+ * layer unexamined.
+ */
+const HOOK_COMMAND_FIELDS = [
+  "timeout",
+  "async",
+  "asyncRewake",
+  "once",
+] as const;
+
+/**
+ * Read the `hooks` frontmatter field into the table `settings.json` uses.
+ *
+ * This only refuses to hand the registration layer entries it could never run.
+ * Whether they may run (budget, `once`, how long they live) is decided there,
+ * not here. Every rejection is a drop-with-warning rather than a skill error: a
+ * broken hook must not cost the author the skill's body, which is what the spec
+ * asks for when the field does not parse (automation/skill-hooks 场景 4).
+ */
+function parseSkillHooks(
+  raw: unknown,
+  context: { skillPath: string; pluginRoot?: string; warnings: string[] },
+): PartialHookConfiguration | undefined {
+  // No `hooks` key at all: nothing to report, nothing to register.
+  if (raw === undefined) return undefined;
+
+  if (!isPlainTable(raw)) {
+    context.warnings.push(
+      `hooks must be a table of hook events (PostToolUse: [...], Stop: [...]), ` +
+        `not ${describeValueKind(raw)} — the skill's hooks are ignored and ` +
+        `the skill itself still runs`,
+    );
+    return undefined;
+  }
+
+  const hooks: PartialHookConfiguration = {};
+  for (const [event, entries] of Object.entries(raw)) {
+    if (!isValidHookEvent(event)) {
+      context.warnings.push(
+        `hooks event "${event}" is not a hook event wave runs — the whole ` +
+          `entry is ignored`,
+      );
+      continue;
+    }
+    if (!Array.isArray(entries)) {
+      context.warnings.push(
+        `hooks.${event} must be a list of hook configurations ` +
+          `({matcher, hooks: [{type: command, command: …}]}), not ` +
+          `${describeValueKind(entries)} — it is ignored`,
+      );
+      continue;
+    }
+
+    const configs: HookEventConfig[] = [];
+    for (const [index, entry] of entries.entries()) {
+      const config = readHookEventConfig(
+        entry,
+        `hooks.${event}[${index}]`,
+        context,
+      );
+      if (config) configs.push(config);
+    }
+
+    // Nothing left on this event: keep the key out of the table entirely rather
+    // than registering an empty event.
+    if (configs.length > 0) {
+      hooks[event] = configs;
+    }
+  }
+
+  return Object.keys(hooks).length > 0 ? hooks : undefined;
+}
+
+function describeValueKind(value: unknown): string {
+  if (Array.isArray(value)) return "a list";
+  if (value === undefined || value === null || value === "") {
+    return "an empty value";
+  }
+  return `a ${typeof value}`;
+}
+
+/**
+ * Read one entry of an event's list — `{matcher?, hooks: [...]}` — and return it
+ * in the shape the registration layer runs, or undefined when nothing in it can
+ * run.
+ *
+ * Each refusal is a warning naming the entry, and only that entry is lost: one
+ * bad hook must never cost its sibling hooks, let alone the skill itself (spec
+ * automation/skill-hooks 场景 4).
+ */
+function readHookEventConfig(
+  raw: unknown,
+  where: string,
+  context: { skillPath: string; pluginRoot?: string; warnings: string[] },
+): HookEventConfig | undefined {
+  if (!isPlainTable(raw)) {
+    context.warnings.push(
+      `${where} is not a hook configuration ` +
+        `({matcher, hooks: [{type: command, command: "…"}]}), but ` +
+        `${describeValueKind(raw)} — it is ignored`,
+    );
+    return undefined;
+  }
+
+  // `matcher:` with nothing after it means "every value", the same as leaving
+  // the key out, so the empty pattern is not what gets registered.
+  const matcher = raw.matcher === "" ? undefined : raw.matcher;
+  if (matcher !== undefined && typeof matcher !== "string") {
+    context.warnings.push(
+      `${where}.matcher must be a string (a tool name or a pattern), but ` +
+        `${describeValueKind(matcher)} — the configuration is ignored`,
+    );
+    return undefined;
+  }
+
+  const entries = raw.hooks;
+  if (!Array.isArray(entries) || entries.length === 0) {
+    context.warnings.push(
+      `${where}.hooks must be a non-empty list of ` +
+        `{type: command, command: "…"} items, but ` +
+        `${describeValueKind(entries)} — the configuration is ignored`,
+    );
+    return undefined;
+  }
+
+  const commands: HookCommand[] = [];
+  for (const [index, entry] of entries.entries()) {
+    const command = readHookCommand(
+      entry,
+      `${where}.hooks[${index}]`,
+      context.warnings,
+    );
+    if (!command) continue;
+
+    // Same discipline as `allowed-tools`: a command left holding a literal
+    // placeholder can never resolve to a real path, so it is dropped and
+    // reported instead of being registered as a silent no-op.
+    const resolved = substituteDirectoryPlaceholders(command.command, {
+      skillPath: context.skillPath,
+      pluginRoot: context.pluginRoot,
+    });
+    const unresolved = findUnresolvedDirectoryPlaceholders(resolved);
+    if (unresolved.length > 0) {
+      context.warnings.push(
+        `${where}.hooks[${index}] command "${command.command}" keeps ` +
+          `${unresolved.join(", ")} — no path to substitute it with, so the ` +
+          `command is not registered`,
+      );
+      continue;
+    }
+    commands.push({ ...command, command: resolved });
+  }
+
+  // Every command of this entry was dropped, each with its own warning; an
+  // entry with an empty `hooks` list is not a configuration at all.
+  if (commands.length === 0) return undefined;
+
+  const config: HookEventConfig = {
+    ...(matcher === undefined ? {} : { matcher }),
+    hooks: commands,
+  };
+  // Last gate before the table leaves the parser: the registration layer reads
+  // it as-is, so nothing its own validator would refuse may get through.
+  if (!isValidHookEventConfig(config)) {
+    context.warnings.push(
+      `${where} is not a valid hook configuration — it needs a non-empty ` +
+        `"hooks" list of {type: command, command: "…"} items — it is ignored`,
+    );
+    return undefined;
+  }
+  return config;
+}
+
+/**
+ * Read one command of a configuration: the whitelist, plus the types
+ * `HookCommand` declares.
+ *
+ * The shared frontmatter reader hands every scalar back as a string
+ * (`frontmatterYaml.ts`, so the artifacts that compare against `"true"` keep
+ * reading as set), while `HookCommand` needs `timeout` as a number and
+ * `async` / `asyncRewake` / `once` as booleans. Converting here — and dropping
+ * a value that does not convert — is what makes `timeout: abc` a visible
+ * warning instead of a hook that silently never registers.
+ */
+function readHookCommand(
+  raw: unknown,
+  where: string,
+  warnings: string[],
+): HookCommand | undefined {
+  if (!isPlainTable(raw)) {
+    warnings.push(
+      `${where} is not a hook command ({type: command, command: "…"}), but ` +
+        `${describeValueKind(raw)} — it is ignored`,
+    );
+    return undefined;
+  }
+
+  if (raw.type !== "command") {
+    warnings.push(
+      `${where}.type must be "command" (the only hook type wave runs), not ` +
+        `${describeValueKind(raw.type)} — the command is ignored`,
+    );
+    return undefined;
+  }
+
+  const command = raw.command;
+  if (typeof command !== "string" || command.trim().length === 0) {
+    warnings.push(
+      `${where}.command is required (the shell line to run), but ` +
+        `${describeValueKind(command)} — the command is ignored`,
+    );
+    return undefined;
+  }
+
+  const hookCommand: HookCommand = { type: "command", command };
+  for (const field of HOOK_COMMAND_FIELDS) {
+    const value = raw[field];
+    if (value === undefined) continue;
+
+    if (field === "timeout") {
+      const seconds = typeof value === "string" ? Number(value.trim()) : NaN;
+      if (value === "" || !Number.isFinite(seconds) || seconds <= 0) {
+        warnings.push(
+          `${where}.timeout must be a positive number of seconds (got ` +
+            `${JSON.stringify(value)}) — the command is ignored`,
+        );
+        return undefined;
+      }
+      hookCommand.timeout = seconds;
+      continue;
+    }
+
+    if (value !== "true" && value !== "false") {
+      warnings.push(
+        `${where}.${field} must be true or false (got ` +
+          `${JSON.stringify(value)}) — the command is ignored`,
+      );
+      return undefined;
+    }
+    hookCommand[field] = value === "true";
+  }
+
+  return hookCommand;
+}
+
+/** A YAML mapping, as opposed to a list, a scalar or nothing at all. */
+function isPlainTable(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
  * Read the `aliases` frontmatter field: a YAML list or a comma-separated
  * string, same two shapes `allowed-tools` accepts.
  *
@@ -243,19 +549,29 @@ function parseAliases(
  * way (block scalars included — see spec `ecosystem/agent-skills` 场景 2).
  * Here we only narrow the result to the fields a skill declares.
  */
-function parseYamlFrontmatter(yamlContent: string): SkillFrontmatter {
-  const parsed = parseFrontmatterYaml(yamlContent);
+function parseYamlFrontmatter(
+  yamlContent: string,
+  sourcePath?: string,
+): { frontmatter: SkillFrontmatter; parseError?: string } {
+  const { frontmatter: parsed, parseError } = readFrontmatterYaml(
+    yamlContent,
+    sourcePath,
+  );
   const asString = (key: string): string | undefined => {
     const value = parsed[key];
     return typeof value === "string" ? value : undefined;
   };
 
   return {
-    ...parsed,
-    // Required fields must be strings: a bare `name:` / `description:` key
-    // parses to a list, which validation reports as missing.
-    name: asString("name") ?? "",
-    description: asString("description") ?? "",
+    frontmatter: {
+      ...parsed,
+      // Required fields must be strings: a bare `name:` / `description:` key
+      // parses to "" (a key with no value), and anything nested is not a name,
+      // either way validation reports the field as missing.
+      name: asString("name") ?? "",
+      description: asString("description") ?? "",
+    },
+    ...(parseError !== undefined ? { parseError } : {}),
   };
 }
 

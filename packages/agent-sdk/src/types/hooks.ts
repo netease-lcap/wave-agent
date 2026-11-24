@@ -62,7 +62,48 @@ export interface HookCommand {
   asyncRewake?: boolean;
   timeout?: number; // seconds
   pluginRoot?: string; // Plugin directory path for plugin-originated hooks
+  /**
+   * The skill directory this command came from. Stamped by
+   * `HookManager.registerSkillHooks` on every command of a skill's `hooks`
+   * frontmatter; absent for every other source. Two uses: the source a caller
+   * displays (`skill:<skillName>`) and the value `${WAVE_SKILL_DIR}` /
+   * `${CLAUDE_SKILL_DIR}` resolve to at execution time.
+   */
+  skillRoot?: string;
+  /**
+   * The skill's name, for display only (`skill:<name>` on a permission card or
+   * a failure log). Unverified author input — show it as plain text, and never
+   * match or de-duplicate on it: two skills may share a name.
+   */
+  skillName?: string;
+  /**
+   * Retire this command from its own source once it has run **successfully**
+   * (exit code 0). A non-zero exit, a timeout or a spawn failure keeps the
+   * registration — the author asked "run this for the first call that works",
+   * not "run once and give up". Applies to every source (programmatic, plugin,
+   * settings, skill); a no-op on `async` / `asyncRewake` commands, whose
+   * result nobody is left to read.
+   */
+  once?: boolean;
 }
+
+/**
+ * Per-source, per-session registration budget for hooks.
+ *
+ * One source (a skill, a plugin, the settings file) may contribute at most
+ * `maxHooks` commands and `maxMatcherChars` characters of `matcher` across
+ * all its events; exceeding either rejects the source as a whole rather than
+ * registering the part that fits, because a truncated set of interception hooks
+ * is silently wrong — the author sees the ones that stayed and believes the
+ * rest are enforcing too. Numbers are Claude Code 2.1.325's (`pdn = 1024`,
+ * `KLr = 16384`, issue #3056). Lives beside `HookCommand` so the layers that
+ * produce a skill's hooks and the one that spends the budget can share the
+ * values without importing `HookManager`.
+ */
+export const HOOK_SOURCE_LIMITS = {
+  maxHooks: 1024,
+  maxMatcherChars: 16384,
+} as const;
 
 // Hook event configuration with optional pattern matching
 export interface HookEventConfig {
@@ -111,6 +152,17 @@ export interface HookExecutionResult {
   timedOut: boolean;
   /** The executed command, tagged onto results by callers that iterate multiple hooks */
   command?: string;
+  /**
+   * Where the hook came from, for the user-facing error notice: `skill:<name>`
+   * for a hook a skill contributed, `plugin:<dir>` for a plugin's. Left
+   * undefined for the session's own sources (settings.json / AgentOptions),
+   * which is the default case and needs no label.
+   *
+   * Never interpolated into the model-facing strings: those are verbatim from
+   * Claude Code (`PreToolUse:<tool> hook error: <stderr>`), and a prefix there
+   * would make the same hook read differently in the two products.
+   */
+  source?: string;
 }
 
 // Hook execution options
@@ -217,6 +269,22 @@ export function isValidHookCommand(cmd: unknown): cmd is HookCommand {
   }
 
   if ("pluginRoot" in hookCmd && typeof hookCmd.pluginRoot !== "string") {
+    return false;
+  }
+
+  if ("skillRoot" in hookCmd && typeof hookCmd.skillRoot !== "string") {
+    return false;
+  }
+
+  if ("skillName" in hookCmd && typeof hookCmd.skillName !== "string") {
+    return false;
+  }
+
+  // A wrongly typed optional field is rejected, not ignored — the same call the
+  // fields above make. `once: "yes"` is an author error, and dropping it
+  // silently would run the hook on every match while the author believes it
+  // fires once.
+  if ("once" in hookCmd && typeof hookCmd.once !== "boolean") {
     return false;
   }
 

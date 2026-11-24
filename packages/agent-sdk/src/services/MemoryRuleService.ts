@@ -42,7 +42,10 @@ export class MemoryRuleService {
     filePath: string,
     source: "project" | "user",
   ): MemoryRule {
-    const { frontmatter, content: bodyContent } = parseFrontmatter(content);
+    const { frontmatter, content: bodyContent } = parseFrontmatter(
+      content,
+      filePath,
+    );
 
     const metadata: MemoryRuleMetadata = {};
     if (frontmatter) {
@@ -54,9 +57,11 @@ export class MemoryRuleService {
         metadata.paths = [frontmatter.paths];
       }
 
-      if (typeof frontmatter.priority === "number") {
-        metadata.priority = frontmatter.priority;
-      } else if (typeof frontmatter.priority === "string") {
+      // Only the string branch can fire: the shared frontmatter reader
+      // stringifies every scalar (see utils/frontmatterYaml.ts), so
+      // `priority: 10` arrives as "10" and a `typeof === "number"` branch
+      // would be dead code.
+      if (typeof frontmatter.priority === "string") {
         const parsed = parseInt(frontmatter.priority, 10);
         if (!isNaN(parsed)) {
           metadata.priority = parsed;

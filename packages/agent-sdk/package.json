@@ -83,7 +83,8 @@
     "semver": "^7.7.4",
     "sharp": "^0.35.4",
     "turndown": "^7.2.2",
-    "wave-search-tools": "^0.3.0"
+    "wave-search-tools": "^0.3.0",
+    "yaml": "catalog:"
   },
   "devDependencies": {
     "@types/semver": "^7.7.1",
