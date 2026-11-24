@@ -14,7 +14,7 @@ paths:
     - `vi.mocked(fs.readdir).mockResolvedValueOnce(initialFiles as unknown as Awaited<ReturnType<typeof fs.readdir>>);`
     - `vi.mocked(fs.stat).mockResolvedValue({ isFile: () => true } as unknown as Awaited<ReturnType<typeof fs.stat>>);`
   - When using `mockImplementation`, function arguments don't require explicit type annotations as TypeScript can infer them from context
-  - MUST not write `mkdtemp` in test, use mocking instead
+  - A unit test mocks `fs`; `mkdtemp` belongs to `tests/integration/**` (real fs / spawn / git / inotify suites, where the real directory _is_ what is under test). A temp dir in a unit test buys nothing and only adds a slow, flaky, path-dependent fixture — and when the code under test only needs a directory _name_, hand it a fake path and mock `readFileSync`
   - A green suite must also be quiet: `pnpm -F <pkg> test` output carries no `stderr | <test>` block, no `Warning:`, no `DeprecationWarning`, no `[Wave] …` log — they bury the next real failure
     - Spy the stream the code reports to (`console.error`, `process.stdout.write`) and `mockRestore()` it; when the diagnostic is part of the contract, assert on it instead of only muting it
     - Fallback branches kick logging side effects (no image codec → `ensureRuntimeDeps()`, no ripgrep → install): `vi.mock` that module in the test walking the branch

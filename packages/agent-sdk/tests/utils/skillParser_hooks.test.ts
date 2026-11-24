@@ -7,45 +7,61 @@
  * (Claude Code's behaviour: name from the directory, description from the
  * body's first line, `hooks` / `allowed-tools` silently unapplied).
  *
- * Real files on disk on purpose: the job here is turning the author's YAML into
- * a table, so a mocked `readFileSync` would let a reader/validator mismatch pass
- * — the nested block, its block lists and its `timeout` / `async` scalars only
- * show up end to end.
+ * The `fs` boundary is mocked, but everything above it is real on purpose: the
+ * job here is turning the author's YAML into a table, so the YAML text goes
+ * through the actual parser — the nested block, its block lists and its
+ * `timeout` / `async` scalars only show up end to end. Mocking `readFileSync`
+ * rather than writing temp files is what `.wave/rules/testing.md` asks for, and
+ * it costs nothing here: the directory name the parser derives (the fallback
+ * name for a broken block) comes from the path this test hands in.
  *
  * Registration, budget, lifetime and `once` live in the registration layer and
  * are asserted there, not here.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import * as fs from "fs";
-import * as os from "os";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import * as path from "path";
+import { readFileSync } from "fs";
 import { parseSkillFile } from "../../src/utils/skillParser.js";
 
-let root: string;
+// `fs` is mocked: this suite is the parsing layer, so the bytes never have to
+// exist (see `.wave/rules/testing.md`). The one thing the filesystem used to
+// supply for free — the directory name a broken frontmatter falls back to as
+// the skill's name — comes from the path handed in here, so a fake one covers
+// it just as well.
+vi.mock("fs", () => ({ readFileSync: vi.fn() }));
+const mockReadFileSync = vi.mocked(readFileSync);
+
+const ROOT = path.join("/virtual", "wave-skill-hooks");
+const files = new Map<string, string>();
 
 beforeEach(() => {
-  root = fs.mkdtempSync(path.join(os.tmpdir(), "wave-skill-hooks-"));
+  files.clear();
+  mockReadFileSync.mockImplementation(((file: string) => {
+    const content = files.get(file);
+    if (content === undefined) {
+      throw new Error(`ENOENT: no such file or directory, open '${file}'`);
+    }
+    return content;
+  }) as unknown as typeof readFileSync);
 });
 
-afterEach(() => {
-  fs.rmSync(root, { recursive: true, force: true });
-});
-
-/** Write a SKILL.md whose frontmatter is `frontmatter`, return its path. */
-function writeSkill(frontmatter: string): string {
-  const dir = path.join(root, "demo");
-  fs.mkdirSync(dir, { recursive: true });
-  const filePath = path.join(dir, "SKILL.md");
-  fs.writeFileSync(
-    filePath,
-    `---\n${frontmatter}\n---\n\n# Demo\n\nBody of the skill.\n`,
-    "utf-8",
-  );
+/** Register a SKILL.md under `<ROOT>/<dir>`, return its path. */
+function writeSkillFile(dir: string, content: string): string {
+  const filePath = path.join(ROOT, dir, "SKILL.md");
+  files.set(filePath, content);
   return filePath;
 }
 
-const skillDir = (): string => path.join(root, "demo");
+/** Register a SKILL.md whose frontmatter is `frontmatter`, return its path. */
+function writeSkill(frontmatter: string): string {
+  return writeSkillFile(
+    "demo",
+    `---\n${frontmatter}\n---\n\n# Demo\n\nBody of the skill.\n`,
+  );
+}
+
+const skillDir = (): string => path.join(ROOT, "demo");
 
 describe("skillParser hooks", () => {
   it("parses a PostToolUse hook with matcher, command and scalar fields", () => {
@@ -413,11 +429,8 @@ describe("skillParser hooks", () => {
     // the body's first line, while `hooks`, `allowed-tools` and the model gates
     // simply stop applying. Dropping the skill instead would hide the mistyped
     // file from the very author who has to fix it.
-    const dir = path.join(root, "broken-yaml");
-    fs.mkdirSync(dir, { recursive: true });
-    const filePath = path.join(dir, "SKILL.md");
-    fs.writeFileSync(
-      filePath,
+    const filePath = writeSkillFile(
+      "broken-yaml",
       [
         "---",
         "name: demo",
@@ -449,11 +462,8 @@ describe("skillParser hooks", () => {
   it("rejects a skill whose broken frontmatter leaves no body line to describe it", () => {
     // Nothing left to fall back to: the block is gone and the body has no first
     // line, so there is no description and no name that means anything.
-    const dir = path.join(root, "empty-body");
-    fs.mkdirSync(dir, { recursive: true });
-    const filePath = path.join(dir, "SKILL.md");
-    fs.writeFileSync(
-      filePath,
+    const filePath = writeSkillFile(
+      "empty-body",
       ["---", "name: demo", "hooks: [ unclosed", "---", ""].join("\n"),
     );
 
