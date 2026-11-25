@@ -1820,7 +1820,10 @@ export async function handleSessionRestoration(
       return sessionToRestore;
     }
   } catch (error) {
-    console.error("Failed to restore session:", error);
+    // 诊断走 logger（日志文件），不用 `console.error`：加载失败已经 `throw` 出去，
+    // 调用方会自己呈现一行原因；标准错误是脚本/宿主可见的输出面，`wave -p` 的
+    // 加载失败要与 Claude Code 的 `emitLoadError` 一样只剩那一行，不带 stack。
+    logger.error("Failed to restore session:", error);
     throw error;
   }
 }

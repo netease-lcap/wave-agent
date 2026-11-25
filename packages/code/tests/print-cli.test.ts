@@ -5,14 +5,6 @@ import {
   describeWorktreeRemovalOutcome,
 } from "wave-agent-sdk";
 
-// Mock displayUsageSummary only — the structured output reads the real
-// aggregation helpers (sumUsage / calculateTokenSummary) from the same module.
-vi.mock("../src/utils/usageSummary.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../src/utils/usageSummary.js")>();
-  return { ...actual, displayUsageSummary: vi.fn() };
-});
-
 // Mock the Agent SDK
 vi.mock("wave-agent-sdk");
 
@@ -48,18 +40,31 @@ const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
   return undefined as never;
 });
 
-// Mock console methods to suppress all console output during testing
-const consoleErrorSpy = vi
-  .spyOn(console, "error")
-  .mockImplementation(function () {});
-
 // Mock process.stderr.write to suppress stderr output during testing
 const stderrWriteSpy = vi
   .spyOn(process.stderr, "write")
   .mockImplementation(() => true);
 
+// Same for stdout: every format writes the answer (or `Execution error`) once
+// at the end, so without this the suite prints them between test names.
+// `captureStdout()` flips the collection on for the test that needs the bytes.
+// The write callback always fires — `startPrintCli` awaits it before exiting.
+let capturingStdout = false;
+const stdoutChunks: string[] = [];
+const stdoutWriteSpy = vi.spyOn(process.stdout, "write").mockImplementation(((
+  chunk: string | Uint8Array,
+  encodingOrCb?: BufferEncoding | ((err?: Error) => void),
+  cb?: (err?: Error) => void,
+) => {
+  if (capturingStdout && typeof chunk === "string" && chunk !== "") {
+    stdoutChunks.push(chunk);
+  }
+  const callback = typeof encodingOrCb === "function" ? encodingOrCb : cb;
+  callback?.();
+  return true;
+}) as unknown as typeof process.stdout.write);
+
 import { startPrintCli } from "../src/print-cli.js";
-import { displayUsageSummary } from "../src/utils/usageSummary.js";
 import {
   hasUncommittedChanges,
   hasNewCommits,
@@ -72,9 +77,12 @@ test("startPrintCli requires a message when not continuing session", async () =>
   await startPrintCli({ message: "" });
 
   // Verify error message and exit code
-  expect(consoleErrorSpy).toHaveBeenCalledWith(
-    "Print mode requires a message: use --print 'your message' or -p 'your message'",
-  );
+  // 前置校验逐字同 Claude Code（`print.ts:781`）
+  expect(
+    stderrWriteSpy.mock.calls.some((call) =>
+      String(call[0]).startsWith("Error: Input must be provided"),
+    ),
+  ).toBe(true);
   expect(mockExit).toHaveBeenCalledWith(1);
 });
 
@@ -120,9 +128,12 @@ test("an empty -p value plus an empty stdin still fails loudly", async () => {
 
   await startPrintCli({ message: "" });
 
-  expect(consoleErrorSpy).toHaveBeenCalledWith(
-    "Print mode requires a message: use --print 'your message' or -p 'your message'",
-  );
+  // 前置校验逐字同 Claude Code（`print.ts:781`）
+  expect(
+    stderrWriteSpy.mock.calls.some((call) =>
+      String(call[0]).startsWith("Error: Input must be provided"),
+    ),
+  ).toBe(true);
   expect(mockExit).toHaveBeenCalledWith(1);
 });
 
@@ -151,7 +162,7 @@ test("startPrintCli sends message and exits after completion", async () => {
 
   const testMessage = "Hello, how are you?";
 
-  await startPrintCli({ message: testMessage, showStats: true });
+  await startPrintCli({ message: testMessage });
 
   // Verify that the Agent was created
   expect(vi.mocked(Agent.create)).toHaveBeenCalledWith({
@@ -164,18 +175,12 @@ test("startPrintCli sends message and exits after completion", async () => {
   // Verify that sendMessage was called with the correct message
   expect(mockAgent.sendMessage).toHaveBeenCalledWith(testMessage);
 
-  // Verify displayUsageSummary was called with usages and sessionFilePath
-  expect(vi.mocked(displayUsageSummary)).toHaveBeenCalledWith(
-    mockUsages,
-    mockSessionFilePath,
-  );
-
   // Verify agent was destroyed and process.exit was called
   expect(mockAgent.destroy).toHaveBeenCalled();
   expect(mockExit).toHaveBeenCalledWith(0);
 });
 
-test("onAssistantMessageAdded outputs newline", async () => {
+test("onAssistantMessageAdded writes nothing to stdout", async () => {
   const mockAgent = {
     sendMessage: vi.fn(),
     destroy: vi.fn(),
@@ -191,19 +196,21 @@ test("onAssistantMessageAdded outputs newline", async () => {
     return mockAgent as unknown as Agent;
   });
 
-  const stdoutSpy = vi
-    .spyOn(process.stdout, "write")
-    .mockImplementation(() => true);
+  const stdout = captureStdout();
 
-  await startPrintCli({ message: "test message" });
+  try {
+    await startPrintCli({ message: "test message" });
 
-  // Test the onAssistantMessageAdded callback
-  capturedCallbacks?.onAssistantMessageAdded?.("msg-test-id");
+    // The run itself ended with an empty answer on stdout; reset before the
+    // callback so this only observes what the callback does.
+    stdout.chunks.length = 0;
+    capturedCallbacks?.onAssistantMessageAdded?.("msg-test-id");
 
-  // Verify that process.stdout.write was called with newline
-  expect(stdoutSpy).toHaveBeenCalledWith("\n");
-
-  stdoutSpy.mockRestore();
+    // Headers and spacing are gone: the answer is written once, at the end.
+    expect(stdout.chunks).toEqual([]);
+  } finally {
+    stdout.restore();
+  }
 });
 
 test("startPrintCli works with continue session", async () => {
@@ -219,7 +226,7 @@ test("startPrintCli works with continue session", async () => {
   vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
 
   try {
-    await startPrintCli({ continueLastSession: true, showStats: true });
+    await startPrintCli({ continueLastSession: true });
   } catch (error) {
     // Expected when process.exit is called
     expect(String(error)).toContain("process.exit called");
@@ -235,12 +242,6 @@ test("startPrintCli works with continue session", async () => {
 
   // Verify that sendMessage was NOT called (no message provided)
   expect(mockAgent.sendMessage).not.toHaveBeenCalled();
-
-  // Verify displayUsageSummary was called
-  expect(vi.mocked(displayUsageSummary)).toHaveBeenCalledWith(
-    [],
-    "/mock/continued-session.json",
-  );
 
   // Verify agent was destroyed and process.exit was called
   expect(mockAgent.destroy).toHaveBeenCalled();
@@ -264,9 +265,6 @@ test("startPrintCli handles usage summary errors gracefully", async () => {
   vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
 
   await startPrintCli({ message: "test message" });
-
-  // Verify that displayUsageSummary was NOT called due to error
-  expect(vi.mocked(displayUsageSummary)).not.toHaveBeenCalled();
 
   // Verify agent was still destroyed and process.exit was called
   expect(mockAgent.destroy).toHaveBeenCalled();
@@ -296,29 +294,22 @@ test("startPrintCli handles sendMessage errors and displays usage summary", asyn
 
   vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
 
-  const consoleErrorSpy = vi
-    .spyOn(console, "error")
-    .mockImplementation(() => {});
+  const stdout = captureStdout();
+  stderrWriteSpy.mockClear();
+  try {
+    await startPrintCli({ message: "test message" });
+  } finally {
+    stdout.restore();
+  }
 
-  await startPrintCli({ message: "test message", showStats: true });
-
-  // Verify error was logged
-  expect(consoleErrorSpy).toHaveBeenCalledWith(
-    "Failed to send message:",
-    expect.any(Error),
-  );
-
-  // Verify displayUsageSummary was called even on error
-  expect(vi.mocked(displayUsageSummary)).toHaveBeenCalledWith(
-    mockUsages,
-    mockSessionFilePath,
-  );
+  // 运行期失败：Claude Code 的 print 模式 stderr 静默，失败只体现为 stdout 上的
+  // `Execution error`（错误文本进 envelope 的 `errors`）。
+  expect(stderrWriteSpy).not.toHaveBeenCalled();
+  expect(stdout.chunks.join("")).toBe("Execution error");
 
   // Verify agent was destroyed and process.exit was called with error code
   expect(mockAgent.destroy).toHaveBeenCalled();
   expect(mockExit).toHaveBeenCalledWith(1);
-
-  consoleErrorSpy.mockRestore();
 });
 
 test("startPrintCli drains the auto-memory extraction before destroying the agent", async () => {
@@ -367,15 +358,9 @@ test("startPrintCli drains before destroying on the error path too", async () =>
 
   vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
 
-  const consoleErrorSpy = vi
-    .spyOn(console, "error")
-    .mockImplementation(() => {});
-
   await startPrintCli({ message: "test message" });
 
   expect(order).toEqual(["drainAutoMemory", "destroy"]);
-
-  consoleErrorSpy.mockRestore();
 });
 
 test("subagent content callbacks are not registered in print mode", async () => {
@@ -399,17 +384,13 @@ test("subagent content callbacks are not registered in print mode", async () => 
     return mockAgent as unknown as Agent;
   });
 
-  const stdoutSpy = vi
-    .spyOn(process.stdout, "write")
-    .mockImplementation(() => true);
-
-  const consoleErrorSpy = vi
-    .spyOn(console, "error")
-    .mockImplementation(() => {});
+  const stdout = captureStdout();
+  stderrWriteSpy.mockClear();
 
   await startPrintCli({ message: "test message" });
 
-  stdoutSpy.mockClear();
+  stdout.chunks.length = 0;
+  stderrWriteSpy.mockClear();
 
   // Subagent callbacks should not be registered in print mode
   expect(capturedCallbacks?.onSubagentAssistantMessageAdded).toBeUndefined();
@@ -426,122 +407,26 @@ test("subagent content callbacks are not registered in print mode", async () => 
     chunk: "Hello from subagent",
     stage: "streaming",
   });
-  expect(stdoutSpy).not.toHaveBeenCalled();
+  expect(stdout.chunks).toEqual([]);
 
-  // Error callback still works
+  // An error notice is recorded for the envelope's `errors` and printed
+  // nowhere: Claude Code's print mode leaves stderr silent for a run that got
+  // that far.
   capturedCallbacks?.onNoticeAdded?.({
     level: "error",
     content: "Something went wrong",
   });
-  expect(stdoutSpy).toHaveBeenCalledWith("\n❌ Error: Something went wrong\n");
+  expect(
+    stderrWriteSpy.mock.calls.some((call) =>
+      String(call[0]).includes("Something went wrong"),
+    ),
+  ).toBe(false);
+  expect(stdout.chunks).toEqual([]);
 
-  stdoutSpy.mockRestore();
-  consoleErrorSpy.mockRestore();
+  stdout.restore();
 });
 
-test("tool name printing during running stage", async () => {
-  const mockAgent = {
-    sendMessage: vi.fn(),
-    destroy: vi.fn(),
-    drainAutoMemory: vi.fn(),
-    abortMessage: vi.fn(),
-    usages: [],
-    sessionFilePath: "/mock/session.json",
-  };
-
-  let capturedCallbacks:
-    | Record<string, (...args: unknown[]) => void>
-    | undefined;
-  vi.mocked(Agent.create).mockImplementation(async (options) => {
-    capturedCallbacks = options.callbacks as Record<
-      string,
-      (...args: unknown[]) => void
-    >;
-    return mockAgent as unknown as Agent;
-  });
-
-  const stdoutSpy = vi
-    .spyOn(process.stdout, "write")
-    .mockImplementation(() => true);
-
-  // Mock console.error to suppress stderr output during testing
-  const consoleErrorSpy = vi
-    .spyOn(console, "error")
-    .mockImplementation(() => {});
-
-  await startPrintCli({ message: "test message" });
-
-  // Clear stdout spy after initialization to focus on callback testing
-  stdoutSpy.mockClear();
-
-  // Test onToolBlockUpdated callback - 'running' stage should print tool name
-  capturedCallbacks?.onToolBlockUpdated?.({
-    stage: "running",
-    name: "Read",
-    id: "call_123",
-    parameters: "",
-    parametersChunk: "",
-  });
-  expect(stdoutSpy).toHaveBeenCalledWith("\n🔧 Read");
-  expect(stdoutSpy).toHaveBeenCalledWith("\n");
-
-  // Test second call to same tool name but different ID - should print again since it's a separate tool call
-  capturedCallbacks?.onToolBlockUpdated?.({
-    stage: "running",
-    name: "Read",
-    id: "call_456",
-    parameters: "",
-    parametersChunk: "",
-  });
-  expect(stdoutSpy).toHaveBeenCalledWith("\n🔧 Read");
-  expect(stdoutSpy).toHaveBeenCalledWith("\n");
-
-  // Verify both Read tool calls were made (each produces 2 stdout calls)
-  const readToolCalls = stdoutSpy.mock.calls.filter(
-    (call) => call[0] === "\n🔧 Read",
-  );
-  expect(readToolCalls).toHaveLength(2);
-
-  // Test different tool - should print
-  capturedCallbacks?.onToolBlockUpdated?.({
-    stage: "running",
-    name: "Write",
-    id: "call_789",
-    parameters: "",
-    parametersChunk: "",
-  });
-  expect(stdoutSpy).toHaveBeenCalledWith("\n🔧 Write");
-  expect(stdoutSpy).toHaveBeenCalledWith("\n");
-
-  // Test tool without name - should not print anything
-  const callCountBeforeNoName = stdoutSpy.mock.calls.length;
-  capturedCallbacks?.onToolBlockUpdated?.({
-    stage: "running",
-    name: undefined,
-    id: "call_no_name",
-    parameters: "",
-    parametersChunk: "",
-  });
-  const callCountAfterNoName = stdoutSpy.mock.calls.length;
-  expect(callCountAfterNoName).toBe(callCountBeforeNoName);
-
-  // Test non-running stage - should not print
-  const callCountBeforeStart = stdoutSpy.mock.calls.length;
-  capturedCallbacks?.onToolBlockUpdated?.({
-    stage: "start",
-    name: "Edit",
-    id: "call_start",
-    parameters: "",
-    parametersChunk: "",
-  });
-  const callCountAfterStart = stdoutSpy.mock.calls.length;
-  expect(callCountAfterStart).toBe(callCountBeforeStart);
-
-  stdoutSpy.mockRestore();
-  consoleErrorSpy.mockRestore();
-});
-
-test("reasoning callbacks output correctly", async () => {
+test("工具调用与推理都不打印：只记进 tool_calls / 事件", async () => {
   const mockAgent = {
     sendMessage: vi.fn(),
     destroy: vi.fn(),
@@ -557,111 +442,46 @@ test("reasoning callbacks output correctly", async () => {
     return mockAgent as unknown as Agent;
   });
 
-  const stdoutSpy = vi
-    .spyOn(process.stdout, "write")
-    .mockImplementation(() => true);
+  const stdout = captureStdout();
+  try {
+    await startPrintCli({ message: "test message" });
+  } finally {
+    stdout.restore();
+  }
 
-  await startPrintCli({ message: "test message" });
+  // 空答案：收尾时写过一次，之后不该再有 stdout 写
+  stdout.chunks.length = 0;
+  stderrWriteSpy.mockClear();
 
-  // 1. Trigger onAssistantReasoningUpdated and verify the output
+  capturedCallbacks?.onToolBlockUpdated?.({
+    messageId: "msg-test-id",
+    stage: "running",
+    name: "Read",
+    id: "call_123",
+    parameters: "",
+    parametersChunk: "",
+  });
+  capturedCallbacks?.onToolBlockUpdated?.({
+    messageId: "msg-test-id",
+    stage: "end",
+    name: "Read",
+    id: "call_123",
+    success: true,
+  });
   capturedCallbacks?.onAssistantReasoningUpdated?.({
     messageId: "msg-test-id",
     chunk: "Thinking...",
     stage: "streaming",
   });
-  expect(stdoutSpy).toHaveBeenCalledWith("\n💭 Reasoning:\n");
-  expect(stdoutSpy).toHaveBeenCalledWith("Thinking...");
-
-  // Verify header is not printed again
-  stdoutSpy.mockClear();
-  capturedCallbacks?.onAssistantReasoningUpdated?.({
-    messageId: "msg-test-id",
-    chunk: " more thinking",
-    stage: "streaming",
-  });
-  expect(stdoutSpy).not.toHaveBeenCalledWith("\n💭 Reasoning:\n");
-  expect(stdoutSpy).toHaveBeenCalledWith(" more thinking");
-
-  // 2. Trigger onAssistantContentUpdated after reasoning and verify the "📝 Response:" header
-  stdoutSpy.mockClear();
   capturedCallbacks?.onAssistantContentUpdated?.({
     messageId: "msg-test-id",
     chunk: "Hello!",
     stage: "streaming",
   });
-  expect(stdoutSpy).toHaveBeenCalledWith("\n\n📝 Response:\n");
-  expect(stdoutSpy).toHaveBeenCalledWith("Hello!");
 
-  // Verify header is not printed again
-  stdoutSpy.mockClear();
-  capturedCallbacks?.onAssistantContentUpdated?.({
-    messageId: "msg-test-id",
-    chunk: " world",
-    stage: "streaming",
-  });
-  expect(stdoutSpy).not.toHaveBeenCalledWith("\n\n📝 Response:\n");
-  expect(stdoutSpy).toHaveBeenCalledWith(" world");
-
-  // 3. Subagent callbacks are not registered in print mode
-  expect(
-    capturedCallbacks?.onSubagentAssistantReasoningUpdated,
-  ).toBeUndefined();
-  expect(capturedCallbacks?.onSubagentAssistantContentUpdated).toBeUndefined();
-
-  stdoutSpy.mockRestore();
-});
-
-test("startPrintCli does not display stats by default", async () => {
-  const mockUsages = [
-    {
-      prompt_tokens: 100,
-      completion_tokens: 50,
-      total_tokens: 150,
-      model: "gpt-4",
-      operation_type: "agent",
-    },
-  ];
-  const mockSessionFilePath = "/path/to/session.json";
-
-  const mockAgent = {
-    sendMessage: vi.fn(),
-    destroy: vi.fn(),
-    drainAutoMemory: vi.fn(),
-    abortMessage: vi.fn(),
-    usages: mockUsages,
-    sessionFilePath: mockSessionFilePath,
-  };
-
-  vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
-
-  const testMessage = "Hello, how are you?";
-
-  // Suppress stderr output for this specific test
-  const originalStderr = process.stderr.write;
-  process.stderr.write = vi.fn().mockReturnValue(true);
-
-  await startPrintCli({ message: testMessage }); // No showStats parameter
-
-  // Restore stderr
-  process.stderr.write = originalStderr;
-
-  // Verify that the Agent was created
-  expect(vi.mocked(Agent.create)).toHaveBeenCalledWith({
-    callbacks: expect.any(Object),
-    restoreSessionId: undefined,
-    continueLastSession: undefined,
-    entrypoint: "cli",
-  });
-
-  // Verify that sendMessage was called with the correct message
-  expect(mockAgent.sendMessage).toHaveBeenCalledWith(testMessage);
-
-  // Verify displayUsageSummary was NOT called when showStats is not provided
-  expect(vi.mocked(displayUsageSummary)).not.toHaveBeenCalled();
-
-  // Verify agent was destroyed and process.exit was called
-  expect(mockAgent.destroy).toHaveBeenCalled();
-  expect(mockExit).toHaveBeenCalledWith(0);
+  // 过程信息一个字都不打印，与 Claude Code 的 print 模式一致
+  expect(stdout.chunks).toEqual([]);
+  expect(stderrWriteSpy).not.toHaveBeenCalled();
 });
 
 test("startPrintCli handles non-string message gracefully", async () => {
@@ -792,10 +612,6 @@ test("startPrintCli removes clean worktree after destroy", async () => {
     hasNewCommits: false,
   };
 
-  const stdoutSpy = vi
-    .spyOn(process.stdout, "write")
-    .mockImplementation(() => true);
-
   await startPrintCli({
     message: "test",
     worktreeSession,
@@ -808,16 +624,14 @@ test("startPrintCli removes clean worktree after destroy", async () => {
   expect(destroyOrder).toBeLessThan(removeOrder);
   expect(removeWorktree).toHaveBeenCalledWith(worktreeSession);
   expect(
-    stdoutSpy.mock.calls.some((call) =>
+    stderrWriteSpy.mock.calls.some((call) =>
       String(call[0]).includes("Deleting worktree ..."),
     ),
   ).toBe(true);
   expect(
-    stdoutSpy.mock.calls.some((call) => String(call[0]).includes("Done.")),
+    stderrWriteSpy.mock.calls.some((call) => String(call[0]).includes("Done.")),
   ).toBe(true);
   expect(mockExit).toHaveBeenCalledWith(0);
-
-  stdoutSpy.mockRestore();
 });
 
 test("startPrintCli reports a surviving worktree instead of claiming success", async () => {
@@ -837,10 +651,6 @@ test("startPrintCli reports a surviving worktree instead of claiming success", a
   // still there, so "Done." would be a lie — issue #2763.
   vi.mocked(removeWorktree).mockResolvedValueOnce(false);
 
-  const stdoutSpy = vi
-    .spyOn(process.stdout, "write")
-    .mockImplementation(() => true);
-
   await startPrintCli({
     message: "test",
     worktreeSession: {
@@ -856,7 +666,7 @@ test("startPrintCli reports a surviving worktree instead of claiming success", a
     originalCwd: "/repo",
   });
 
-  const out = stdoutSpy.mock.calls.map((call) => String(call[0])).join("");
+  const out = stderrWriteSpy.mock.calls.map((call) => String(call[0])).join("");
   expect(out).toContain(
     "Worktree directory survived at /repo/.wave/worktrees/feat",
   );
@@ -864,8 +674,6 @@ test("startPrintCli reports a surviving worktree instead of claiming success", a
   expect(out).not.toContain("Done.");
   // Print mode's own exit code reports the run, not the cleanup.
   expect(mockExit).toHaveBeenCalledWith(0);
-
-  stdoutSpy.mockRestore();
 });
 
 test("startPrintCli keeps dirty worktree with a warning", async () => {
@@ -881,10 +689,6 @@ test("startPrintCli keeps dirty worktree with a warning", async () => {
   vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
   vi.mocked(hasUncommittedChanges).mockReturnValue(true);
   vi.mocked(hasNewCommits).mockReturnValue(false);
-
-  const stdoutSpy = vi
-    .spyOn(process.stdout, "write")
-    .mockImplementation(() => true);
 
   await startPrintCli({
     message: "test",
@@ -903,13 +707,11 @@ test("startPrintCli keeps dirty worktree with a warning", async () => {
 
   expect(removeWorktree).not.toHaveBeenCalled();
   expect(
-    stdoutSpy.mock.calls.some((call) =>
+    stderrWriteSpy.mock.calls.some((call) =>
       String(call[0]).includes("Keeping it at"),
     ),
   ).toBe(true);
   expect(mockExit).toHaveBeenCalledWith(0);
-
-  stdoutSpy.mockRestore();
 });
 
 test("startPrintCli skips removal when worktree path fails validation", async () => {
@@ -931,10 +733,6 @@ test("startPrintCli skips removal when worktree path fails validation", async ()
     );
   });
 
-  const stdoutSpy = vi
-    .spyOn(process.stdout, "write")
-    .mockImplementation(() => true);
-
   await startPrintCli({
     message: "test",
     worktreeSession: {
@@ -952,13 +750,11 @@ test("startPrintCli skips removal when worktree path fails validation", async ()
 
   expect(removeWorktree).not.toHaveBeenCalled();
   expect(
-    stdoutSpy.mock.calls.some((call) =>
+    stderrWriteSpy.mock.calls.some((call) =>
       String(call[0]).includes("Skipping worktree removal"),
     ),
   ).toBe(true);
   expect(mockExit).toHaveBeenCalledWith(0);
-
-  stdoutSpy.mockRestore();
 });
 
 test("startPrintCli skips path validation and delegates removal for hook-based worktrees", async () => {
@@ -988,10 +784,6 @@ test("startPrintCli skips path validation and delegates removal for hook-based w
     hasNewCommits: false,
   };
 
-  const stdoutSpy = vi
-    .spyOn(process.stdout, "write")
-    .mockImplementation(() => true);
-
   await startPrintCli({
     message: "test",
     worktreeSession: hookBasedSession,
@@ -1004,11 +796,9 @@ test("startPrintCli skips path validation and delegates removal for hook-based w
   expect(validateWorktreeRemovalPath).not.toHaveBeenCalled();
   expect(removeWorktree).toHaveBeenCalledWith(hookBasedSession);
   expect(
-    stdoutSpy.mock.calls.some((call) => String(call[0]).includes("Done.")),
+    stderrWriteSpy.mock.calls.some((call) => String(call[0]).includes("Done.")),
   ).toBe(true);
   expect(mockExit).toHaveBeenCalledWith(0);
-
-  stdoutSpy.mockRestore();
 });
 
 test("startPrintCli removes clean worktree after destroy on sendMessage error", async () => {
@@ -1025,15 +815,7 @@ test("startPrintCli removes clean worktree after destroy on sendMessage error", 
   vi.mocked(hasUncommittedChanges).mockReturnValue(false);
   vi.mocked(hasNewCommits).mockReturnValue(false);
 
-  // Suppress the "Failed to send message:" stderr write from the error path
-  const consoleErrorSpy = vi
-    .spyOn(console, "error")
-    .mockImplementation(() => {});
   vi.mocked(removeWorktree).mockResolvedValueOnce(true);
-
-  const stdoutSpy = vi
-    .spyOn(process.stdout, "write")
-    .mockImplementation(() => true);
 
   await startPrintCli({
     message: "test",
@@ -1055,36 +837,28 @@ test("startPrintCli removes clean worktree after destroy on sendMessage error", 
   expect(destroyOrder).toBeLessThan(removeOrder);
   expect(removeWorktree).toHaveBeenCalledTimes(1);
   expect(
-    stdoutSpy.mock.calls.some((call) =>
+    stderrWriteSpy.mock.calls.some((call) =>
       String(call[0]).includes("Deleting worktree ..."),
     ),
   ).toBe(true);
   expect(
-    stdoutSpy.mock.calls.some((call) => String(call[0]).includes("Done.")),
+    stderrWriteSpy.mock.calls.some((call) => String(call[0]).includes("Done.")),
   ).toBe(true);
   expect(mockExit).toHaveBeenCalledWith(1);
-
-  consoleErrorSpy.mockRestore();
-  stdoutSpy.mockRestore();
 });
 
 /**
- * Structured modes read like a pipe: capture what reached stdout and let the
- * drain callback fire (startPrintCli awaits it before exiting).
+ * Structured modes read like a pipe: capture what reaches stdout from here on.
  */
 function captureStdout(): { chunks: string[]; restore: () => void } {
-  const chunks: string[] = [];
-  const spy = vi.spyOn(process.stdout, "write").mockImplementation(((
-    chunk: string | Uint8Array,
-    encodingOrCb?: BufferEncoding | ((err?: Error) => void),
-    cb?: (err?: Error) => void,
-  ) => {
-    if (typeof chunk === "string" && chunk !== "") chunks.push(chunk);
-    const callback = typeof encodingOrCb === "function" ? encodingOrCb : cb;
-    callback?.();
-    return true;
-  }) as unknown as typeof process.stdout.write);
-  return { chunks, restore: () => spy.mockRestore() };
+  stdoutChunks.length = 0;
+  capturingStdout = true;
+  return {
+    chunks: stdoutChunks,
+    restore: () => {
+      capturingStdout = false;
+    },
+  };
 }
 
 function structuredAgent(
@@ -1249,31 +1023,6 @@ test("--output-format json 运行失败时仍输出 envelope 并退出 1", async
   expect(mockExit).toHaveBeenCalledWith(1);
 });
 
-test("--output-format json 搭配 --show-stats 时用量汇总走 stderr", async () => {
-  const agent = structuredAgent();
-  vi.mocked(Agent.create).mockResolvedValue(agent as unknown as Agent);
-  const stdout = captureStdout();
-
-  try {
-    await startPrintCli({
-      message: "test",
-      outputFormat: "json",
-      showStats: true,
-    });
-  } finally {
-    stdout.restore();
-  }
-
-  // 汇总交给 stderr（这次断言的是「被调用」，容器由 displayUsageSummary 自己决定）
-  expect(vi.mocked(displayUsageSummary)).toHaveBeenCalledWith(
-    expect.any(Array),
-    "/mock/session.json",
-    expect.any(Function),
-  );
-  const lines = stdout.chunks.join("").split("\n").filter(Boolean);
-  expect(lines).toHaveLength(1);
-});
-
 test("模型请求失败（只落错误块、不抛错）按运行失败收尾", async () => {
   // 真机实测：模型未启用时 sendMessage 正常 resolve，错误只作为错误块到达。
   // 没有正文却报「成功」会让 CI 门禁静默放行，所以信封与退出码都按失败给。
@@ -1310,10 +1059,186 @@ test("模型请求失败（只落错误块、不抛错）按运行失败收尾",
   expect(mockExit).toHaveBeenCalledWith(1);
 });
 
+test("--output-format text（默认）：stdout 只有最终答案，过程信息完全不打印", async () => {
+  let callbacks: AgentCallbacks | undefined;
+  const agent = structuredAgent({
+    sendMessage: vi.fn(async () => {
+      callbacks?.onAssistantMessageAdded?.("msg-1");
+      callbacks?.onAssistantReasoningUpdated?.({
+        messageId: "msg-1",
+        chunk: "先想一想",
+        stage: "streaming",
+      });
+      callbacks?.onAssistantContentUpdated?.({
+        messageId: "msg-1",
+        chunk: "最终答案",
+        stage: "streaming",
+      });
+      callbacks?.onToolBlockUpdated?.({
+        messageId: "msg-1",
+        id: "call-1",
+        name: "Read",
+        stage: "running",
+        parameters: JSON.stringify({ file_path: "a.ts" }),
+      });
+      callbacks?.onToolBlockUpdated?.({
+        messageId: "msg-1",
+        id: "call-1",
+        name: "Read",
+        stage: "end",
+        success: true,
+      });
+    }),
+  });
+  vi.mocked(Agent.create).mockImplementation(async (options) => {
+    callbacks = options.callbacks;
+    return agent as unknown as Agent;
+  });
+  const stdout = captureStdout();
+  stderrWriteSpy.mockClear();
+
+  try {
+    await startPrintCli({ message: "test" });
+  } finally {
+    stdout.restore();
+  }
+
+  // 一次写入、只有答案：脚本可以直接整段消费
+  expect(stdout.chunks.join("")).toBe("最终答案\n");
+  // 过程信息一个字都不输出（stderr 上也没有），与 Claude Code 一致
+  const stderr = stderrWriteSpy.mock.calls
+    .map((call) => String(call[0]))
+    .join("");
+  expect(stderr).not.toContain("💭");
+  expect(stderr).not.toContain("🔧");
+  expect(stderr).not.toContain("📝");
+  expect(mockExit).toHaveBeenCalledWith(0);
+});
+
+test("--output-format text：运行失败时 stdout 只有 Execution error（不带换行）", async () => {
+  let callbacks: AgentCallbacks | undefined;
+  const agent = structuredAgent({
+    sendMessage: vi.fn(async () => {
+      // 请求级失败只落错误块、不抛错：模型不可用 / 鉴权被拒
+      callbacks?.onNoticeAdded?.({
+        level: "error",
+        content: "HTTP 400 Bad Request: MODEL_NOT_ENABLED",
+      });
+    }),
+  });
+  vi.mocked(Agent.create).mockImplementation(async (options) => {
+    callbacks = options.callbacks;
+    return agent as unknown as Agent;
+  });
+  const stdout = captureStdout();
+  stderrWriteSpy.mockClear();
+
+  try {
+    await startPrintCli({ message: "test" });
+  } finally {
+    stdout.restore();
+  }
+
+  expect(stdout.chunks.join("")).toBe("Execution error");
+  // 运行期失败 stderr 静默：错误文本只进 envelope 的 `errors`，与 CC 一致
+  expect(stderrWriteSpy).not.toHaveBeenCalled();
+  expect(mockExit).toHaveBeenCalledWith(1);
+});
+
+test("--output-format text：会话恢复失败（运行没起来）时 stdout 一个字节都没有", async () => {
+  // Claude Code 的 `emitLoadError`：加载期失败只写 stderr，stdout 保持空
+  vi.mocked(Agent.create).mockRejectedValue(
+    new Error("Failed to load session x: Invalid session ID format"),
+  );
+  // 上一个测试 restore 过 console.error，这里自备一个，别让它打到真实 stderr
+  const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  const stdout = captureStdout();
+  stderrWriteSpy.mockClear();
+
+  try {
+    await startPrintCli({ message: "test", restoreSessionId: "not-a-uuid" });
+  } finally {
+    stdout.restore();
+    consoleError.mockRestore();
+  }
+
+  expect(stdout.chunks).toEqual([]);
+  // 逐字同 CC 的 `process.stderr.write(message + '\n')`：只有一行，没有别的前缀
+  expect(stderrWriteSpy.mock.calls.map((call) => String(call[0]))).toEqual([
+    "Error: Failed to load session x: Invalid session ID format\n",
+  ]);
+  expect(mockExit).toHaveBeenCalledWith(1);
+});
+
+test("--output-format json：运行没起来时 stdout 一个字节都没有（与 text 同档）", async () => {
+  // CC 的 `emitLoadError` 只对 `stream-json` 往 stdout 写 error result；
+  // `json` 与 `text` 一样：stdout 空、原因单行走 stderr、exit 1。
+  vi.mocked(Agent.create).mockRejectedValue(
+    new Error("Failed to load session x: Invalid session ID format"),
+  );
+  const stdout = captureStdout();
+  stderrWriteSpy.mockClear();
+
+  try {
+    await startPrintCli({
+      message: "test",
+      restoreSessionId: "not-a-uuid",
+      outputFormat: "json",
+    });
+  } finally {
+    stdout.restore();
+  }
+
+  expect(stdout.chunks).toEqual([]);
+  expect(stderrWriteSpy.mock.calls.map((call) => String(call[0]))).toEqual([
+    "Error: Failed to load session x: Invalid session ID format\n",
+  ]);
+  expect(mockExit).toHaveBeenCalledWith(1);
+});
+
+test("--output-format stream-json：运行没起来时仍写 error result", async () => {
+  // 这条格式是 CC 唯一会往 stdout 写加载失败的：消费方靠它拿 session id 与错误。
+  vi.mocked(Agent.create).mockRejectedValue(
+    new Error("Failed to load session x: Invalid session ID format"),
+  );
+  const stdout = captureStdout();
+
+  try {
+    await startPrintCli({
+      message: "test",
+      restoreSessionId: "not-a-uuid",
+      outputFormat: "stream-json",
+    });
+  } finally {
+    stdout.restore();
+  }
+
+  // error 事件在前、result 收尾：consumer 按 type 取最后一行
+  const events = stdout.chunks
+    .join("")
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as { type: string });
+  const envelope = events.find((event) => event.type === "result") as {
+    type: string;
+    subtype: string;
+    is_error: boolean;
+    errors?: string[];
+  };
+  expect(envelope).toBeDefined();
+  expect(envelope.type).toBe("result");
+  expect(envelope.subtype).toBe("error_during_execution");
+  expect(envelope.is_error).toBe(true);
+  expect(envelope.errors?.join("")).toContain("Invalid session ID format");
+  expect(mockExit).toHaveBeenCalledWith(1);
+});
 afterEach(() => {
   vi.clearAllMocks();
   vi.mocked(readPipedStdin).mockResolvedValue("");
   mockExit.mockClear();
-  consoleErrorSpy.mockClear();
   stderrWriteSpy.mockClear();
+  stdoutWriteSpy.mockClear();
+  capturingStdout = false;
+  stdoutChunks.length = 0;
 });

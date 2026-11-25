@@ -36,7 +36,7 @@ cat docs/specs/ui/print-mode.md | wave -p "帮我审查这份规格"
 
 prompt 的来源与 `claude -p` 一致：stdin 不是终端（被管道/重定向接上）时，读到的内容就是 prompt 正文，`-p` 也给了值就拼在后面（换行分隔）；这样整份文档、SKILL.md 这类长 prompt 走 stdin 即可，不必挤进命令行参数（Linux 单个参数上限 128 KiB，超了会被内核以 `E2BIG` 拒掉）。stdin 是终端时完全不读、行为不变。管道接上了却一直没有数据（父进程继承了 stdin 但没写）时，最多等 3 秒就按「没有 stdin 输入」继续，并在 stderr 打一行提示；想立即跳过就重定向 `< /dev/null`。
 
-配合 `--show-stats` 可在输出末尾显示耗时和 Token 用量统计；配合 `--output-format json` / `stream-json` 可输出机器可读结果（见 [结构化输出](#structured-output)）。
+配合 `--output-format json` / `stream-json` 可输出机器可读结果（用量、耗时都在里面，见 [结构化输出](#structured-output)）。
 
 ---
 
@@ -111,7 +111,6 @@ wave -w my-feature
 | 选项                    | 简写 | 描述                                                    |
 | ----------------------- | ---- | ------------------------------------------------------- |
 | `--plugin-dir <path>`   |      | 从指定目录加载插件                                      |
-| `--show-stats`          |      | 打印模式下显示耗时和 Token 统计                         |
 | `--output-format <fmt>` |      | 打印模式输出格式：`text`（默认）、`json`、`stream-json` |
 | `--version`             | `-v` | 显示版本号                                              |
 | `--help`                | `-h` | 显示帮助信息                                            |
@@ -429,10 +428,10 @@ wave --add-dir /data/exports
 
 ### 7.14 Token 用量统计 {#token-stats}
 
-在打印模式下配合 `--show-stats` 使用，输出结果末尾显示耗时和 Token 用量统计信息。
+打印模式没有单独的人读统计开关（与 Claude Code 一致）：用量与耗时随结果一起返回，`--output-format json`（或 `stream-json` 末行的 `result`）里带 `usage`、`model_usage`、`num_turns`、`duration_ms`。
 
 ```bash
-wave -p --show-stats "分析这个项目的依赖关系"
+wave -p --output-format json "分析这个项目的依赖关系" | jq '{usage, duration_ms}'
 ```
 
 ### 7.15 会话内热切换 {#resume}
@@ -474,10 +473,15 @@ wave -p --show-stats "分析这个项目的依赖关系"
 
 ### 7.17 结构化输出 {#structured-output}
 
-打印模式默认输出给人看的纯文本。要让脚本或 CI 消费结果，用 `--output-format` 换成结构化格式，stdout 上就只剩 JSON：
+打印模式默认 `--output-format text`，stdout 上只有**最终答案**——最后一条助手消息的文本，结尾补一个换行。运行期间不打印任何过程信息：推理、`📝 Response:` 标题、`🔧` 工具行既不写 stdout 也不写 stderr（与 Claude Code 的 print 模式一致），所以 `wave -p … | …` 拿到的是一段可直接消费的纯文本。诊断信息——worktree 提示、加载失败的失败原因——写 **stderr**。运行起来之后失败，stdout 上是 `Execution error`（逐字同 Claude Code，**不带**结尾换行），退出码 1，**stderr 一个字都不写**（失败详情在 result 的 `errors` 里，要看就用 `stream-json`）；如果这次运行根本没起来（`-r` 的 session 不存在或非法、恢复会话抛错），`text` 与 `json` 都是 stdout 上**一个字节都没有**、stderr 一行 `Error: <原因>`、退出码 1，只有 `stream-json` 会写一条 error result 收尾（即 Claude Code 的 `emitLoadError` 形状）。
+
+要程序化消费过程或结构化结果，用 `--output-format` 换成下面两种格式：
 
 ```bash
-# 取助手回复的纯文本
+# 直接拿答案
+wave -p "列出当前目录" > answer.txt
+
+# 取助手回复的纯文本 + 结构化字段
 wave -p "列出当前目录" --output-format json | jq -r .result
 
 # 逐事件消费（打印进度、审计工具调用）
@@ -521,7 +525,7 @@ jq -e '.subtype == "success"' result.json > /dev/null
 几条使用约定：
 
 - **退出码**：`0` 表示这次运行干成了活。以下两类判为失败、退出码 `1`，此时 stdout 上仍有一条 `subtype` 为 `error_during_execution` 的 result（不带 `result` 字段），失败原因在 `errors` 里：① 建 agent 或发消息抛错；② 运行结束时错误块非空且一句正文都没产出（典型来源是模型不可用、鉴权被拒）。工具执行失败不算运行失败（记在 `tool_calls` 条目的 `success` 上），压缩历史失败、hook 报错这类可恢复错误也不算。
-- **stdout 只有 JSON**：`--show-stats` 的统计、worktree 提示等诊断信息都写到 stderr，stdout 保持纯净。万一有非 JSON 内容漏到 stdout，会被改写到 stderr 并加上 `[stdout-guard]` 前缀，不打断管道。
+- **stdout 只有 JSON**：worktree 提示等诊断信息都写到 stderr，stdout 保持纯净。万一有非 JSON 内容漏到 stdout，会被改写到 stderr 并加上 `[stdout-guard]` 前缀，不打断管道。
 - **只对打印模式生效**：不带 `-p` 给非 `text` 的 `--output-format` 会报错退出（交互模式的 stdout 是终端 UI）。
 - **`usage` 是 OpenAI 口径**：`prompt_tokens` **已包含**缓存读取的 token（与 Anthropic 的 `input_tokens` 口径不同），也不输出费用字段。
 

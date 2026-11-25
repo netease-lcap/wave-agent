@@ -9,7 +9,6 @@ import {
   type Usage,
   type WorktreeSession,
 } from "wave-agent-sdk";
-import { displayUsageSummary } from "./utils/usageSummary.js";
 import { describeWorktreeSurvival, removeWorktree } from "./utils/worktree.js";
 import {
   drainStdout,
@@ -25,33 +24,14 @@ export interface PrintCliOptions extends BaseAppProps {
   restoreSessionId?: string;
   continueLastSession?: boolean;
   message?: string;
-  showStats?: boolean;
   /** MCP server config parsed from --mcp-config CLI argument */
   mcpServers?: Record<string, import("wave-agent-sdk").McpServerConfig>;
   /** --output-format: "text" (default), "json", or "stream-json" */
   outputFormat?: OutputFormat;
 }
 
-/** A diagnostics writer: stdout in text mode, stderr once stdout carries JSON. */
+/** A diagnostics writer: always stderr — stdout carries the answer alone. */
 type Writer = (text: string) => void;
-
-function displayTimingInfo(
-  startTime: Date,
-  showStats: boolean,
-  write: Writer,
-): void {
-  // Skip timing info in test environment or if stats are disabled
-  if (process.env.NODE_ENV === "test" || process.env.VITEST || !showStats) {
-    return;
-  }
-
-  const endTime = new Date();
-  const duration = endTime.getTime() - startTime.getTime();
-
-  write(`\n\n📅 Start time: ${startTime.toISOString()}\n`);
-  write(`📅 End time: ${endTime.toISOString()}\n`);
-  write(`⏱️  Duration: ${duration}ms\n`);
-}
 
 export async function startPrintCli(options: PrintCliOptions): Promise<void> {
   // stdout carries the printed result here; console telemetry exporters would
@@ -62,7 +42,6 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     restoreSessionId,
     continueLastSession,
     message: promptArg,
-    showStats = false,
     bypassPermissions,
     permissionMode,
     pluginDirs,
@@ -90,45 +69,36 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     .join("\n");
 
   if (message.trim() === "" && !continueLastSession && !restoreSessionId) {
-    console.error(
-      "Print mode requires a message: use --print 'your message' or -p 'your message'",
+    // 逐字同 Claude Code 的前置校验（`print.ts:781`）：一行 `Error: …` 走 stderr。
+    process.stderr.write(
+      "Error: Input must be provided either through stdin or as a prompt argument when using --print\n",
     );
     process.exit(1);
   }
 
   const output = new PrintOutput({ format: outputFormat });
-  const structured = output.structured;
   // Structured modes promise stdout carries nothing but JSON, so a stray
   // console.log from anywhere in the process is diverted to stderr instead of
-  // tearing the NDJSON stream.
-  if (structured) installStdoutGuard();
-  /** Diagnostics: stderr when stdout is the JSON channel, stdout otherwise. */
+  // tearing the NDJSON stream. Text mode cannot be guarded that way (its answer
+  // is plain text, indistinguishable from a stray line), so it relies on the
+  // code discipline of never writing to stdout outside `PrintOutput`.
+  if (output.structured) installStdoutGuard();
+  // stdout carries the answer alone in every format, and the run prints no
+  // progress at all (no reasoning, no `🔧` lines, no response headers) — that is
+  // Claude Code's print-mode contract. Only diagnostics (worktree notes, a load
+  // failure's single stderr line) go to stderr.
   const diag: Writer = (text) => output.diag(text);
-  const usageWriter = structured
-    ? toLineWriter(process.stderr.write.bind(process.stderr))
-    : undefined;
-  // Text mode keeps the exact call shape it had (console.log); structured mode
-  // is the only one that redirects the summary, and it needs stderr for it.
-  const showUsage = (usages: Usage[], sessionFilePath: string): void => {
-    if (usageWriter) {
-      displayUsageSummary(usages, sessionFilePath, usageWriter);
-    } else {
-      displayUsageSummary(usages, sessionFilePath);
-    }
-  };
 
   let agent: Agent;
-  let isReasoning = false;
-  let isContent = false;
 
-  // Setup callbacks for agent
-  // Print mode only outputs the main agent's response (matching Claude Code's
-  // behavior). Subagent output is internal — the main agent incorporates
-  // relevant results in its own response.
+  // Setup callbacks for agent. Like Claude Code's print mode, nothing about the
+  // run's progress is printed — not to stdout, not to stderr. Reasoning never
+  // reaches a stream (outside `stream-json`), tool calls are only recorded for
+  // the envelope's `tool_calls`, and the answer itself is written once at the
+  // end by `PrintOutput.result()`. Subagent output stays internal: the main
+  // agent folds the relevant parts into its own answer.
   const callbacks: AgentCallbacks = {
     onAssistantMessageAdded: () => {
-      isReasoning = false;
-      isContent = false;
       output.assistantMessageAdded();
     },
     onAssistantMessageDiscarded: () => {
@@ -139,48 +109,29 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       messageId: string;
       chunk: string;
     }) => {
-      if (!isReasoning) {
-        output.human("\n💭 Reasoning:\n");
-        isReasoning = true;
-      }
-      output.human(params.chunk);
+      // 只有 stream-json 会把它变成事件；其余格式里推理不落地。
       output.reasoningDelta(params.messageId, params.chunk);
     },
     onAssistantContentUpdated: (params: {
       messageId: string;
       chunk: string;
     }) => {
-      if (!isContent) {
-        if (isReasoning) {
-          output.human("\n\n📝 Response:\n");
-        } else {
-          output.human("\n");
-        }
-        isContent = true;
-      }
-      output.human(params.chunk);
       output.contentDelta(params.messageId, params.chunk);
     },
 
-    // Tool block callback - display tool name when tool starts
+    // Tool calls are recorded for `tool_calls` / `tool` events, never printed.
     onToolBlockUpdated: (params) => {
-      // Print tool name only during 'running' stage (happens once per tool call)
-      if (params.stage === "running" && params.name) {
-        output.human(`\n🔧 ${params.name}`);
-        if (params.compactParams) {
-          output.human(` ${params.compactParams}`);
-        }
-        output.human(`\n`);
-      }
       output.toolUpdate(params);
     },
 
     // Notice callback: `error` is the turn failure, `info` a hook's line for
-    // the human. Only the former is an error for the CLI's own output.
+    // the human. Only the former is an error for the CLI's own output, and it
+    // goes into the envelope's `errors` and nowhere else: Claude Code's print
+    // mode leaves stderr silent for a run that got that far (the failure shows
+    // up as `Execution error` on stdout / the error result's `errors`).
     onNoticeAdded: ({ level, content }) => {
       if (level !== "error") return;
       output.error(content);
-      diag(`\n❌ Error: ${content}\n`);
     },
   };
 
@@ -236,7 +187,6 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     // Send message if provided and not empty
     if (typeof message === "string" && message.trim() !== "") {
       await agent.sendMessage(message);
-      output.human("\n");
     }
 
     // Wait for running background tasks/subagents to complete AND for the main
@@ -258,25 +208,13 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     // is torn down before the worktree bookkeeping below. A getter that throws
     // must never turn a completed run into a failure, so it degrades to no
     // usage rather than raising.
-    const usageSnapshot = readUsageSnapshot(agent);
+    const usages = readUsages(agent);
     let sessionId = "";
     try {
       sessionId = agent.sessionId;
     } catch {
-      // Same rule as the usage snapshot: identity loss is not a run failure
+      // Same rule as the usage table: identity loss is not a run failure
     }
-
-    // Display usage summary before exit
-    if (showStats && usageSnapshot) {
-      try {
-        showUsage(usageSnapshot.usages, usageSnapshot.sessionFilePath);
-      } catch {
-        // Silently ignore usage summary errors
-      }
-    }
-
-    // Display timing information
-    displayTimingInfo(startTime, showStats, diag);
 
     // Decide whether the worktree is clean enough to remove
     let cleanWorktree = false;
@@ -328,43 +266,43 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       }
     }
 
-    // The result line goes out last on stdout; everything above that is either
-    // suppressed (structured) or on stderr. The exit code reads the envelope so
-    // "did this run fail" has one answer, not two: a request-level failure (model
-    // unreachable, auth rejected) never throws out of sendMessage — it only
-    // leaves an error block behind.
+    // The answer goes out last on stdout — in every format, and it is the only
+    // thing written there; everything above went to stderr. The exit code reads
+    // the envelope so "did this run fail" has one answer, not two: a
+    // request-level failure (model unreachable, auth rejected) never throws out
+    // of sendMessage — it only leaves an error block behind.
     const envelope = output.result({
       sessionId,
       durationMs: Date.now() - startTime.getTime(),
-      usages: usageSnapshot?.usages ?? [],
+      usages: usages ?? [],
     });
-    await exitWithFlushedStdout(structured, envelope.is_error ? 1 : 0);
+    await exitWithFlushedStdout(envelope.is_error ? 1 : 0);
   } catch (error) {
-    console.error("Failed to send message:", error);
-    output.error((error as Error)?.message ?? String(error));
+    const reason = (error as Error)?.message ?? String(error);
+    output.error(reason);
+
+    // Claude Code 的加载失败路径（`emitLoadError`）：这次运行根本没起来
+    // ——session id 非法、恢复失败、create 抛错——**只有 `stream-json`** 往
+    // stdout 写 error result；`text` 与 `json` 都是 stdout 一个字节都不写，
+    // 原因单行走 stderr，exit 1。（"多行"、"json 也出 envelope" 都曾是我们的
+    // 偏离，逐字对齐后不再有。）
+    if (!agent! && output.format !== "stream-json") {
+      output.diag(`Error: ${reason}\n`);
+      await exitWithFlushedStdout(1);
+      return;
+    }
 
     let usages: Usage[] = [];
     let sessionId = "";
 
     if (agent!) {
-      // Display usage summary even on error
+      // A failed run still reports what it spent — the envelope's usage.
       try {
         usages = agent.usages;
         sessionId = agent.sessionId;
-        const sessionFilePath = agent.sessionFilePath;
-        if (showStats) {
-          try {
-            showUsage(usages, sessionFilePath);
-          } catch {
-            // Silently ignore usage summary errors
-          }
-        }
       } catch {
         // Silently ignore usage access errors
       }
-
-      // Display timing information even on error
-      displayTimingInfo(startTime, showStats, diag);
 
       // Decide whether the worktree is clean enough to remove
       let cleanWorktree = false;
@@ -421,43 +359,30 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       usages,
       isError: true,
     });
-    await exitWithFlushedStdout(structured, envelope.is_error ? 1 : 0);
+    await exitWithFlushedStdout(envelope.is_error ? 1 : 0);
   }
 }
 
 /**
- * The agent's usage table plus the transcript path, or `undefined` when either
- * getter throws — the summary is a convenience, not part of the run's contract.
+ * The agent's usage table, or `undefined` when the getter throws — usage is a
+ * reporting detail, never a reason to turn a finished run into a failure.
  */
-function readUsageSnapshot(
-  agent: Agent,
-): { usages: Usage[]; sessionFilePath: string } | undefined {
+function readUsages(agent: Agent): Usage[] | undefined {
   try {
-    return { usages: agent.usages, sessionFilePath: agent.sessionFilePath };
+    return agent.usages;
   } catch {
     return undefined;
   }
 }
 
 /**
- * Structured modes hand stdout to a consumer reading it line by line, so the
- * queued writes must land before the process goes away: a truncated last line
- * is a parse error on their side. Text mode keeps its existing exit path.
+ * The answer goes out last on stdout in every format, so the queued write must
+ * land before the process goes away: structured consumers would see a truncated
+ * last line (parse error), text consumers a truncated answer. `uninstallStdoutGuard`
+ * is the no-op half in text mode — it only ever installed in structured ones.
  */
-async function exitWithFlushedStdout(
-  structured: boolean,
-  code: number,
-): Promise<void> {
-  if (structured) {
-    uninstallStdoutGuard();
-    await drainStdout();
-  }
+async function exitWithFlushedStdout(code: number): Promise<void> {
+  uninstallStdoutGuard();
+  await drainStdout();
   process.exit(code);
-}
-
-/** Adapt a stream write to the line-writer shape `displayUsageSummary` takes. */
-function toLineWriter(
-  write: (chunk: string) => unknown,
-): (line?: string) => void {
-  return (line) => void write((line ?? "") + "\n");
 }

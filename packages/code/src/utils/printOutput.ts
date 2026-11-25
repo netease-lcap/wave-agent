@@ -1,7 +1,8 @@
 /**
  * 打印模式的结构化输出（spec: docs/specs/ui/print-mode.md「结构化输出」）。
  *
- * 一个采集器喂两种格式，所以 stdout 上的事件与最后的 result 不可能对不上：
+ * 一个采集器喂三种格式，所以 stdout 上的内容与最后的 result 不可能对不上：
+ * - `text`：只在结束时写一格**最终答案**（或失败时的 `Execution error`），运行过程不打印；
  * - `json`：只在结束时写一条 envelope；
  * - `stream-json`：按行写事件流，末行是同构的 result 事件。
  *
@@ -132,19 +133,14 @@ export class PrintOutput {
     this.pendingBeforeInit = [];
   }
 
-  /** 人读输出：text 模式写 stdout，结构化模式丢弃（信息已在事件里）。 */
-  human(text: string): void {
-    if (this.structured) return;
-    this.writeStdout(text);
-  }
-
-  /** 诊断信息：text 模式跟随人读输出，结构化模式转 stderr，绝不污染 stdout。 */
+  /**
+   * 诊断信息（worktree 提示、加载失败的单行原因）：一律写 stderr。
+   *
+   * 只有**诊断**会走这条通道——运行过程（推理、工具行、响应标题）一个字都不打印，
+   * 与 Claude Code 的 print 模式一致：它既不写 stdout 也不写 stderr。
+   */
   diag(text: string): void {
-    if (this.structured) {
-      process.stderr.write(text);
-      return;
-    }
-    this.writeStdout(text);
+    process.stderr.write(text);
   }
 
   assistantMessageAdded(): void {
@@ -263,7 +259,16 @@ export class PrintOutput {
       // 失败版没有 result（对齐 CC 的错误版）；成功版即使为空也给空串
       ...(isError ? {} : { result: resultText }),
     };
-    if (this.structured) this.writeEvent(envelope, false);
+    if (this.structured) {
+      this.writeEvent(envelope, false);
+    } else {
+      // text 模式的唯一 stdout 写点：最终答案（结尾补一个换行），失败时是
+      // Claude Code 的同款文案「Execution error」，**不带**结尾换行（它只在
+      // 成功分支补换行），逐字照抄。
+      this.writeStdout(
+        isError ? "Execution error" : withTrailingNewline(resultText),
+      );
+    }
     return envelope;
   }
 
@@ -307,6 +312,11 @@ export class PrintOutput {
     }
     this.writeStdout(line);
   }
+}
+
+/** 最终答案按行消费：结尾没有换行就补一个（Claude Code 的 text 模式同样处理）。 */
+function withTrailingNewline(text: string): string {
+  return text.endsWith("\n") ? text : text + "\n";
 }
 
 /** 参数详情：能解析就给对象，解析不了保留原始串（不为难消费方猜）。 */
