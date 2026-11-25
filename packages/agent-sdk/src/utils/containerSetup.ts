@@ -54,7 +54,7 @@ import { runSessionCleanupInBackground } from "./sessionCleanup.js";
 import { MemoryService } from "../services/memory.js";
 import { AutoMemoryService } from "../services/autoMemoryService.js";
 import { USER_MEMORY_FILE } from "./constants.js";
-import { getGitMainRepoRoot } from "./gitUtils.js";
+import { getGitMainRepoRoot, readLinkedWorktree } from "./gitUtils.js";
 import { toPosixPath } from "./path.js";
 import { EDIT_TOOL_NAME, WRITE_TOOL_NAME } from "../constants/tools.js";
 import { AsyncWorkRegistry } from "./asyncWorkRegistry.js";
@@ -152,6 +152,24 @@ function errorStatusCodeOf(error: unknown): number | null {
   return Number.isFinite(status) ? status : null;
 }
 
+/**
+ * Which worktree this session works in, as the pair of container slots the
+ * worktree write guard reads (see {@link setupAgentContainer}). `null` when the
+ * session is not in a worktree at all.
+ *
+ * A declared name keeps `git worktree list` as its answer: it is also the only
+ * source that covers a hook-based worktree, which has no `.git` of its own.
+ */
+function resolveWorktreeScope(
+  workdir: string,
+  declaredName: string | undefined,
+): { name: string; repoRoot: string } | null {
+  if (declaredName) {
+    return { name: declaredName, repoRoot: getGitMainRepoRoot(workdir) };
+  }
+  return readLinkedWorktree(workdir) ?? null;
+}
+
 export function setupAgentContainer(
   setupOptions: AgentContainerSetupOptions,
 ): AgentContainerSetupResult {
@@ -226,9 +244,19 @@ export function setupAgentContainer(
   // agent's object graph alive even after the host drops its references.
   const teardowns: Array<() => void> = [];
 
-  if (options.worktreeName) {
-    container.register("WorktreeName", options.worktreeName);
-    container.register("MainRepoRoot", getGitMainRepoRoot(workdir));
+  // Worktree scope — the three inputs `PermissionManager`'s write guard reads
+  // (worktree name, main repo root, and `CurrentWorkdir` registered above).
+  // A creator that *declared* a worktree (`wave -w`, a host's createWorktree)
+  // names it. Nobody else does: the daemon's `create --worktree`, a session
+  // re-attached from disk after a restart and a conversation merely re-opened at
+  // a worktree path all start from nothing but their workdir — which left every
+  // input empty and skipped the guard for exactly the sessions stdio hosts run
+  // (#3073). The session's opening directory answers it on its own, because
+  // "linked git worktree of <repo>" is written into its `.git` file.
+  const worktreeScope = resolveWorktreeScope(workdir, options.worktreeName);
+  if (worktreeScope) {
+    container.register("WorktreeName", worktreeScope.name);
+    container.register("MainRepoRoot", worktreeScope.repoRoot);
   }
 
   // Per-agent worktree session state (EnterWorktree/ExitWorktree). Stored in the
