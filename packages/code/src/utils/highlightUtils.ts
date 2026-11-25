@@ -20,8 +20,8 @@ import ruby from "highlight.js/lib/languages/ruby";
 import swift from "highlight.js/lib/languages/swift";
 import kotlin from "highlight.js/lib/languages/kotlin";
 import ini from "highlight.js/lib/languages/ini";
-import { parse, Node, HTMLElement, TextNode } from "node-html-parser";
 import chalk from "chalk";
+import { logger } from "./logger.js";
 
 // Register only the languages we auto-detect (the full default import pulls
 // in all 384 languages, ~1.5MB of the bundle).
@@ -47,62 +47,144 @@ hljs.registerLanguage("swift", swift);
 hljs.registerLanguage("kotlin", kotlin);
 hljs.registerLanguage("ini", ini);
 
+// highlight.js scopes -> chalk styles. Keys are hljs "scope" names
+// ("title.function", "built_in", ...), i.e. the first segment of the CSS class
+// the HTML renderer would have emitted. A tiered scope falls back to its first
+// segment, which is why "title.function" still lands on "title".
 const theme: Record<string, (text: string) => string> = {
-  "hljs-keyword": chalk.blue,
-  "hljs-built_in": chalk.cyan,
-  "hljs-type": chalk.cyan,
-  "hljs-literal": chalk.magenta,
-  "hljs-number": chalk.magenta,
-  "hljs-operator": chalk.white,
-  "hljs-punctuation": chalk.white,
-  "hljs-property": chalk.yellow,
-  "hljs-attr": chalk.yellow,
-  "hljs-variable": chalk.white,
-  "hljs-template-variable": chalk.white,
-  "hljs-string": chalk.green,
-  "hljs-char": chalk.green,
-  "hljs-comment": chalk.gray,
-  "hljs-doctag": chalk.gray,
-  "hljs-function": chalk.yellow,
-  "hljs-title": chalk.yellow,
-  "hljs-params": chalk.white,
-  "hljs-tag": chalk.blue,
-  "hljs-name": chalk.blue,
-  "hljs-selector-tag": chalk.blue,
-  "hljs-selector-id": chalk.blue,
-  "hljs-selector-class": chalk.blue,
-  "hljs-selector-attr": chalk.blue,
-  "hljs-selector-pseudo": chalk.blue,
-  "hljs-subst": chalk.white,
-  "hljs-section": chalk.blue.bold,
-  "hljs-bullet": chalk.magenta,
-  "hljs-emphasis": chalk.italic,
-  "hljs-strong": chalk.bold,
-  "hljs-addition": chalk.green,
-  "hljs-deletion": chalk.red,
-  "hljs-link": chalk.blue.underline,
+  keyword: chalk.blue,
+  built_in: chalk.cyan,
+  type: chalk.cyan,
+  literal: chalk.magenta,
+  number: chalk.magenta,
+  operator: chalk.white,
+  punctuation: chalk.white,
+  property: chalk.yellow,
+  attr: chalk.yellow,
+  variable: chalk.white,
+  "template-variable": chalk.white,
+  string: chalk.green,
+  char: chalk.green,
+  comment: chalk.gray,
+  doctag: chalk.gray,
+  function: chalk.yellow,
+  title: chalk.yellow,
+  params: chalk.white,
+  tag: chalk.blue,
+  name: chalk.blue,
+  "selector-tag": chalk.blue,
+  "selector-id": chalk.blue,
+  "selector-class": chalk.blue,
+  "selector-attr": chalk.blue,
+  "selector-pseudo": chalk.blue,
+  subst: chalk.white,
+  section: chalk.blue.bold,
+  bullet: chalk.magenta,
+  emphasis: chalk.italic,
+  strong: chalk.bold,
+  addition: chalk.green,
+  deletion: chalk.red,
+  link: chalk.blue.underline,
 };
 
-function nodeToAnsi(node: Node): string {
-  if (node instanceof TextNode) {
-    return node.text;
-  }
+const AUTO_DETECT_LANGUAGES = [
+  "javascript",
+  "typescript",
+  "bash",
+  "json",
+  "markdown",
+  "python",
+  "yaml",
+  "html",
+  "css",
+  "sql",
+  "xml",
+  "rust",
+  "go",
+  "java",
+  "cpp",
+  "c",
+  "csharp",
+  "php",
+  "ruby",
+  "swift",
+  "kotlin",
+  "toml",
+  "ini",
+];
 
-  if (node instanceof HTMLElement) {
-    const content = node.childNodes.map(nodeToAnsi).join("");
-    const classes = node.getAttribute("class")?.split(/\s+/) || [];
-
-    for (const className of classes) {
-      if (theme[className]) {
-        return theme[className](content);
-      }
-    }
-
-    return content;
-  }
-
-  return "";
+function lookupStyle(scope: string): ((text: string) => string) | undefined {
+  return theme[scope] ?? theme[scope.split(".")[0]];
 }
+
+// The token tree behind highlight.js's HTML output is internal API: 11.x marks
+// _emitter private (it types only "emitter"), and the node layout has changed
+// between majors (10.x used "kind", 11.x uses "scope"). Everything crossing
+// that boundary is unknown and validated here, so a version bump degrades to
+// plain text with one log line instead of rendering garbage — an
+// "as unknown as" cast is what hid exactly such a mismatch in the past.
+function hasTokenTree(
+  result: unknown,
+): result is { _emitter: { rootNode: { children: unknown[] } } } {
+  if (
+    typeof result !== "object" ||
+    result === null ||
+    !("_emitter" in result)
+  ) {
+    return false;
+  }
+  const { _emitter } = result;
+  if (
+    typeof _emitter !== "object" ||
+    _emitter === null ||
+    !("rootNode" in _emitter)
+  ) {
+    return false;
+  }
+  const { rootNode } = _emitter;
+  if (
+    typeof rootNode !== "object" ||
+    rootNode === null ||
+    !("children" in rootNode)
+  ) {
+    return false;
+  }
+  return Array.isArray(rootNode.children);
+}
+
+// Returns null for anything that is neither a string leaf nor a node with a
+// children array: a version bump that reshapes the nodes (10.x used
+// { kind, value }) must degrade the whole block, not silently drop text.
+function nodeToAnsi(
+  node: unknown,
+  inherited: ((text: string) => string) | undefined,
+): string | null {
+  if (typeof node === "string") {
+    return inherited ? inherited(node) : node;
+  }
+  if (
+    typeof node !== "object" ||
+    node === null ||
+    !("children" in node) ||
+    !Array.isArray(node.children)
+  ) {
+    return null;
+  }
+  const scope =
+    "scope" in node && typeof node.scope === "string" ? node.scope : undefined;
+  const style = (scope ? lookupStyle(scope) : undefined) ?? inherited;
+  const parts: string[] = [];
+  for (const child of node.children) {
+    const rendered = nodeToAnsi(child, style);
+    if (rendered === null) {
+      return null;
+    }
+    parts.push(rendered);
+  }
+  return parts.join("");
+}
+
+let loggedTokenTreeShapeError = false;
 
 export function highlightToAnsi(code: string, language?: string): string {
   if (!code) {
@@ -115,36 +197,23 @@ export function highlightToAnsi(code: string, language?: string): string {
     return code;
   }
   try {
-    const highlighted = language
-      ? hljs.highlight(code, { language }).value
-      : hljs.highlightAuto(code, [
-          "javascript",
-          "typescript",
-          "bash",
-          "json",
-          "markdown",
-          "python",
-          "yaml",
-          "html",
-          "css",
-          "sql",
-          "xml",
-          "rust",
-          "go",
-          "java",
-          "cpp",
-          "c",
-          "csharp",
-          "php",
-          "ruby",
-          "swift",
-          "kotlin",
-          "toml",
-          "ini",
-        ]).value;
-
-    const root = parse(highlighted);
-    return root.childNodes.map(nodeToAnsi).join("");
+    const result = language
+      ? hljs.highlight(code, { language })
+      : hljs.highlightAuto(code, AUTO_DETECT_LANGUAGES);
+    const nodes = hasTokenTree(result)
+      ? result._emitter.rootNode.children
+      : undefined;
+    const rendered = nodes?.map((node) => nodeToAnsi(node, undefined));
+    if (!rendered || rendered.some((part) => part === null)) {
+      if (!loggedTokenTreeShapeError) {
+        loggedTokenTreeShapeError = true;
+        logger.error(
+          "[highlight] highlight.js token tree shape mismatch (no _emitter.rootNode.children, or an unknown node shape); syntax highlighting disabled.",
+        );
+      }
+      return code;
+    }
+    return rendered.join("");
   } catch {
     return code;
   }
