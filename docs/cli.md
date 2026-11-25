@@ -59,26 +59,30 @@ wave -c
 
 ### 2.2 模型与工具 {#model-tool-options}
 
-| 选项                        | 描述                          |
-| --------------------------- | ----------------------------- |
-| `--model <name>`            | 指定 AI 模型                  |
-| `--tools <list>`            | 启用的工具列表（逗号分隔）    |
-| `--allowed-tools <list>`    | 始终允许的工具列表            |
-| `--disallowed-tools <list>` | 始终禁用的工具列表            |
-| `--mcp-config <json>`       | MCP 服务器配置（JSON 字符串） |
+| 选项                        | 描述                                                                                           |
+| --------------------------- | ---------------------------------------------------------------------------------------------- |
+| `--model <name>`            | 指定 AI 模型                                                                                   |
+| `--tools <list>`            | 启用的工具列表（逗号分隔）                                                                     |
+| `--allowed-tools <list>`    | 始终允许的工具列表                                                                             |
+| `--disallowed-tools <list>` | 始终禁用的工具列表                                                                             |
+| `--mcp-config <json>`       | MCP 服务器配置（JSON 字符串）                                                                  |
+| `--skills-sources <list>`   | 本次会话加载的技能来源：`user`、`project`（逗号分隔）；`""` 表示两档都关。内置与插件技能恒加载 |
 
 ```bash
 # 指定模型并限制工具
 wave --model gpt-4o --disallowed-tools Bash,Write
+
+# 只加载项目级技能（技能触发评测的隔离运行）
+wave --skills-sources project
 ```
 
 ### 2.3 权限与安全 {#permission-options}
 
-| 选项                             | 描述                                                                           |
-| -------------------------------- | ------------------------------------------------------------------------------ |
-| `--permission-mode <mode>`       | 设置权限模式：`default`、`acceptEdits`、`bypassPermissions`、`dontAsk`、`plan` |
-| `--dangerously-skip-permissions` | 跳过所有权限检查（危险）                                                       |
-| `--add-dir <path>`               | 将目录加入会话安全区域，可重复指定（仅当前会话生效）                           |
+| 选项                             | 描述                                                                                                                    |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `--permission-mode <mode>`       | 设置权限模式：`default`、`acceptEdits`、`bypassPermissions`、`dontAsk`、`plan`                                          |
+| `--dangerously-skip-permissions` | 跳过所有权限检查（危险）                                                                                                |
+| `--add-dir <path>`               | 将目录加入会话安全区域，可重复指定（仅当前会话生效）；目录下的 `.wave`/`.claude`/`.agents` 技能目录会作为项目级技能加载 |
 
 ```bash
 # 将 /data/exports 加入当前会话的安全区域

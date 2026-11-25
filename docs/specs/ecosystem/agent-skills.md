@@ -261,6 +261,25 @@ monorepo 场景里，子系统/子包会自带技能（`packages/api/.wave/skill
 
 ---
 
+### 用户故事：按来源限定本次会话加载哪些技能（优先级：P2）
+
+技能作者和评测脚本需要「本次运行只让模型看到指定的技能」。模型看到的技能集合必须是这次想测的那些——否则测出的触发率既不代表该技能的描述质量，也无法在别人机器上复现（每人装的技能不同）；想验证「会不会误触发」时，也没法排除「其实是隔壁技能被触发了」。
+
+**为什么是这个优先级**：它不影响任何默认行为，只服务技能评测、插件 CI 与「只想验证某一个技能」的调试；但它必须在技能这一层可表达，因为唯一的替代手段是换 `HOME`，而那会牵动 `~/.wave` 下的登录态与配置。
+
+**独立测试**：在 `~/.wave/skills/` 与项目 `.wave/skills/` 各放一个技能，用 `--skills-sources project` 起会话，确认模型技能清单与 `/` 建议里都只剩项目级那个；再用 `--add-dir /tmp/eval`（其中 `/tmp/eval/.wave/skills/` 放一个技能）确认它被额外加载。
+
+**验收场景**：
+
+1. **假设**没有给出 `--skills-sources`（SDK 为 `skillsSources`），**当**会话启动时，**则**行为与现在完全一致：用户级、项目级、插件、内置四类技能全部加载。
+2. **假设**给出 `--skills-sources project`，**当**会话启动时，**则** `~/.wave/skills`、`~/.claude/skills`、`~/.agents/skills` 三个用户级目录一个都不加载，模型技能清单与 `/` 建议里只剩项目级、插件、内置技能。
+3. **假设**给出 `--skills-sources ""`，**当**会话启动时，**则**用户级与项目级都不加载，只剩插件与内置技能——与 Claude Code 的 `--setting-sources ""` 作用在技能上的结果一致。
+4. **假设**给出 `--add-dir <dir>`，**当**会话启动时，**则**额外扫描 `<dir>/.wave/skills`、`<dir>/.claude/skills`、`<dir>/.agents/skills`（存在才扫），加载到的技能按项目级归类——因此 `--skills-sources project` 也管得住它们。
+5. **假设**给出了 `--skills-sources` 里不认识的值（如 `foo`），**当**启动时，**则**直接报错退出并列出合法值 `user, project`，不静默忽略（与 Claude Code `Invalid setting source: … Valid options are: …` 的口径一致）。
+6. **假设**某来源被关掉，**当**热加载监视建立时，**则**这些目录不被监视（关掉的来源新装技能不会触发重扫，也不需要立刻生效）。
+
+---
+
 ### 边界情况
 
 - **格式错误的 YAML frontmatter 会毁掉整个技能吗？** 不会毁技能，会毁字段。解析器是全有或全无（坏一块就整块作废，不抢救半个 YAML），但作废的是 metadata 而不是技能本身：名字回退为所在目录名、描述回退为正文第一行非空行，技能照旧出现在斜杠命令与模型的技能清单里，只是 `hooks` / `allowed-tools` / `model` / `disable-model-invocation` 静默失效。形态与 Claude Code 一致（它的体检技能原话：坏块「still loads, but with EVERY field dropped」，正常 verbosity 下不提示），差别只在提示：我方额外给一条带文件路径的错误级日志，让作者看得见要修哪个文件。正文没有任何内容可作描述时，技能才判为无效。
@@ -278,3 +297,7 @@ monorepo 场景里，子系统/子包会自带技能（`packages/api/.wave/skill
 - **清单外置后，压缩把清单摘要掉了怎么办？** 重新下发完整清单。状态只存在历史里（标记 + 哈希），没有进程内「已发送集合」，因此压缩、回退、进程重启都会自动退化成「没发过 ⇒ 发全量」。重复一次清单的成本，低于模型在压缩后不知道自己有哪些技能。
 - **子目录技能的上溯边界是哪个「工作目录」？** 会话起点目录（不随 `Bash` 里的 `cd` 移动）。技能属于项目级配置，边界若跟着 `cd` 漂移，同一次会话里「哪些技能存在」就会取决于 shell 的历史；这与 `.wave/rules`、`AGENTS.md` 等其它项目级配置的取数口径一致。工作树（`EnterWorktree`）是另一回事——它换了工作区，按工作树坐标上溯。
 - **子目录技能怎么判定「目录被忽略」？** 至少要排除常见的依赖与构建目录（`node_modules`、`dist`、`build` 等）和点开头的目录——否则模型读到依赖源码里一个半成品 `.claude/skills`，就会把它当成可调用的技能。更强的做法是查询版本控制自身的忽略规则（`git check-ignore`），查询失败或不在版本控制内时按「未忽略」放行：这里的边界是「别把依赖树当技能源」，不是安全边界（信任边界仍由会话启动时的信任确认负责）。
+- **为什么值域只有 `user` / `project`，没有 builtin 与 plugin？** 因为 Claude Code 那边这两类本来就不受 setting source 控制：bundled 技能单独注册，插件技能走 `enabledPlugins` / `--plugin-dir`。它的 `--setting-sources project` 实际只影响 user 与 project 两档技能。本开关照这个边界收口——插件用 `--plugin-dir` 控制，内置技能不提供关闭手段，否则就是造一个 Claude Code 面外的档位。
+- **为什么不直接抄 Claude Code 的 `--setting-sources`？** Claude Code 的技能来源本身挂在 setting source 上（`~/.claude/skills` 由 `isSettingSourceEnabled('userSettings')` 门控），所以它不需要技能专属开关；代价是关掉用户级技能会连带关掉 `~/.claude/settings.json`（模型、env、权限、hooks、CLAUDE.md 一起走）。我方配置链没有 policy/managed/flag 分层，技能目录也不是来源的函数，照抄要先把这套分层引进配置链，影响面覆盖权限、MCP、hooks 与 CLAUDE.md。技能评测要的是「模型看到的技能集合可控」，不是「整份用户配置消失」，所以开关收到技能这一层；值域与命名沿用 Claude Code 内部已有的来源归类（User / Project / Plugin / Built-in），不造新词汇。
+- **关掉一个来源后，同名技能的去重怎么算？** 被关掉的来源直接不参与发现，因此也不参与同名覆盖：用户级与项目级都有 `foo` 时，`--skills-sources project` 得到的是项目级那份（不是「被关掉的那份仍占着位置」）。
+- **`--add-dir` 加载技能是不是行为变更？** 是，且是刻意对齐 Claude Code 的：它的 `--add-dir` 除了放行工具访问，还会扫该目录下的 `.claude/skills`。对现有用户的影响是「`--add-dir` 的目录里如果有技能，现在会出现在清单里」；不想要就同时收窄 `--skills-sources`。

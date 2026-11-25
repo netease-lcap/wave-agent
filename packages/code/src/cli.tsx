@@ -75,6 +75,7 @@ export async function startCli(options: CliOptions): Promise<void> {
     permissionMode,
     pluginDirs,
     additionalDirectories,
+    skillsSources,
     tools,
     allowedTools,
     disallowedTools,
@@ -108,6 +109,7 @@ export async function startCli(options: CliOptions): Promise<void> {
       permissionMode={permissionMode}
       pluginDirs={pluginDirs}
       additionalDirectories={additionalDirectories}
+      skillsSources={skillsSources}
       tools={tools}
       allowedTools={allowedTools}
       disallowedTools={disallowedTools}

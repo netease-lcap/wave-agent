@@ -88,6 +88,7 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
   permissionMode,
   pluginDirs,
   additionalDirectories,
+  skillsSources,
   tools,
   allowedTools,
   disallowedTools,
@@ -124,6 +125,7 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
         permissionMode={permissionMode}
         pluginDirs={pluginDirs}
         additionalDirectories={additionalDirectories}
+        skillsSources={skillsSources}
         tools={tools}
         allowedTools={allowedTools}
         disallowedTools={disallowedTools}
@@ -146,6 +148,7 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
       permissionMode={permissionMode}
       pluginDirs={pluginDirs}
       additionalDirectories={additionalDirectories}
+      skillsSources={skillsSources}
       tools={tools}
       allowedTools={allowedTools}
       disallowedTools={disallowedTools}
@@ -169,6 +172,7 @@ export const App: React.FC<AppProps> = ({
   permissionMode,
   pluginDirs,
   additionalDirectories,
+  skillsSources,
   tools,
   allowedTools,
   disallowedTools,
@@ -192,6 +196,7 @@ export const App: React.FC<AppProps> = ({
           permissionMode={permissionMode}
           pluginDirs={pluginDirs}
           additionalDirectories={additionalDirectories}
+          skillsSources={skillsSources}
           tools={tools}
           allowedTools={allowedTools}
           disallowedTools={disallowedTools}

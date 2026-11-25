@@ -393,6 +393,8 @@ export function setupAgentContainer(
   const skillManager = new SkillManager(container, {
     workdir,
     watch: options.watchSkills ?? true,
+    skillsSources: options.skillsSources,
+    additionalDirectories: options.additionalDirectories,
   });
   container.register("SkillManager", skillManager);
 

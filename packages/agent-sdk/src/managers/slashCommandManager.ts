@@ -4,7 +4,7 @@ import type {
   SlashCommand,
   CustomSlashCommand,
   CustomSlashCommandConfig,
-  SkillSource,
+  SkillSourceTag,
 } from "../types/index.js";
 import { loadCustomSlashCommands } from "../utils/customCommands.js";
 
@@ -270,7 +270,7 @@ export class SlashCommandManager {
     this.skillCommandIds.clear();
     this.skillAliasCommandIds.clear();
 
-    const skillSourceFor = (skill: SkillMetadata): SkillSource => {
+    const skillSourceFor = (skill: SkillMetadata): SkillSourceTag => {
       if (skill.pluginName) return "plugin";
       if (skill.type === "personal") return "user";
       return skill.type; // "project" | "builtin"
