@@ -58,6 +58,27 @@ order: 110
 
 ---
 
+### 用户故事：从 stdin 读入长 prompt（优先级：P1）
+
+作为把整份文档 / 规格 / SKILL.md 交给 `wave -p` 做分析或改写的用户，我希望 prompt 能从 stdin 管道喂进来，而不是只能塞进命令行参数，以便绕开单参数 131072 字节（Linux `MAX_ARG_STRLEN`）的内核上限。
+
+**为什么是这个优先级**：长 prompt 场景（评审一份文档、改进一个 SKILL.md 的 description）本来就要整份文件进 prompt，走 argv 一定撞 `E2BIG`，调用方只能自己加「prompt 不能超过 120KB」的护栏并给出可读错误；脚本化调用（CI、批量评测、文档处理）几乎都会碰到。这不是体验优化，是那条路根本走不通。
+
+**独立测试**：`printf '只回复两个字：收到' | wave -p --output-format text` 与 `wave -p '只回复两个字：收到' --output-format text` 输出一致（都得到「收到」）；再用一个大于 200KB 的文件走 stdin，运行正常返回。
+
+**验收场景**：
+
+1. **假设** stdin 不是 TTY 且 `-p` 没给值，**当** 进入打印模式时，**则** stdin 的全部内容作为这一轮的 prompt。
+2. **假设** stdin 不是 TTY 且 `-p` 给了值，**当** 运行时，**则** prompt 是「该值 + 换行 + stdin 内容」（对齐 `claude -p` 的 `[prompt, data].filter(Boolean).join('\n')`），stdin 内容不被静默丢弃。
+3. **假设** stdin 是 TTY（交互终端里手敲 `wave -p 'hi'`），**当** 运行时，**则** 完全不读 stdin、不会等待输入，行为与改动前逐字节一致。
+4. **假设** stdin 非 TTY 却一直没有数据到达、也没有结束（父进程继承了管道但没写），**当** 3 秒内没有任何数据时，**则** 停止等待、按「没有 stdin 输入」继续，并在 stderr 打一行提示；一旦收到第一块数据就不再计超时，一直等到流结束。
+5. **假设** `-p` 无值且 stdin 立即结束（如 `< /dev/null`），**当** 拼接后仍为空时，**则** 报既有的 `Print mode requires a message` 并以退出码 1 结束。
+6. **假设** 用户写 `wave -p -` 且 stdin 非 TTY，**当** 运行时，**则** `-` 作为正文文本参与拼接（与 `claude -p -` 一致），不做「`-` 即 stdin」的特判。
+7. **假设** 一个超过 131072 字节的 prompt 走 stdin，**当** 运行时，**则** 正常运行，不受内核单参数上限约束。
+8. **假设** `--output-format json` 或 `stream-json` 且 stdin 有内容，**当** 运行时，**则** 拼入的内容体现在这一轮的 `result` 里，stdout 仍是纯 JSON（第 4 条的提示走 stderr）。
+
+---
+
 ### 用户故事：等待后台工作及主 agent 收尾完成后再退出（优先级：P0）
 
 作为在打印模式下由主 agent 启动后台子 agent 的用户，我希望 `wave -p` 等待所有后台子 agent 完成、并且主 agent 处理完所有完成通知（产出最终响应）之后才退出，以便最终结果不会丢失。
@@ -114,3 +135,5 @@ order: 110
 - **结构化格式下 worktree 保留/删除提示怎么写？** 走 stderr，不进 stdout。
 - **与 Claude Code 的 JSON 字段完全一致吗？** 信封骨架对齐（`type` / `subtype` / `is_error` / `result` / `session_id` / `duration_ms` / `num_turns` / 错误版用 `errors` 而不带 `result`），**数值口径不对齐**：`usage` 沿用本项目的 `prompt_tokens` / `completion_tokens` / `total_tokens`（OpenAI 口径，`prompt_tokens` **已含** cache_read），不等于 CC 的 `input_tokens`（不含 cache）；`total_cost_usd` 与 `modelUsage.costUSD` 我们没有价目表，**不输出**，也不填 0 假装有值。
 - **stream-json 的中间事件与 CC 同构吗？** 不同构。CC 发的是 Anthropic 消息本体（`assistant` / `user` 包 `BetaMessage`、工具调用在 content block 里），我们的数据源是 SDK 回调而非 SSE 事件流，伪造那层结构会得到永远填不满的字段。只对齐两头：首事件 `system/init` 与末事件 `result`。
+- **stdin 读进来要 trim 吗？** 不 trim，按 utf8 原样解码后拼接；只判「拼接后 `trim()` 为空」＝视同没给 prompt（沿用既有空校验口径，所以纯空白 stdin 也算没有输入，与 CC 的 `filter(Boolean)` 略有差异）。
+- **读 stdin 只影响打印模式吗？** 是。`--stdio` / daemon / 交互模式各有自己的 stdin 语义，不受影响。

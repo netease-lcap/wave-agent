@@ -69,7 +69,8 @@ export async function main() {
       })
       .option("print", {
         alias: "p",
-        description: "Print response without interactive mode",
+        description:
+          "Print response without interactive mode (piped stdin becomes prompt text)",
         type: "string",
         global: false,
       })

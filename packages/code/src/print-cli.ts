@@ -19,6 +19,7 @@ import {
   type OutputFormat,
 } from "./utils/printOutput.js";
 import { BaseAppProps } from "./types.js";
+import { readPipedStdin } from "./utils/stdin.js";
 
 export interface PrintCliOptions extends BaseAppProps {
   restoreSessionId?: string;
@@ -60,7 +61,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
   const {
     restoreSessionId,
     continueLastSession,
-    message,
+    message: promptArg,
     showStats = false,
     bypassPermissions,
     permissionMode,
@@ -78,11 +79,17 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     outputFormat = "text",
   } = options;
 
-  if (
-    (typeof message !== "string" || message.trim() === "") &&
-    !continueLastSession &&
-    !restoreSessionId
-  ) {
+  // Piped stdin is extra prompt text, the way `claude -p` treats it — that is
+  // what lets a long prompt (a whole spec, a SKILL.md) be fed without hitting
+  // the kernel's per-argument limit (MAX_ARG_STRLEN = 128 KiB on Linux).
+  const pipedPrompt = await readPipedStdin();
+  // Only strings become prompt text: a non-string here (a caller bypassing the
+  // types) must not silently turn into "true".
+  const message = [promptArg, pipedPrompt]
+    .filter((part): part is string => typeof part === "string" && part !== "")
+    .join("\n");
+
+  if (message.trim() === "" && !continueLastSession && !restoreSessionId) {
     console.error(
       "Print mode requires a message: use --print 'your message' or -p 'your message'",
     );

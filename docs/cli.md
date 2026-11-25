@@ -31,7 +31,10 @@ wave
 ```bash
 wave -p "解释这个项目的架构"
 echo "分析这段代码的问题" | wave -p
+cat docs/specs/ui/print-mode.md | wave -p "帮我审查这份规格"
 ```
+
+prompt 的来源与 `claude -p` 一致：stdin 不是终端（被管道/重定向接上）时，读到的内容就是 prompt 正文，`-p` 也给了值就拼在后面（换行分隔）；这样整份文档、SKILL.md 这类长 prompt 走 stdin 即可，不必挤进命令行参数（Linux 单个参数上限 128 KiB，超了会被内核以 `E2BIG` 拒掉）。stdin 是终端时完全不读、行为不变。管道接上了却一直没有数据（父进程继承了 stdin 但没写）时，最多等 3 秒就按「没有 stdin 输入」继续，并在 stderr 打一行提示；想立即跳过就重定向 `< /dev/null`。
 
 配合 `--show-stats` 可在输出末尾显示耗时和 Token 用量统计；配合 `--output-format json` / `stream-json` 可输出机器可读结果（见 [结构化输出](#structured-output)）。
 
