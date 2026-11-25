@@ -34,12 +34,7 @@ import {
   REPL_SEARCH_MAX_RESULTS_LIMIT,
   REPL_SEARCH_NAME,
 } from "./constants.js";
-import {
-  isCorePoolTool,
-  isDeferredTool,
-  toolTier,
-  withoutBackgroundParam,
-} from "./deferral.js";
+import { isDeferredTool, toolTier } from "./deferral.js";
 import type { DeferralSubject, ToolTier } from "./deferral.js";
 
 /**
@@ -143,19 +138,35 @@ export function buildReplPool(
     const tier =
       candidate.tier ??
       toolTier(candidate.name, coreToolsEnabled, foldedSearch);
-    // A pooled shell tool loses `run_in_background`: inside a script the async
-    // lane is what backgrounds work, so the parameter would be an argument the
-    // runtime ignores. Applied here, on the entry, so the announcement's inline
-    // signature and `describeTool` cannot show the parameter the sandbox drops.
-    const inputSchema = isCorePoolTool(candidate.name, coreToolsEnabled)
-      ? withoutBackgroundParam(candidate.name, candidate.inputSchema)
-      : candidate.inputSchema;
+    // A pooled shell tool keeps `run_in_background`, and the schema is copied
+    // verbatim for the same reason it always was: this is the one place the
+    // rendered signature, a search hit's `input` and `describeTool` all read, so
+    // whatever is written here is what the model is told the pool can do.
+    //
+    // It used to be stripped, on the theory that "inside a script the async lane
+    // is what backgrounds work". The sandbox does not do that: `answerToolCall`
+    // hands the argument to the tool unchanged (see `replRuntime.ts`), the tool's
+    // own background branch starts a real task and answers with its id at once,
+    // and the completion arrives on the ordinary background-notification lane.
+    // A real session measured it (2026-11-25): `tools.Bash({ command: "sleep 20;
+    // echo done", run_in_background: true })` returned a `backgroundTaskId` well
+    // inside the wait window and the task reported at the end. Stripping it
+    // therefore hid a capability the pool does have — and only from the tier that
+    // went through this branch: a `Bash` pooled by its own `defer` claim kept the
+    // parameter, so the two shapes disagreed about the same tool.
+    //
+    // Claude Code declares it the same way. Its Bash schema is the full one and
+    // `run_in_background` is omitted only when background tasks are disabled
+    // (`HOe() ? Z9o().omit({ run_in_background: true }) : Z9o()`, 2.1.331
+    // `0766-6267394B-AL.js:244495`), and its code-mode prompt reads the same flag
+    // (`2626-166712B-EvalTool.js:1266`, `Ho(W, HOe())`) — pool membership is not
+    // part of the judgment.
     pool.push({
       name: candidate.name,
       description: candidate.description,
       searchHint: candidate.searchHint,
       isMcp: candidate.isMcp,
-      inputSchema,
+      inputSchema: candidate.inputSchema,
       outputSchema: candidate.outputSchema,
       tier: tier === "core" ? "core" : undefined,
     });

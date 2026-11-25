@@ -9,6 +9,8 @@ import {
   searchTools,
 } from "../../src/repl/catalog.js";
 import type { ReplPoolEntry } from "../../src/repl/catalog.js";
+import { bashTool } from "../../src/tools/bashTool.js";
+import { powershellTool } from "../../src/tools/powershellTool/powershellTool.js";
 import {
   REPL_SEARCH_NAME,
   REPL_SEARCH_DEFAULT_MAX_RESULTS,
@@ -169,42 +171,46 @@ describe("buildReplPool", () => {
     ).toEqual([]);
   });
 
-  it("takes the background lane away from a shell tool it pools", () => {
-    // The pool is the sync lane by construction — every call in it answers inside
-    // the fixed wait window, and the async lane is `Poll`'s. Leaving
-    // `run_in_background` declared would describe a parameter the pooled lane
-    // cannot honour, so the pooled schema loses it (Claude Code does the same).
-    const shellSchema = () => ({
-      type: "object",
-      properties: {
-        command: { type: "string" },
-        run_in_background: { type: "boolean" },
-      },
-      required: ["command", "run_in_background"],
-    });
+  it("keeps the background parameter on a shell tool it pools", () => {
+    // `tools.Bash({ run_in_background: true })` reaches the tool itself: the
+    // sandbox hands the argument through unchanged (`replRuntime.ts`,
+    // `answerToolCall`), the tool's background branch starts a real task and
+    // answers with its id at once, and the completion arrives on the ordinary
+    // background-notification lane. So the pooled entry must declare the
+    // parameter — stripping it here hid a capability the pool has, and only from
+    // the core tier: a `Bash` pooled by its own `defer` claim kept it, so the two
+    // shapes disagreed about the same tool. Claude Code declares it the same way:
+    // it omits `run_in_background` only when background tasks are disabled, never
+    // because a tool is pooled.
+    for (const tool of [bashTool, powershellTool]) {
+      const declared = tool.config.function.parameters as Record<
+        string,
+        unknown
+      >;
+      expect(declared).toHaveProperty("properties.run_in_background");
 
-    for (const name of ["Bash", "PowerShell"]) {
-      const [pooled] = buildReplPool(
-        [{ name, inputSchema: shellSchema() }],
-        none,
-        true,
-      );
-      expect(pooled.inputSchema).toEqual({
-        type: "object",
-        properties: { command: { type: "string" } },
-        required: ["command"],
-      });
+      const pooled = [
+        // The core tier (the switch is on), and the tool's own `defer` claim
+        // (the switch is off) — both must copy the schema as declared.
+        buildReplPool(
+          [{ name: tool.name, inputSchema: declared }],
+          none,
+          true,
+        )[0],
+        buildReplPool(
+          [{ name: tool.name, inputSchema: declared, defer: true }],
+          none,
+        )[0],
+      ];
+      for (const entry of pooled) {
+        expect(entry.inputSchema).toEqual(declared);
+        // One rendering of one schema: the announcement's inline signature is
+        // where the model reads this parameter.
+        expect(renderToolSignature(entry)).toContain("run_in_background");
+      }
     }
 
-    // Pooled only because it claimed defer, with the core switch off: `Bash` is
-    // still reachable flat as well, so its declaration keeps the parameter.
-    const [byClaim] = buildReplPool(
-      [{ name: "Bash", inputSchema: shellSchema(), defer: true }],
-      none,
-    );
-    expect(byClaim.inputSchema).toHaveProperty("properties.run_in_background");
-
-    // A core tool that is not a shell is copied as declared.
+    // A core tool that is not a shell is copied as declared too.
     const readSchema = { type: "object", properties: { path: {} } };
     const [read] = buildReplPool(
       [{ name: "Read", inputSchema: readSchema }],
