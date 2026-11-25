@@ -91,7 +91,7 @@ interface MarkerPayload {
  * in tier 2: a signature needs a schema, and a name does not have one.
  *
  * Contract with the deferral judgment: tier membership is *read off `tier`*, never
- * re-derived here. `"core"` is `deferral.toolTier(name, coreToolsEnabled)`, copied
+ * re-derived here. `"core"` is `deferral.toolTier(name, coreToolsEnabled, foldedSearch)`, copied
  * onto the entry by `buildReplPool`; anything else is `"named"`. Deriving it a
  * second time is how the two would eventually disagree.
  */

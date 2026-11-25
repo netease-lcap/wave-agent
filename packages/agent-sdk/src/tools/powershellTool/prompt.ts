@@ -6,9 +6,9 @@
  * (CC's `getBackgroundUsageNote()` / `getSleepGuidance()`, same bullets). Two
  * things are wave's own:
  *
- * - the dedicated-tool list depends on which tools this session registered
- *   (`Grep` / `Glob` are opt-in, see `utils/searchToolsRegistration.ts`), so it
- *   cannot be a constant string.
+ * - the dedicated-tool list depends on which tools this request declares flat
+ *   (`Grep` / `Glob` sit in the REPL pool while folded, see
+ *   `utils/searchToolsRegistration.ts`), so it cannot be a constant string.
  *
  * The "Unix commands that DO NOT exist in PowerShell" table and the exit-code
  * note after it are copied verbatim from CC's prompt (binary `@343205396` and

@@ -19,10 +19,16 @@
  *   2. the non-deferrable list — names that must stay flat, resolved from the
  *      structural floor plus whatever remote/local config pushes down, so a bad
  *      call can be undone without shipping a release.
- *   3. MCP — deferred unconditionally. A server cannot know whether its tools are
+ *   3. the folded search tools — `Grep` / `Glob` while `hasDedicatedSearchTools` is
+ *      false. In the pool whatever `enableReplCoreTools` says, and announced by
+ *      name only: the fold exists to keep flat search in Bash's shadows, and a
+ *      signature in the announcement would be advertising the way round it.
+ *      Claude Code 2.1.331 draws the same line (its fold refuses the flat call,
+ *      never the pool, and demotes the pair to its names-only tier).
+ *   4. MCP — deferred unconditionally. A server cannot know whether its tools are
  *      rare enough to be worth loading on demand, and asking every server to opt
  *      in would leave most of them flat.
- *   4. the tool's own `defer` claim.
+ *   5. the tool's own `defer` claim.
  */
 import {
   BASH_TOOL_NAME,
@@ -62,6 +68,9 @@ export const CORE_POOL_TOOLS: readonly string[] = [
 
 /** Which announcement tier a pooled tool belongs to. */
 export type ToolTier = "core" | "named";
+
+/** The default "nothing is folded" input, shared by the two judgments below. */
+const NO_FOLDED: ReadonlySet<string> = new Set();
 
 /** What the judgment needs to know about a candidate. */
 export interface DeferralSubject {
@@ -159,7 +168,15 @@ export function isCorePoolTool(
  * announcement; `"named"` gets its name. Every other decision about membership
  * stays in `isDeferredTool`.
  */
-export function toolTier(name: string, coreToolsEnabled: boolean): ToolTier {
+export function toolTier(
+  name: string,
+  coreToolsEnabled: boolean,
+  foldedSearch: ReadonlySet<string> = NO_FOLDED,
+): ToolTier {
+  // A folded search tool is name-only even with the core switch on: the tier is
+  // a presentation decision (see CORE_POOL_TOOLS), and a signature here would
+  // be the advertisement the fold is trying not to give.
+  if (foldedSearch.has(name)) return "named";
   return isCorePoolTool(name, coreToolsEnabled) ? "core" : "named";
 }
 
@@ -173,15 +190,23 @@ export function toolTier(name: string, coreToolsEnabled: boolean): ToolTier {
  *
  * `coreToolsEnabled` defaults to `false` so the off state — the shipped default —
  * is what a caller that has not been updated yet gets.
+ *
+ * `foldedSearch` is the set of search tools folded into Bash's shadows this
+ * session (see `utils/searchToolsRegistration.ts`). Passed in for the same
+ * reason as the switch: a pure function of (candidate, inputs) is what keeps the
+ * four consumers agreeing. Both escape hatches above still win — an operator can
+ * keep `Grep` flat with `alwaysLoad` or the non-deferrable list.
  */
 export function isDeferredTool(
   subject: DeferralSubject,
   nonDeferrable: ReadonlySet<string>,
   coreToolsEnabled = false,
+  foldedSearch: ReadonlySet<string> = NO_FOLDED,
 ): boolean {
   if (subject.alwaysLoad === true) return false;
   if (nonDeferrable.has(subject.name)) return false;
   if (isCorePoolTool(subject.name, coreToolsEnabled)) return true;
+  if (foldedSearch.has(subject.name)) return true;
   if (subject.isMcp === true) return true;
   return subject.defer === true;
 }

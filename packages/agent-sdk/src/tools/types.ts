@@ -46,12 +46,13 @@ export interface ToolPromptArgs {
   workdir?: string;
   isSubagent?: boolean;
   /**
-   * Names of the tools registered in this session.
+   * Names of the tools this request declares flat — not the registry: `Grep` and
+   * `Glob` stay registered while folded into Bash's shadows.
    *
    * A description that hard-codes a tool name goes stale as soon as that tool is
-   * optional: `Grep` and `Glob` are opt-in via `--tools` (spec
-   * `core/fs-tools.md`), so the Bash tool's description has to change with the
-   * registration set rather than assume the default one.
+   * flat only sometimes: `Grep` and `Glob` are flat only while they are the
+   * dedicated search tools (spec `core/fs-tools.md`), so the Bash tool's
+   * description has to follow the declared set rather than the registry.
    */
   availableTools?: string[];
 }

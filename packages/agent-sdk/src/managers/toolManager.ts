@@ -88,7 +88,15 @@ import { Container } from "../utils/container.js";
 import { appendMemoryCapNotice } from "../utils/memoryCapNotices.js";
 
 import { logger } from "../utils/globalLogger.js";
-import { shouldRegisterSearchTools } from "../utils/searchToolsRegistration.js";
+import {
+  SEARCH_TOOL_NAMES,
+  hasDedicatedSearchTools,
+} from "../utils/searchToolsRegistration.js";
+
+/** `Grep` / `Glob` while folded into Bash's shadows (see `foldedSearchTools`). */
+const FOLDED_SEARCH: ReadonlySet<string> = new Set(SEARCH_TOOL_NAMES);
+/** The unfolded state: nothing is pool-only by the fold. */
+const NO_FOLDED_SEARCH: ReadonlySet<string> = new Set();
 
 import type { SubagentConfiguration } from "../utils/subagentParser.js";
 import type { SkillMetadata } from "../types/skills.js";
@@ -432,15 +440,15 @@ class ToolManager {
       builtInTools.push(bashTool);
     }
 
-    // Grep / Glob are off by default: search runs through the Bash tool's
-    // `grep` / `find` shadows, which are the thing being paid for instead.
-    // See `shouldRegisterSearchTools`: naming either one in `--tools` asks for
-    // the structured form, and a session with no usable bash gets them
-    // regardless — there is no shadow to search with. `--allowedTools` is a
-    // permission allow-list and does not affect registration.
-    if (shouldRegisterSearchTools(this.tools)) {
-      builtInTools.push(globTool, grepTool);
-    }
+    // Grep / Glob are always registered — the pool, `describeTool` and transcript
+    // replay all read the registry — and which entrance they take is decided per
+    // request: flat only while they are the session's dedicated search tools
+    // (`hasDedicatedSearchTools`: named in `--tools`, or no usable bash to
+    // shadow `grep` / `find` with), otherwise in the REPL pool alone (spec
+    // core/repl-tool.md「搜索折叠态下的 Grep / Glob 只在脚本里可达」). `--tools` is a
+    // definition-level allow-list and still withholds an unnamed tool like any
+    // other; `--allowedTools` is a permission allow-list and does not enter here.
+    builtInTools.push(globTool, grepTool);
 
     // PowerShell: present only in a session whose shell it is — no Git Bash on
     // Windows, or `WAVE_USE_POWERSHELL_TOOL` asked for it anyway. The registry
@@ -1334,7 +1342,23 @@ class ToolManager {
       isReplCoreToolsEnabled(workdir),
       // 插件在 `tool.describe` 里给过裁决就用它（spec「给工具、技能、命令写描述」）。
       (name) => this.placementOverride(name),
+      this.foldedSearchTools(),
     );
+  }
+
+  /**
+   * The search tools folded into Bash's `grep` / `find` shadows this session:
+   * `Grep` / `Glob` while they are not the dedicated pair (see
+   * `hasDedicatedSearchTools`). They are in the pool whatever `enableReplCoreTools`
+   * says — the fold refuses the flat call, not the script entrance — and the
+   * announcement lists them by name (spec core/repl-tool.md「搜索折叠态下的
+   * Grep / Glob 只在脚本里可达」). One function, two consumers (`getReplPool`,
+   * `getToolsConfig`), so the two cannot disagree about which side they are on.
+   */
+  private foldedSearchTools(): ReadonlySet<string> {
+    return hasDedicatedSearchTools(this.tools)
+      ? NO_FOLDED_SEARCH
+      : FOLDED_SEARCH;
   }
 
   /**
@@ -1376,8 +1400,9 @@ class ToolManager {
     // the announcement claimed to be the only way in. Both halves are derived from
     // this one pool, and the pool is exactly what the agent could already call
     // directly, so deferring it cannot widen access. That includes the seven core
-    // tools while `enableReplCoreTools` is on: they are in the pool, so they leave
-    // `tools[]` by this same rule rather than by a second list.
+    // tools while `enableReplCoreTools` is on, and the folded search pair
+    // whatever that switch says (`foldedSearchTools`): they are in the pool, so
+    // they leave `tools[]` by this same rule rather than by a second list.
     //
     // The pool is non-empty whenever the REPL exists (the deferred built-ins are
     // always there), so the REPL is declared for as long as the feature is on. That
@@ -1386,60 +1411,71 @@ class ToolManager {
     const pool = this.isReplDeclared() ? this.getReplPool() : [];
     const pooled = new Set(pool.map((entry) => entry.name));
     const execDeclared = pool.length > 0;
+    // Search tools folded into Bash's shadows are pool-only: with the REPL
+    // declared they are in `pooled` already; without it they have no entrance at
+    // all — the same as a session that never had them, since the shadows in
+    // Bash are what the model searches with (spec core/fs-tools.md 场景 13).
+    const folded = this.foldedSearchTools();
+    const replDeclared = this.isReplDeclared();
 
-    const builtInToolsConfig = Array.from(this.toolsRegistry.values())
-      .filter((tool) => {
-        if (tool.name === REPL_TOOL_NAME) return execDeclared;
-        if (pooled.has(tool.name)) return false;
-        // If tool is explicitly denied by name in permission rules, filter it out
-        if (permissionManager?.isToolDenied(tool.name)) {
-          return false;
-        }
-        // 交付文件只在"有人能把卡片渲染出来"时声明（spec
-        // `core/session-consumers.md`）：终端只能打字，`wave -p` 连界面都没有。
-        // 注册表里始终留着它——历史转录里的调用还要能重放，撤注册会让那些调用
-        // 变成 `Tool not found`。
-        if (
-          tool.name === SEND_USER_FILE_TOOL_NAME &&
-          !this.sessionConsumers()?.hasRenderable()
-        ) {
-          return false;
-        }
-        return true;
-      })
-      .map((tool) => {
-        // Create a copy of the tool config to avoid modifying the original
-        const config = {
-          ...tool.config,
-          function: {
-            ...tool.config.function,
-          },
-        };
-        // What the session can actually reach, so a description never points at
-        // a tool this registry does not hold (`Grep` / `Glob` are opt-in).
-        const promptArgs = {
-          ...options,
-          availableTools: Array.from(this.toolsRegistry.keys()),
-        };
-        // Lean mode sends the tool's condensed variant when it declares one; a
-        // tool without one keeps its full description, so lean never yields an
-        // empty description. Only text changes — schemas, the tool set and
-        // permission decisions are untouched.
-        const lean = leanPromptEnabled ? tool.leanPrompt : undefined;
-        if (lean !== undefined) {
-          config.function.description =
-            typeof lean === "function" ? lean(promptArgs) : lean;
-        } else if (tool.prompt) {
-          config.function.description = tool.prompt(promptArgs);
-        }
-        // 第二判定源没有份的那半：插件可以换掉模型读到的这段说明文字（spec
-        // 「给工具、技能、命令写描述」）。换的只是文本，schema 与工具集不动。
-        config.function.description = this.describeTool(
-          tool.name,
-          config.function.description,
-        );
-        return config;
-      });
+    const flatTools = Array.from(this.toolsRegistry.values()).filter((tool) => {
+      if (tool.name === REPL_TOOL_NAME) return execDeclared;
+      if (pooled.has(tool.name)) return false;
+      if (!replDeclared && folded.has(tool.name)) return false;
+      // If tool is explicitly denied by name in permission rules, filter it out
+      if (permissionManager?.isToolDenied(tool.name)) {
+        return false;
+      }
+      // 交付文件只在"有人能把卡片渲染出来"时声明（spec
+      // `core/session-consumers.md`）：终端只能打字，`wave -p` 连界面都没有。
+      // 注册表里始终留着它——历史转录里的调用还要能重放，撤注册会让那些调用
+      // 变成 `Tool not found`。
+      if (
+        tool.name === SEND_USER_FILE_TOOL_NAME &&
+        !this.sessionConsumers()?.hasRenderable()
+      ) {
+        return false;
+      }
+      return true;
+    });
+    // What this request declares flat, so a description never points at a tool
+    // the model cannot call in this turn. `Grep` / `Glob` are the case: they sit
+    // in the registry while folded, and Bash's description has to keep saying
+    // `grep -rn` rather than send the model after a name that is pool-only.
+    const flatToolNames = new Set(flatTools.map((tool) => tool.name));
+
+    const builtInToolsConfig = flatTools.map((tool) => {
+      // Create a copy of the tool config to avoid modifying the original
+      const config = {
+        ...tool.config,
+        function: {
+          ...tool.config.function,
+        },
+      };
+      // The names this request declares flat (see `flatToolNames`).
+      const promptArgs = {
+        ...options,
+        availableTools: Array.from(flatToolNames),
+      };
+      // Lean mode sends the tool's condensed variant when it declares one; a
+      // tool without one keeps its full description, so lean never yields an
+      // empty description. Only text changes — schemas, the tool set and
+      // permission decisions are untouched.
+      const lean = leanPromptEnabled ? tool.leanPrompt : undefined;
+      if (lean !== undefined) {
+        config.function.description =
+          typeof lean === "function" ? lean(promptArgs) : lean;
+      } else if (tool.prompt) {
+        config.function.description = tool.prompt(promptArgs);
+      }
+      // 第二判定源没有份的那半：插件可以换掉模型读到的这段说明文字（spec
+      // 「给工具、技能、命令写描述」）。换的只是文本，schema 与工具集不动。
+      config.function.description = this.describeTool(
+        tool.name,
+        config.function.description,
+      );
+      return config;
+    });
     // Every MCP tool is deferred, so this is empty while `REPL` exists; it is the
     // only path that declares an MCP tool at all when `REPL` is off or denied.
     const mcpToolsConfig = this.mcpManager

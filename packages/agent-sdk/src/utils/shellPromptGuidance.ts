@@ -56,9 +56,9 @@ function searchBullets(kind: ShellKindChoice): string[] {
       `- Use \`grep -rn\` in ${BASH_TOOL_NAME} for file contents — it already honours .gitignore and skips binary files`,
     ];
   }
-  // Without bash the shadows do not exist and the registry puts the tools back
-  // (`shouldRegisterSearchTools`), which is the pair Claude Code names here in
-  // the same situation.
+  // Without bash the shadows do not exist and the fold opens
+  // (`hasDedicatedSearchTools`), which is the pair Claude Code names here in the
+  // same situation.
   return [
     `- Use ${GLOB_TOOL_NAME} for broad file pattern matching`,
     `- Use ${GREP_TOOL_NAME} for searching file contents with regex`,

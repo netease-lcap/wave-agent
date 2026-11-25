@@ -1,6 +1,6 @@
 ---
 name: "文件系统工具"
-description: "Read、Write、Edit 文件工具，搜索默认走 Bash 的内嵌 grep/find"
+description: "Read、Write、Edit 文件工具，搜索默认走 Bash 的内嵌 grep/find（Grep/Glob 只在 REPL 脚本里可达）"
 order: 10
 ---
 
@@ -73,23 +73,26 @@ order: 10
 
 作为 AI 代理，我希望用 glob 模式或正则表达式搜索模式，以便在大型项目中快速定位相关代码或资源。
 
-**优先级原因**：通过避免手动遍历目录树来提高效率。默认形态下搜索直接在 Bash 工具里完成，省掉一次独立的工具往返（模型 → 工具结果 → 模型），也不必让搜索上下文走结构化渲染通道；只有内容搜索需要结构化输出（计数、`files_with_matches` 等）时才值得付出这次往返。
+**优先级原因**：通过避免手动遍历目录树来提高效率。默认形态下搜索直接在 Bash 工具里完成，省掉一次独立的工具往返（模型 → 工具结果 → 模型），也不必让搜索上下文走结构化渲染通道；只有内容搜索需要结构化输出（计数、`files_with_matches` 等）时才值得付出这次往返。**需要结构化输出时走 REPL**：默认形态下 `Grep` / `Glob` 不进 `tools[]`，但在 REPL 池里可达（`await Grep({...})` 返回 `data` 对象）——折叠只收顶层平铺调用，不收脚本入口（对齐 Claude Code 2.1.331，见 [repl-tool.md](./repl-tool.md)「搜索折叠态下的 Grep / Glob 只在脚本里可达」）。
 
-**独立测试**：默认工具集下在 Bash 里用 `grep -rn` / `find` 定位一处已知字符串，核对文件与行号；再以 `--tools Grep,Glob` 启动一次，验证两个工具重新出现并返回结构化结果；再把会话做成「找不到可用 bash」（Windows 上把 `WAVE_GIT_BASH_PATH` 指向一个不存在的路径）启动一次，验证 `Grep` / `Glob` 不点名也回到工具表；`Glob` 另用 `**/*.ts` 与 Windows 风格的 `src\**\*.ts` 两种写法各跑一次，结果条数与排序必须一致。
+**独立测试**：默认工具集下在 Bash 里用 `grep -rn` / `find` 定位一处已知字符串，核对文件与行号；再以 `--tools Grep,Glob` 启动一次，验证两个工具重新出现并返回结构化结果；再把会话做成「找不到可用 bash」（Windows 上把 `WAVE_GIT_BASH_PATH` 指向一个不存在的路径）启动一次，验证 `Grep` / `Glob` 不点名也回到工具表；再在 REPL 脚本里 `await Grep({ pattern })` 一次，验证拿到结构化 `data`、公告里只有名字，平铺调 `Grep` 被拒且工具本体没跑；`Glob` 另用 `**/*.ts` 与 Windows 风格的 `src\**\*.ts` 两种写法各跑一次，结果条数与排序必须一致。
 
 **验收场景**：
 
-1. **假设** 会话以默认工具集启动且能拿到可用的 bash，**当** 列出可用工具时，**则** 不得包含 `Grep` 与 `Glob`——搜索通过 Bash 工具里的 `grep` / `find` 完成。
+1. **假设** 会话以默认工具集启动且能拿到可用的 bash，**当** 列出 `tools[]` 时，**则** 不得包含 `Grep` 与 `Glob`——搜索通过 Bash 工具里的 `grep` / `find` 完成；两者只进 REPL 池（场景 12），不得同时出现在两边。
 2. **假设** 代理在 Bash 里执行 `grep -rn <pattern>`，**当** 命令返回时，**则** 输出必须包含文件路径与行号，且递归时遵循 `.gitignore`、不进入二进制文件。
 3. **假设** 代理在 Bash 里执行 `find <path> -name <pattern>`，**当** 命令返回时，**则** 输出必须是匹配的文件路径列表，且 `-exec` / `-delete` 之类会改动文件系统的用法不得被自动放行。
 4. **假设** 搜索以 Bash 形式执行，**当** 触发权限判定时，**则** 它必须与其它 Bash 命令走同一套规则（默认 allow 规则已覆盖 `find` / `grep` / `rg`），不得因为「这是搜索」而单独开一条豁免通道。
-5. **假设** 以 `--tools` 显式点名 `Grep` 或 `Glob`，**当** 列出可用工具时，**则** 点名的工具必须注册：`Grep` 返回匹配行或路径、遵循 `.gitignore` 和常见忽略模式、带匹配计数的结构化元数据；`Glob` 与 `Grep` 用同一个引擎（ripgrep 的 `--files`），返回 `**/*.ts` 之类的文件路径列表：包含被 `.gitignore` 忽略的文件，但排除 `.git` / `.svn` / `.hg` / `.bzr` / `.jj` / `.sl` 等版本控制目录（与 Bash 影子、`Grep` 共用同一份清单），按修改时间**由旧到新**排序，最多到指定的 `limit`（默认 100），超出时结果末尾附 `(Results are truncated. Consider using a more specific path or pattern.)`。
+5. **假设** 以 `--tools` 显式点名 `Grep` 或 `Glob`，**当** 列出可用工具时，**则** 点名的工具必须注册：`Grep` 返回匹配行或路径、遵循 `.gitignore` 和常见忽略模式、带匹配计数的结构化元数据；`Glob` 与 `Grep` 用同一个引擎（ripgrep 的 `--files`），返回 `**/*.ts` 之类的文件路径列表：包含被 `.gitignore` 忽略的文件，但排除 `.git` / `.svn` / `.hg` / `.bzr` / `.jj` / `.sl` 等版本控制目录（与 Bash 影子、`Grep` 共用同一份清单），按修改时间**由旧到新**排序，最多到指定的 `limit`（默认 100），超出时结果末尾附 `(Results are truncated. Consider using a more specific path or pattern.)`。点名后折叠态解除：两者回到 `tools[]` 带完整 schema（是否同时进 REPL 池随 `enableReplCoreTools` 而定，与 `Read` 同款）。
 6. **假设** 搜索模式没有匹配结果，**当** 代理执行搜索时，**则** 默认路径下必须能从退出码（无匹配为 1）区分「确实没有匹配」，而非沉默的空输出。
-7. **假设** 子代理（Explore / Plan / general-purpose）被启动，**当** 它构造自己的工具集时，**则** 必须与主线遵守同一套默认工具集口径（有可用 bash 时同样拿不到 `Grep` / `Glob`，没有时同样拿得到），并使用「通过 Bash 的 `grep` / `find` 搜索」的提示词。
-8. **假设** 会话拿不到可用的 bash（Windows 上没装 Git Bash，或解析出的 bash 路径在盘上并不存在），**当** 列出可用工具时，**则** 必须自动注册 `Grep` 与 `Glob`——没有可以注入 `grep` / `find` 影子的 shell，摘除会让模型完全没有搜索文件树的手段；此时若又用 `--tools` 点名，两个工具仍只注册一份。无 Git Bash 的 Windows 会改用 `PowerShell` 工具执行命令（见 [powershell-tool.md](./powershell-tool.md)），本场景不受执行器变化影响。
+7. **假设** 子代理（Explore / Plan / general-purpose）被启动，**当** 它构造自己的工具集时，**则** 必须与主线遵守同一套默认工具集口径（有可用 bash 时同样拿不到 `Grep` / `Glob`，没有时同样拿得到），并使用「通过 Bash 的 `grep` / `find` 搜索」的提示词；REPL 池同口径（折叠态下两者在池里、不在 `tools[]`）。
+8. **假设** 会话拿不到可用的 bash（Windows 上没装 Git Bash，或解析出的 bash 路径在盘上并不存在），**当** 列出可用工具时，**则** 必须自动注册 `Grep` 与 `Glob`——没有可以注入 `grep` / `find` 影子的 shell，摘除会让模型完全没有搜索文件树的手段；此时折叠态解除，两者回到 `tools[]`（池内口径同场景 5）；若又用 `--tools` 点名，仍只算一份。无 Git Bash 的 Windows 会改用 `PowerShell` 工具执行命令（见 [powershell-tool.md](./powershell-tool.md)），本场景不受执行器变化影响。
 9. **假设** 模型用 Windows 风格的反斜杠写 pattern（`src\**\*.ts`），**当** 执行 `Glob` 时，**则** 反斜杠必须按路径分隔符处理（改写成 `/` 再交给 ripgrep），不得因为 ripgrep 把 `\` 当转义符而返回空结果。
 10. **假设** pattern 的大小写与磁盘上的文件名不一致（`*.TS` 找 `a.ts`），**当** 执行 `Glob` 时，**则** 匹配是大小写敏感的——与 ripgrep、Claude Code 一致；不得因为 Windows 文件系统本身不区分大小写就静默放宽。
 11. **假设** ripgrep 不可用（依赖没装、私有化环境未带上），**当** 执行 `Glob` 时，**则** 必须返回可读错误（`ripgrep is not available. …`），不得静默返回空列表；walk 根不存在时同理，必须把 ripgrep 的错误带回来，而不是报「没有匹配文件」。
+12. **假设** 会话处于搜索折叠态（未以 `--tools` 点名、有可用 bash）且 `REPL` 已声明，**当** 组装工具声明时，**则** `Grep` 与 `Glob` 必须进 REPL 池、可被脚本调用（`await Grep({ pattern: "…" })` 返回匹配计数与命中行的 `data` 对象），公告里**只列名字**——对齐 Claude Code 2.1.331：折叠只拒顶层平铺调用、不动 REPL 池；它不想鼓励模型在折叠态走 REPL 搜索，所以把两者从签名档挪到名字档。完整形状经 `describeTool("Grep")` 取；模型平铺调用两者时按 repl-tool.md「开关把核心文件与 shell 工具也收进 REPL」场景 11 在执行前被拒并指路脚本形态。
+13. **假设** 处于搜索折叠态但 `REPL` 未声明（`enableRepl: false`、被权限规则拒绝、`--tools` 没点名它），**当** 列出 `tools[]` 时，**则** `Grep` 与 `Glob` 两个入口都没有——与 REPL 从未存在时一致，搜索仍走 Bash 影子；注册表可以留着它们（历史转录重放、`describeTool`），但 `tools[]` 与池都不得出现。`REPL` 恢复声明时两者必须跟着回到池里，无需重启。
+14. **假设** 处于搜索折叠态，**当** 渲染 Bash 工具描述时，**则** 它必须仍是「Use `grep -rn` in Bash」那一档——判据是「`Grep` / `Glob` 本轮是否扁平声明」，不是「是否已注册」；否则折叠态下 Bash 描述会反过来让模型去调一个 `tools[]` 里没有的工具。
 
 ---
 
@@ -112,6 +115,6 @@ order: 10
 - 代理具有访问工作区目录所需的系统级权限。
 - `ripgrep`（`rg`）二进制由 `@vscode/ripgrep` 依赖提供（通过 `optionalDependencies` 按平台分发），供 `Grep` 工具使用。npm 安装的 `wave-code` 自带该依赖；宿主自带的那份 CLI 不带 `node_modules`，由 CLI 在**启动期**按需从 npmmirror 下载到共享 `~/.wave/cli/node_modules/@vscode/`（机制见 [stdio-transport.md](../ui/stdio-transport.md)「边界情况 · 运行时依赖自装与缓存」）。二进制路径**每次使用时再解析**（不在模块求值期定死——依赖是 CLI 自己在启动期装进来的，晚于模块求值），**解析锚点有两个**：CLI 自身位置优先、共享 `~/.wave/cli/node_modules` 兜底（前者让 npm 这类会把依赖提升到可解析位置的安装方式直接命中、无需下载，后者让 pnpm 全局安装、嵌套安装同样能找到已下载的副本），且**解析前先做文件系统存在性判定**（候选 `node_modules` 里没有该包目录就直接判缺失，绝不 `require` 一个尚不存在的包——那次失败会按路径把「不存在」缓存进进程，包随后落盘也再解析不到）：平台二进制包缺失时 `Grep` 返回"ripgrep is not available"（文件搜索同理报错），既不使宿主进程在加载时崩溃，也不因下载失败阻断 CLI 启动——桌面端与插件端的 grep 运行在 CLI 子进程中，宿主自身不消费该路径。
 - `PermissionManager` 已正确配置以处理文件系统访问级别。
-- **默认工具集不含搜索工具，但这由 shell 可用性判定**：`Grep` 与 `Glob` 不是默认注册的工具，前提是会话**有可用的 bash**——搜索的替代品是 Bash 工具里注入的 `grep` / `find` 影子，影子只存在于 bash 里，所以**没有可用 bash 时两个工具自动注册回来**（否则模型没有任何搜索文件树的手段）。判据**全平台一致**——只问「有没有可用 bash」，不是按平台分支：Windows 上由 Git Bash 发现回答，`WAVE_GIT_BASH_PATH` 指向的路径必须真实存在且可执行，否则按「无 bash」处理。**无 Git Bash 的 Windows 会落到 PowerShell 会话**（见 [powershell-tool.md](./powershell-tool.md)「shell 工具的注册与缺席」），它同样属于「没有可用 bash」，因此同样会拿回这两个工具——判据不看 PowerShell 门控是否开启。另一条恢复途径是 CLI 的 `--tools` 点名（`--allowedTools` 是权限 allow 列表，不影响注册——这一点与 Claude Code 不同，后者两种参数任一出现都会把两个工具都放回来）；两条途径同时成立时只注册一份。
+- **默认工具集不含搜索工具，但这由 shell 可用性判定**：`Grep` 与 `Glob` 默认不进 `tools[]`，前提是会话**有可用的 bash**——搜索的替代品是 Bash 工具里注入的 `grep` / `find` 影子，影子只存在于 bash 里，所以**没有可用 bash 时两个工具自动回到 `tools[]`**（注册表始终持有两者，折叠只决定它们走哪条入口：折叠态下只进 REPL 池，见场景 12）（否则模型没有任何搜索文件树的手段）。判据**全平台一致**——只问「有没有可用 bash」，不是按平台分支：Windows 上由 Git Bash 发现回答，`WAVE_GIT_BASH_PATH` 指向的路径必须真实存在且可执行，否则按「无 bash」处理。**无 Git Bash 的 Windows 会落到 PowerShell 会话**（见 [powershell-tool.md](./powershell-tool.md)「shell 工具的注册与缺席」），它同样属于「没有可用 bash」，因此同样会拿回这两个工具——判据不看 PowerShell 门控是否开启。另一条恢复途径是 CLI 的 `--tools` 点名（`--allowedTools` 是权限 allow 列表，不影响注册——这一点与 Claude Code 不同，后者两种参数任一出现都会把两个工具都放回来）；两条途径同时成立时只注册一份。
 - **搜索命令的内嵌化**：Bash 工具所在 shell 里的 `grep` / `find` / `rg` 由 wave 注入，不是系统命令。`grep` 在所有受支持平台（含 Windows 的 Git Bash）上都指向内置的 `ugrep`，固定带 `--ignore-files --hidden -I` 与 `.git` 等 VCS 目录排除（只按目录排除，与 Claude Code 的影子一致：worktree 里的 `.git` 是指针文件，会作为普通文件被搜到，见 [bash-tools.md](./bash-tools.md)「边界情况 · worktree 里的 `.git` 仍然会被搜到」）；`find` 在 macOS/Linux/WSL 上指向内置的 `bfs`，固定带 `-S dfs` 与 `-regextype findutils-default`（后者让 `-regex` 的默认方言与 GNU `find` 一致，见 [bash-tools.md](./bash-tools.md)「边界情况 · `find -regex` 的 dialect」），在 Windows 的 Git Bash 上不注入——bfs 没有 Windows 构建，而 msys 自带的 GNU find 本身就是 `find` 影子要复现的那一套。`rg` 全平台注入，但仅在系统原本没有 `rg` 时生效，且指向 wave 自带的 ripgrep 二进制。
 - **内嵌二进制的分发与回落**：`ugrep` / `bfs` 与 `ripgrep` 一样走运行时依赖自装机制（下载到共享 `~/.wave/cli/node_modules`），不由任何宿主的安装包直接携带。任一二进制缺失（下载失败、私有化环境未带上、平台不受支持）时，对应命令必须回落为系统同名命令并照常执行——搜索能力可以退化（丢掉 `.gitignore` 语义等），但不得让命令失败或阻断会话。`grep` 收到它不支持的那批参数（`-Z`、`-z`、`--null`、`--config` 等）时同样回落系统 `grep`。
