@@ -161,6 +161,17 @@ export class MessageManager {
   private encodedWorkdir: string; // Cached encoded workdir
   private callbacks: MessageManagerCallbacks;
   private transcriptPath: string; // Cached transcript path
+  /**
+   * 会话在盘上的真实路径，**仅当**它不在 `workdir` 对应的 project 目录里时才有值：
+   * 跨目录 `wave --restore <id>` 恢复出来的会话，历史来自别的 project 目录，而
+   * `workdir` 仍是启动目录。写回、重追加标题、`/rewind` 都用它——按 `workdir`
+   * 重算得到的是启动目录下的路径，那里没有这个文件（spec
+   * `session-management.md` 验收场景 5）。
+   *
+   * 普通会话恒为 undefined，路径照旧按 `workdir` + `sessionType` 现算（子代理由
+   * `subagent-` 前缀区分，不能拿这里的路径顶替）。
+   */
+  private foreignTranscriptPath?: string;
   private savedMessageCount: number; // Track how many messages have been saved to prevent duplication
   /**
    * How many messages the thread has in total — not how many the list holds.
@@ -279,6 +290,9 @@ export class MessageManager {
     }
     this.workdir = workdir;
     this.encodedWorkdir = pathEncoder.encodeSync(workdir);
+    // Moving to a directory re-derives the transcript path; a file adopted from
+    // another project directory does not belong to the new one.
+    this.foreignTranscriptPath = undefined;
     this.transcriptPath = this.computeTranscriptPath();
   }
 
@@ -316,7 +330,10 @@ export class MessageManager {
 
   /**
    * Directory of the project this session works in (`<session root>/<encoded
-   * workdir>`) — the same directory the transcript lives in.
+   * workdir>`). For every session this is also where the transcript lives, but
+   * `getTranscriptPath()` — not this — is the authority: a session restored from
+   * another project directory keeps writing its own file there while `workdir`
+   * (and therefore this directory) stays the launch directory.
    *
    * Anything that belongs to the code being worked on rather than to the
    * machine goes here: the transcript (`computeTranscriptPath`) and the workflow
@@ -382,6 +399,10 @@ export class MessageManager {
    * Called during construction and when sessionId changes
    */
   private computeTranscriptPath(): string {
+    // 跨目录恢复的会话：写回它自己的文件，不在启动目录另建一份同名文件。
+    if (this.foreignTranscriptPath) {
+      return this.foreignTranscriptPath;
+    }
     // All sessions now go in the same directory
     // Session type is determined by metadata, not file path
     return join(this.getProjectDir(), `${this.sessionId}.jsonl`);
@@ -393,6 +414,8 @@ export class MessageManager {
       this.sessionId = sessionId;
       // Reset saved message count for new session
       this.savedMessageCount = 0;
+      // The adopted file belonged to the session we just left.
+      this.foreignTranscriptPath = undefined;
       // Recompute transcript path since session ID changed
       this.transcriptPath = this.computeTranscriptPath();
 
@@ -723,6 +746,7 @@ export class MessageManager {
         rowsToPersist,
         this.workdir,
         this.sessionType,
+        this.foreignTranscriptPath,
       );
 
       // Update the saved message count
@@ -804,6 +828,7 @@ export class MessageManager {
         this.workdir,
         this.customTitle,
         this.sessionType,
+        this.foreignTranscriptPath,
       );
     } catch (error) {
       logger?.error("Failed to re-append session metadata:", error);
@@ -837,6 +862,22 @@ export class MessageManager {
   // Initialize state from session data
   public initializeFromSession(sessionData: SessionData): void {
     this.setSessionId(sessionData.id);
+    // A restored session may live in another project directory (cross-directory
+    // `wave --restore <id>`): adopt the file the loader actually read, so every
+    // later write — messages, the title re-append, `/rewind` — lands in it
+    // instead of in a path re-derived from this process's `workdir`. `workdir`
+    // itself stays put: the caller keeps working where it started (spec
+    // `session-management.md` 验收场景 5).
+    //
+    // Only recorded when it disagrees with the derived path, so an ordinary
+    // restore (the usual case) leaves this session on the plain workdir rule.
+    const derivedPath = join(this.getProjectDir(), `${sessionData.id}.jsonl`);
+    this.foreignTranscriptPath =
+      sessionData.transcriptPath &&
+      resolve(sessionData.transcriptPath) !== resolve(derivedPath)
+        ? sessionData.transcriptPath
+        : undefined;
+    this.transcriptPath = this.computeTranscriptPath();
     // List and context are the same thing: the conversation starts at the last
     // compact boundary, so a resumed session shows [summary, ...kept rounds]
     // and the transcript keeps the rest for features that need it.
@@ -1160,6 +1201,7 @@ export class MessageManager {
       [compactMessage],
       this.workdir,
       this.sessionType,
+      this.foreignTranscriptPath,
     );
 
     // Compaction leaves the transcript readable by the next process that
@@ -1906,7 +1948,12 @@ export class MessageManager {
     reversionManager?: import("./reversionManager.js").ReversionManager,
   ): Promise<void> {
     const { loadRewindCut } = await import("../services/session.js");
-    const cut = await loadRewindCut(this.sessionId, this.workdir, index);
+    const cut = await loadRewindCut(
+      this.sessionId,
+      this.workdir,
+      index,
+      this.foreignTranscriptPath,
+    );
 
     if (index < 0 || index >= cut.threadMessageCount) {
       throw new Error(`Invalid message index: ${index}`);
@@ -1950,6 +1997,7 @@ export class MessageManager {
         keepMessageCount,
         this.workdir,
         this.sessionType,
+        this.foreignTranscriptPath,
       );
     } catch (error) {
       logger?.error("Failed to rewrite session file:", error);

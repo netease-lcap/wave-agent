@@ -71,6 +71,15 @@ export interface SessionData {
    * 而 `messages` 只剩压缩后的尾部，所以载入时顺手收集好放在这里。
    */
   usages?: Usage[];
+  /**
+   * 这份转录在盘上的真实路径（载入时解析出来的）。跨目录 `wave --restore <id>`
+   * 时它落在**会话自己的** project 目录下，而 `workdir` 仍是启动目录：写回、
+   * 重追加标题、`/rewind` 都必须用它——按 `workdir` 重算出来的是启动目录下的
+   * 路径，那里根本没有这个文件（spec `session-management.md` 验收场景 5）。
+   *
+   * 缺席时（手工构造的会话数据）按 `workdir` + `sessionType` 现算。
+   */
+  transcriptPath?: string;
 }
 
 export interface SessionMetadata {
@@ -239,12 +248,15 @@ export async function createSession(
  * @param keepMessageCount - Number of leading messages to keep
  * @param workdir - Working directory for the session
  * @param sessionType - Type of session ("main" or "subagent", defaults to "main")
+ * @param transcriptPath - 会话在盘上的真实路径（跨目录恢复时来自 `SessionData`）。
+ *        给了就重写它，不按 `workdir` 重算。
  */
 export async function truncateSession(
   sessionId: string,
   keepMessageCount: number,
   workdir: string,
   sessionType: "main" | "subagent" = "main",
+  transcriptPath?: string,
 ): Promise<void> {
   // Do not save session files in test environment
   if (process.env.NODE_ENV === "test") {
@@ -252,11 +264,9 @@ export async function truncateSession(
   }
 
   const jsonlHandler = new JsonlHandler();
-  const filePath = await generateSessionFilePath(
-    sessionId,
-    workdir,
-    sessionType,
-  );
+  const filePath =
+    transcriptPath ??
+    (await generateSessionFilePath(sessionId, workdir, sessionType));
 
   try {
     await fs.access(filePath);
@@ -276,6 +286,8 @@ export async function truncateSession(
  * @param newMessages - Array of messages to append
  * @param workdir - Working directory for the session
  * @param sessionType - Type of session ("main" or "subagent", defaults to "main")
+ * @param transcriptPath - 会话在盘上的真实路径（跨目录恢复时来自 `SessionData`）。
+ *        给了就写入它，不按 `workdir` 重算。
  * @returns Bytes written (0 when nothing was written). The caller accumulates
  *          this to decide when the title needs re-appending at EOF.
  */
@@ -284,6 +296,7 @@ export async function appendMessages(
   newMessages: Message[],
   workdir: string,
   sessionType: "main" | "subagent" = "main",
+  transcriptPath?: string,
 ): Promise<number> {
   // Do not save session files in test environment
   if (process.env.NODE_ENV === "test") {
@@ -298,11 +311,9 @@ export async function appendMessages(
   const jsonlHandler = new JsonlHandler();
 
   // Generate the session file path directly using known session type
-  const filePath = await generateSessionFilePath(
-    sessionId,
-    workdir,
-    sessionType,
-  );
+  const filePath =
+    transcriptPath ??
+    (await generateSessionFilePath(sessionId, workdir, sessionType));
 
   // Check if the session file exists
   try {
@@ -341,12 +352,15 @@ export async function appendMessages(
  * @param sessionId - UUID session identifier
  * @param workdir - Working directory the session belongs to
  * @param title - New title
+ * @param transcriptPath - 会话在盘上的真实路径（跨目录恢复时来自 `SessionData`）。
+ *        给了就先认它，不按 `workdir` 重算。
  * @returns The trimmed title that was written, or undefined for a blank no-op
  */
 export async function setSessionCustomTitle(
   sessionId: string,
   workdir: string,
   title: string,
+  transcriptPath?: string,
 ): Promise<string | undefined> {
   const trimmed = title.trim();
   if (!trimmed) {
@@ -354,7 +368,9 @@ export async function setSessionCustomTitle(
   }
 
   const jsonlHandler = new JsonlHandler();
-  let filePath = await generateSessionFilePath(sessionId, workdir, "main");
+  let filePath =
+    transcriptPath ??
+    (await generateSessionFilePath(sessionId, workdir, "main"));
 
   try {
     await fs.access(filePath);
@@ -411,6 +427,8 @@ export async function setSessionCustomTitle(
  * @param workdir - Working directory the session belongs to
  * @param customTitle - Title held in memory by the caller (may be undefined)
  * @param sessionType - Type of session ("main" or "subagent", defaults to "main")
+ * @param transcriptPath - 会话在盘上的真实路径（跨目录恢复时来自 `SessionData`）。
+ *        给了就用它，不按 `workdir` 重算、也不再跨 project 目录扫一遍。
  * @returns Whether a title entry was actually appended
  */
 export async function reAppendSessionMetadata(
@@ -418,9 +436,12 @@ export async function reAppendSessionMetadata(
   workdir: string,
   customTitle: string | undefined,
   sessionType: "main" | "subagent" = "main",
+  transcriptPath?: string,
 ): Promise<boolean> {
   const jsonlHandler = new JsonlHandler();
-  let filePath = await generateSessionFilePath(sessionId, workdir, sessionType);
+  let filePath =
+    transcriptPath ??
+    (await generateSessionFilePath(sessionId, workdir, sessionType));
 
   try {
     await fs.access(filePath);
@@ -1006,6 +1027,11 @@ export async function loadSessionFromJsonl(
 
     const sessionData: SessionData = {
       id: sessionId,
+      // The file this session actually lives in — possibly in another project
+      // directory (the cross-project fallback above). Everything that writes
+      // this session back must use it rather than a path re-derived from
+      // `workdir`, which is the directory the caller happened to start in.
+      transcriptPath: resolvedPath,
       messages: snapshot.messages,
       metadata: {
         workdir,
@@ -1914,12 +1940,11 @@ export async function loadRewindCut(
   currentSessionId: string,
   workdir: string,
   index: number,
+  transcriptPath?: string,
 ): Promise<RewindCut> {
-  const filePath = await generateSessionFilePath(
-    currentSessionId,
-    workdir,
-    "main",
-  );
+  const filePath =
+    transcriptPath ??
+    (await generateSessionFilePath(currentSessionId, workdir, "main"));
 
   try {
     await fs.access(filePath);

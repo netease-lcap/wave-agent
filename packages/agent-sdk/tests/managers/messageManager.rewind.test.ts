@@ -301,6 +301,8 @@ describe("MessageManager Single-Session Rewind", () => {
       18,
       workdir,
       "main",
+      // No transcript adopted from another project directory.
+      undefined,
     );
   });
 

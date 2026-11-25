@@ -1838,6 +1838,9 @@ export class Agent {
       this.sessionId,
       this.workdir,
       title,
+      // The session may have been restored from another project directory:
+      // rename the file it actually lives in, not one re-derived from workdir.
+      this.messageManager.getTranscriptPath(),
     );
     // Keep the in-memory value in step: it is what gets written back at the
     // next flush point if the entry has since slid out of the tail window.
