@@ -194,13 +194,14 @@ export interface StdioAgentCallbacks {
    * `"event"` = a non-blocking error the turn continued past (a hook that
    * failed, a compaction that failed). Absent when the CLI sent none.
    *
-   * Two things `scope: "turn"` does not promise. (a) It is set when the error
-   * terminated the AI inner loop — a Stop hook's block may ask the loop to
-   * continue, so the turn might not be over yet, and if the continuation
-   * succeeds the host still receives this turn-scoped error notice (the
-   * conservative direction, on purpose). (b) A user abort (AbortError) also
-   * ends the turn, so its notice carries `"turn"` too; to tell an abort from
-   * a failure read your own abort signal, not `scope`.
+   * Two caveats on `scope: "turn"`. (a) It is set when the error terminated
+   * the AI inner loop — a Stop hook's block may ask the loop to continue, so
+   * the turn might not be over yet, and if the continuation succeeds the host
+   * still receives this turn-scoped error notice (the conservative direction,
+   * on purpose). (b) A user abort (AbortError) ends the turn but is not a
+   * failure: its notice carries no `scope`. It also arrives after
+   * `abortMessage()` has already dispatched the next queued message, so a
+   * host must not attribute it to a turn.
    */
   onNoticeAdded?: (notice: {
     level: NoticeLevel;

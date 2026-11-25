@@ -4422,7 +4422,7 @@ export class DesktopHost {
   }
 
   /**
-   * 停止按钮：回合被用户终结，挂着的确认请求一并作废。
+   * 停止按钮 / 确认卡拒绝：回合被用户终结，挂着的确认请求一并作废。
    *
    * 为什么得由桌面端动手：用户在确认框还挂着时点「停止」，SDK 侧不会发
    * `permissionResolved`（桥只在用户答话时发），这条记录就永久留在
@@ -4498,6 +4498,9 @@ export class DesktopHost {
         behavior: "deny",
         message: "用户拒绝了操作",
       } as PermissionDecision);
+      // 拒绝与停止按钮同一语义：同一会话其余挂着的确认一并作废，且必须先于
+      // abortMessage（它触发的 loading:false 要读这张 Map）。
+      this.dropPendingConfirmationsFor(pending.agent);
       void pending.agent.abortMessage();
     }
     const paneId = this.paneIdForAgent(pending.agent) ?? this.focusedPaneId;

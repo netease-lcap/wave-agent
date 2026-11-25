@@ -830,10 +830,10 @@ describe("AIManager", () => {
         // its timers and the tool spinners.
         expect(mockMessageManager.finalizeStreamingBlocks).toHaveBeenCalled();
         expect(mockMessageManager.finalizeAbortedToolBlocks).toHaveBeenCalled();
+        // 中断不是故障：notice 不带 scope，宿主就不会把它记成「任务出错」。
         expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
           "Request was aborted",
           "error",
-          "turn",
         );
       });
 
