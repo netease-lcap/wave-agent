@@ -34,6 +34,14 @@ vi.mock("../src/utils/worktree.js", async (importOriginal) => {
   return { ...actual, removeWorktree: vi.fn() };
 });
 
+// Piped stdin is stubbed for the whole file: the real helper attaches to
+// process.stdin, which in a test run is a TTY or a pipe that never delivers —
+// either way it would put the 3s peek in front of every case here. The reading
+// itself is covered by tests/stdin.test.ts.
+vi.mock("../src/utils/stdin.js", () => ({
+  readPipedStdin: vi.fn(async () => ""),
+}));
+
 // Mock process.exit - use a simple mock that doesn't throw
 const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
   // Return undefined to satisfy TypeScript, but the process won't actually exit in tests
@@ -58,11 +66,60 @@ import {
   validateWorktreeRemovalPath,
 } from "wave-agent-sdk";
 import { removeWorktree } from "../src/utils/worktree.js";
+import { readPipedStdin } from "../src/utils/stdin.js";
 
 test("startPrintCli requires a message when not continuing session", async () => {
   await startPrintCli({ message: "" });
 
   // Verify error message and exit code
+  expect(consoleErrorSpy).toHaveBeenCalledWith(
+    "Print mode requires a message: use --print 'your message' or -p 'your message'",
+  );
+  expect(mockExit).toHaveBeenCalledWith(1);
+});
+
+test("a piped stdin becomes the prompt when -p carries no value", async () => {
+  vi.mocked(readPipedStdin).mockResolvedValue("只回复两个字：收到");
+  const mockAgent = {
+    sendMessage: vi.fn(),
+    destroy: vi.fn(),
+    drainAutoMemory: vi.fn(),
+    abortMessage: vi.fn(),
+    usages: [],
+    sessionFilePath: "/mock/session.json",
+  };
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
+
+  await startPrintCli({ message: "" });
+
+  expect(mockAgent.sendMessage).toHaveBeenCalledWith("只回复两个字：收到");
+  expect(mockExit).toHaveBeenCalledWith(0);
+});
+
+test("a piped stdin is appended to the -p value, like claude -p", async () => {
+  vi.mocked(readPipedStdin).mockResolvedValue("## 规格正文\n\n第一段");
+  const mockAgent = {
+    sendMessage: vi.fn(),
+    destroy: vi.fn(),
+    drainAutoMemory: vi.fn(),
+    abortMessage: vi.fn(),
+    usages: [],
+    sessionFilePath: "/mock/session.json",
+  };
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
+
+  await startPrintCli({ message: "帮我审查这份规格" });
+
+  expect(mockAgent.sendMessage).toHaveBeenCalledWith(
+    "帮我审查这份规格\n## 规格正文\n\n第一段",
+  );
+});
+
+test("an empty -p value plus an empty stdin still fails loudly", async () => {
+  vi.mocked(readPipedStdin).mockResolvedValue("  ");
+
+  await startPrintCli({ message: "" });
+
   expect(consoleErrorSpy).toHaveBeenCalledWith(
     "Print mode requires a message: use --print 'your message' or -p 'your message'",
   );
@@ -1255,6 +1312,7 @@ test("模型请求失败（只落错误块、不抛错）按运行失败收尾",
 
 afterEach(() => {
   vi.clearAllMocks();
+  vi.mocked(readPipedStdin).mockResolvedValue("");
   mockExit.mockClear();
   consoleErrorSpy.mockClear();
   stderrWriteSpy.mockClear();
