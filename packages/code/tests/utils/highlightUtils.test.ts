@@ -1,26 +1,70 @@
 import { describe, it, expect, beforeAll, vi, afterAll } from "vitest";
 import { highlightToAnsi } from "../../src/utils/highlightUtils.js";
+import { logger } from "../../src/utils/logger.js";
 import chalk from "chalk";
 
-vi.mock("highlight.js", () => ({
+// highlight.js is mocked with the shape we actually consume: the token tree
+// behind "_emitter.rootNode", not the rendered HTML string.
+vi.mock("highlight.js/lib/core", () => ({
   default: {
-    highlight: vi.fn().mockImplementation((code, { language }) => {
-      if (language === "ts" && code.includes("const")) {
-        return {
-          value:
-            '<span class="hljs-keyword">const</span> x = <span class="hljs-number">1</span>;',
-        };
-      }
-      return { value: code };
-    }),
-    highlightAuto: vi.fn().mockImplementation((code) => {
+    highlight: vi
+      .fn()
+      .mockImplementation(
+        (code: string, { language }: { language: string }) => {
+          if (language === "ts" && code.includes("const")) {
+            return {
+              _emitter: {
+                rootNode: {
+                  children: [
+                    { scope: "keyword", children: ["const"] },
+                    " x = ",
+                    { scope: "number", children: ["1"] },
+                    ";",
+                  ],
+                },
+              },
+            };
+          }
+          if (language === "ts" && code.includes("tiered")) {
+            return {
+              _emitter: {
+                rootNode: {
+                  children: [{ scope: "title.function", children: ["tiered"] }],
+                },
+              },
+            };
+          }
+          if (language === "ts" && code.includes("brokenchild")) {
+            // A node shaped like highlight.js 10.x ({ kind, value }) instead of
+            // 11.x ({ scope, children }) — text we cannot render.
+            return {
+              _emitter: {
+                rootNode: { children: [{ kind: "keyword", value: "x" }] },
+              },
+            };
+          }
+          if (language === "ts" && code.includes("broken")) {
+            return {};
+          }
+          return { _emitter: { rootNode: { children: [code] } } };
+        },
+      ),
+    highlightAuto: vi.fn().mockImplementation((code: string) => {
       if (code.includes("function")) {
         return {
-          value:
-            '<span class="hljs-keyword">function</span> hello() { console.log(<span class="hljs-string">"world"</span>); }',
+          _emitter: {
+            rootNode: {
+              children: [
+                { scope: "keyword", children: ["function"] },
+                " hello() { console.log(",
+                { scope: "string", children: ['"world"'] },
+                "); }",
+              ],
+            },
+          },
         };
       }
-      return { value: code };
+      return { _emitter: { rootNode: { children: [code] } } };
     }),
     registerLanguage: vi.fn(),
     getLanguage: vi.fn((language: string) => language === "ts"),
@@ -31,6 +75,7 @@ describe("highlightToAnsi", () => {
   let originalChalkLevel: typeof chalk.level;
   let originalForceColor: string | undefined;
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+  let loggerErrorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeAll(() => {
     originalChalkLevel = chalk.level;
@@ -38,6 +83,7 @@ describe("highlightToAnsi", () => {
     process.env.FORCE_COLOR = "1";
     chalk.level = 1;
     consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    loggerErrorSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
   });
 
   afterAll(() => {
@@ -50,9 +96,9 @@ describe("highlightToAnsi", () => {
     const code = "const x = 1;";
     const highlighted = highlightToAnsi(code, "ts");
 
-    // 'const' should be blue (hljs-keyword)
+    // "const" should be blue (keyword scope)
     expect(highlighted).toContain(chalk.blue("const"));
-    // '1' should be magenta (hljs-number)
+    // "1" should be magenta (number scope)
     expect(highlighted).toContain(chalk.magenta("1"));
   });
 
@@ -60,11 +106,18 @@ describe("highlightToAnsi", () => {
     const code = 'function hello() { console.log("world"); }';
     const highlighted = highlightToAnsi(code);
 
-    // 'function' should be blue (hljs-keyword)
+    // "function" should be blue (keyword scope)
     expect(highlighted).toContain(chalk.blue("function"));
-    // '"world"' should be green (hljs-string)
+    // '"world"' should be green (string scope)
     expect(highlighted).toContain(chalk.green('"world"'));
-  }, 2000); // Increase timeout for auto-detection if needed, but it should be faster now with fewer tests running it
+  }, 2000);
+
+  it("should fall back to the first scope segment for tiered scopes", () => {
+    const highlighted = highlightToAnsi("tiered", "ts");
+
+    // title.function has no entry of its own; "title" does.
+    expect(highlighted).toBe(chalk.yellow("tiered"));
+  });
 
   it("should handle unknown languages gracefully", () => {
     const code = "some random text";
@@ -83,5 +136,25 @@ describe("highlightToAnsi", () => {
     // This might be hard to trigger with highlight.js but we can try
     const highlighted = highlightToAnsi(null as unknown as string, "ts");
     expect(highlighted).toBe("");
+  });
+
+  it("should degrade to plain text and log once when the token tree shape changes", () => {
+    // An unknown node shape loses the text it holds if rendered, so the whole
+    // block falls back to the source instead of leaking a partial line.
+    const childBroken = "brokenchild";
+    expect(highlightToAnsi(childBroken, "ts")).toBe(childBroken);
+
+    // Same for a missing token tree at the root.
+    const rootBroken = "broken tree";
+    expect(highlightToAnsi(rootBroken, "ts")).toBe(rootBroken);
+
+    expect(loggerErrorSpy).toHaveBeenCalledTimes(1);
+    expect(loggerErrorSpy.mock.calls[0][0]).toContain(
+      "token tree shape mismatch",
+    );
+
+    // The guard is sticky: a shape mismatch logs once, not once per block.
+    expect(highlightToAnsi(rootBroken, "ts")).toBe(rootBroken);
+    expect(loggerErrorSpy).toHaveBeenCalledTimes(1);
   });
 });
