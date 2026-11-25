@@ -82,8 +82,10 @@ import type {
   DesktopPanelKind,
   FileViewState,
   Message,
+  NotificationChannel,
   NotificationLevel,
   NotificationLevels,
+  NotificationSound,
   OpenFileTab,
   PanelTab,
   PrefillDraftRequest,
@@ -283,10 +285,15 @@ const autoPanelWidth = (containerW: number): number => {
 };
 
 /** `desktopNotificationSettings.levels` 的值守卫（镜像 desktopHost 侧
- *  isNotificationLevel）：三档之外一律视为坏载荷，整条消息丢弃而不是让某一
- *  行静默回落到第一项「弹窗提醒」。 */
-const isNotificationLevel = (value: unknown): value is NotificationLevel =>
-  value === "banner" || value === "mark" || value === "off";
+ *  isNotificationLevelFor）：坏载荷整条丢弃，而不是让某一行静默回落到第一项
+ *  「弹窗提醒」。`idle` 没有「仅标记」档（spec 故事 3 场景 1）—— 收到也算坏载荷。 */
+const isNotificationLevelFor = (
+  channel: NotificationChannel,
+  value: unknown,
+): value is NotificationLevel =>
+  value === "banner" ||
+  value === "off" ||
+  (value === "mark" && channel !== "idle");
 
 /**
  * Any background task (shell / subagent / workflow) still running in the
@@ -830,6 +837,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     NotificationLevels | undefined
   >(undefined);
   const [notificationSound, setNotificationSound] = useState<
+    NotificationSound | undefined
+  >(undefined);
+  // 「通知时提醒我」（故事 3 场景 6）：关着就不闪任务栏 / 弹 Dock。与上面两个
+  // 同来同去 —— 初值 undefined 表示还没收到 host 快照（插件端永远收不到）。
+  const [notificationDrawAttention, setNotificationDrawAttention] = useState<
     boolean | undefined
   >(undefined);
   // Context-usage percentage pushed by the host (batch 2 compress button).
@@ -3118,14 +3130,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         }
         break;
       case "desktopNotificationSettings":
-        // 系统通知设置广播（全量快照）——设置页「系统通知」分组的三行 + 提示音
-        // 开关据此对齐。三个类别的值都必须合法、sound 必须是 boolean 才写：半截
-        // 载荷会让分组以残缺状态渲染（某行回落到第一项），宁可保持上一份。
+        // 系统通知设置广播（全量快照）——设置页「系统通知」分组的四行据此对齐。
+        // 三个类别的值都必须合法（idle 只认两档）、sound 必须是两档之一、
+        // drawAttention 必须是 boolean 才写：半截载荷会让分组以残缺状态渲染
+        // （某行回落到第一项），宁可保持上一份。
         if (
-          isNotificationLevel(message.levels?.permission) &&
-          isNotificationLevel(message.levels?.question) &&
-          isNotificationLevel(message.levels?.idle) &&
-          typeof message.sound === "boolean"
+          isNotificationLevelFor("permission", message.levels?.permission) &&
+          isNotificationLevelFor("question", message.levels?.question) &&
+          isNotificationLevelFor("idle", message.levels?.idle) &&
+          (message.sound === "system" || message.sound === "none") &&
+          typeof message.drawAttention === "boolean"
         ) {
           setNotificationLevels({
             permission: message.levels.permission,
@@ -3133,6 +3147,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             idle: message.levels.idle,
           });
           setNotificationSound(message.sound);
+          setNotificationDrawAttention(message.drawAttention);
         }
         break;
       case "showToast":
@@ -6971,6 +6986,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       }}
       notificationLevels={notificationLevels}
       notificationSound={notificationSound}
+      notificationDrawAttention={notificationDrawAttention}
       onNotificationLevelsChange={(patch) => {
         // 乐观合并本实例选中态；host 持久化后回全量广播 desktopNotificationSettings。
         // 分组只在收到过快照（prev 已定义）后才渲染，`prev &&` 只是把这个前提
@@ -6978,9 +6994,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         setNotificationLevels((prev) => prev && { ...prev, ...patch });
         postToHost({ command: "setNotificationSettings", levels: patch });
       }}
-      onNotificationSoundChange={(on) => {
-        setNotificationSound(on);
-        postToHost({ command: "setNotificationSettings", sound: on });
+      onNotificationSoundChange={(sound) => {
+        setNotificationSound(sound);
+        postToHost({ command: "setNotificationSettings", sound });
+      }}
+      onNotificationDrawAttentionChange={(on) => {
+        setNotificationDrawAttention(on);
+        postToHost({
+          command: "setNotificationSettings",
+          drawAttention: on,
+        });
       }}
       onClose={handleCloseSettings}
       userAgentsContent={userAgentsContent}

@@ -64,13 +64,15 @@ const ALL_BANNER = {
 
 function pushNotificationSettings(
   levels: Record<string, unknown> = ALL_BANNER,
-  sound: unknown = true,
+  sound: unknown = "system",
+  drawAttention: unknown = false,
 ) {
   act(() => {
     sendHostMessage({
       command: "desktopNotificationSettings",
       levels,
       sound,
+      drawAttention,
     } as unknown as HostToWebviewMessage);
   });
 }
@@ -85,6 +87,24 @@ function notificationSets(mockVscode: ReturnType<typeof createMockVscode>) {
     .filter(
       (m) => (m as { command?: string }).command === "setNotificationSettings",
     );
+}
+
+function mountWithSnapshot(
+  levels: Record<string, unknown> = ALL_BANNER,
+  sound: unknown = "system",
+  drawAttention: unknown = false,
+) {
+  const mockVscode = createMockVscode();
+  render(
+    <ChatApp
+      vscode={mockVscode as unknown as VsCodeApi}
+      host={desktopHost()}
+    />,
+  );
+  sendHostMessage(fixtures.authStatusResponse());
+  sendHostMessage(fixtures.setInitialState());
+  pushNotificationSettings(levels, sound, drawAttention);
+  return mockVscode;
 }
 
 describe("桌面端设置「系统通知」分组（spec desktop-notifications.md 故事 3）", () => {
@@ -110,19 +130,15 @@ describe("桌面端设置「系统通知」分组（spec desktop-notifications.m
       expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
     }
     expect(screen.queryByLabelText("提示音")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("通知时提醒我")).not.toBeInTheDocument();
   });
 
-  it("host 广播全量快照后分组渲染：三类均为广播值、提示音开、文案「仅标记（不弹窗）」", async () => {
-    const mockVscode = createMockVscode();
-    render(
-      <ChatApp
-        vscode={mockVscode as unknown as VsCodeApi}
-        host={desktopHost()}
-      />,
+  it("广播全量快照后分组渲染：两类三档、「回合完成」两档、提示音与提醒开关取广播值", async () => {
+    const mockVscode = mountWithSnapshot(
+      { ...ALL_BANNER, idle: "off" },
+      "none",
+      true,
     );
-    sendHostMessage(fixtures.authStatusResponse());
-    sendHostMessage(fixtures.setInitialState());
-    pushNotificationSettings({ ...ALL_BANNER, idle: "mark" }, true);
 
     await openSettings();
 
@@ -134,16 +150,25 @@ describe("桌面端设置「系统通知」分组（spec desktop-notifications.m
     const idle = screen.getByLabelText("回合完成提醒") as HTMLSelectElement;
     expect(permission.value).toBe("banner");
     expect(question.value).toBe("banner");
-    expect(idle.value).toBe("mark");
-    // 三档选项文案锁定：「仅标记」不替下一个故事承诺任务栏/Dock 标记。
-    expect(Array.from(idle.options).map((o) => o.textContent)).toEqual([
+    expect(idle.value).toBe("off");
+    // 确认类三档：「仅标记」不替下一个故事承诺任务栏/Dock 标记。
+    expect(Array.from(permission.options).map((o) => o.textContent)).toEqual([
       "弹窗提醒",
       "仅标记（不弹窗）",
       "关闭",
     ]);
-    expect((screen.getByLabelText("提示音") as HTMLInputElement).checked).toBe(
-      true,
+    // 「回合完成」只有两档（故事 3 场景 1）：它不计角标、不闪不弹，
+    // 「仅标记」在它身上等于「关闭」。
+    expect(Array.from(idle.options).map((o) => o.textContent)).toEqual([
+      "弹窗提醒",
+      "关闭",
+    ]);
+    expect((screen.getByLabelText("提示音") as HTMLSelectElement).value).toBe(
+      "none",
     );
+    expect(
+      (screen.getByLabelText("通知时提醒我") as HTMLInputElement).checked,
+    ).toBe(true);
     // 广播来自 host 本身，设置页不得回送 setNotificationSettings。
     expect(mockVscode.postMessage).not.toHaveBeenCalledWith(
       expect.objectContaining({ command: "setNotificationSettings" }),
@@ -151,16 +176,7 @@ describe("桌面端设置「系统通知」分组（spec desktop-notifications.m
   });
 
   it("「回合完成」切到关闭 → 乐观更新并只上送改动类别的 levels", async () => {
-    const mockVscode = createMockVscode();
-    render(
-      <ChatApp
-        vscode={mockVscode as unknown as VsCodeApi}
-        host={desktopHost()}
-      />,
-    );
-    sendHostMessage(fixtures.authStatusResponse());
-    sendHostMessage(fixtures.setInitialState());
-    pushNotificationSettings();
+    const mockVscode = mountWithSnapshot();
     await openSettings();
 
     fireEvent.change(screen.getByLabelText("回合完成提醒"), {
@@ -179,27 +195,56 @@ describe("桌面端设置「系统通知」分组（spec desktop-notifications.m
     ]);
   });
 
-  it("关提示音 → 乐观为关并只上送 sound（不带 levels）", async () => {
-    const mockVscode = createMockVscode();
-    render(
-      <ChatApp
-        vscode={mockVscode as unknown as VsCodeApi}
-        host={desktopHost()}
-      />,
-    );
-    sendHostMessage(fixtures.authStatusResponse());
-    sendHostMessage(fixtures.setInitialState());
-    pushNotificationSettings();
+  it("提示音切「无」→ 乐观更新并只上送 sound（不带 levels）", async () => {
+    const mockVscode = mountWithSnapshot();
     await openSettings();
 
-    fireEvent.click(screen.getByLabelText("提示音"));
+    fireEvent.change(screen.getByLabelText("提示音"), {
+      target: { value: "none" },
+    });
 
-    expect((screen.getByLabelText("提示音") as HTMLInputElement).checked).toBe(
-      false,
+    expect((screen.getByLabelText("提示音") as HTMLSelectElement).value).toBe(
+      "none",
     );
     expect(notificationSets(mockVscode)).toEqual([
-      { command: "setNotificationSettings", sound: false },
+      { command: "setNotificationSettings", sound: "none" },
     ]);
+  });
+
+  it("「通知时提醒我」开启 → 乐观更新并只上送 drawAttention", async () => {
+    const mockVscode = mountWithSnapshot();
+    await openSettings();
+
+    fireEvent.click(screen.getByLabelText("通知时提醒我"));
+
+    expect(
+      (screen.getByLabelText("通知时提醒我") as HTMLInputElement).checked,
+    ).toBe(true);
+    expect(notificationSets(mockVscode)).toEqual([
+      { command: "setNotificationSettings", drawAttention: true },
+    ]);
+  });
+
+  it("两类确认都是「关闭」→ 提醒开关置灰并说明原因，改回一档即恢复", async () => {
+    mountWithSnapshot({ permission: "off", question: "off", idle: "banner" });
+    await openSettings();
+
+    const toggle = screen.getByLabelText("通知时提醒我") as HTMLInputElement;
+    expect(toggle.disabled).toBe(true);
+    expect(
+      screen.getByText("权限请求和回答提问都是「关闭」，这条不会触发"),
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("回答提问提醒"), {
+      target: { value: "mark" },
+    });
+
+    expect(
+      (screen.getByLabelText("通知时提醒我") as HTMLInputElement).disabled,
+    ).toBe(false);
+    expect(
+      screen.queryByText("权限请求和回答提问都是「关闭」，这条不会触发"),
+    ).not.toBeInTheDocument();
   });
 
   it("设置页打开后 host 再广播全量快照 → 控件即时同步且不回送（命令拼写契约锁定）", async () => {
@@ -215,7 +260,7 @@ describe("桌面端设置「系统通知」分组（spec desktop-notifications.m
     await openSettings();
     expect(screen.queryByText("系统通知")).not.toBeInTheDocument();
 
-    pushNotificationSettings({ ...ALL_BANNER, question: "off" }, false);
+    pushNotificationSettings({ ...ALL_BANNER, question: "off" }, "none", true);
 
     await waitFor(() => {
       expect(screen.getByText("系统通知")).toBeInTheDocument();
@@ -223,29 +268,22 @@ describe("桌面端设置「系统通知」分组（spec desktop-notifications.m
     expect(
       (screen.getByLabelText("回答提问提醒") as HTMLSelectElement).value,
     ).toBe("off");
-    expect((screen.getByLabelText("提示音") as HTMLInputElement).checked).toBe(
-      false,
+    expect((screen.getByLabelText("提示音") as HTMLSelectElement).value).toBe(
+      "none",
     );
+    expect(
+      (screen.getByLabelText("通知时提醒我") as HTMLInputElement).checked,
+    ).toBe(true);
     expect(mockVscode.postMessage).not.toHaveBeenCalledWith(
       expect.objectContaining({ command: "setNotificationSettings" }),
     );
   });
 
-  it("坏载荷（缺类别 / sound 非 boolean）整条丢弃，分组不渲染", async () => {
-    const mockVscode = createMockVscode();
-    render(
-      <ChatApp
-        vscode={mockVscode as unknown as VsCodeApi}
-        host={desktopHost()}
-      />,
-    );
-    sendHostMessage(fixtures.authStatusResponse());
-    sendHostMessage(fixtures.setInitialState());
-    pushNotificationSettings(
-      { permission: "banner", question: "banner" },
-      true,
-    );
-    pushNotificationSettings(ALL_BANNER, "yes");
+  it("坏载荷（缺类别 / sound 非枚举 / drawAttention 非布尔 / idle 给 mark）整条丢弃", async () => {
+    mountWithSnapshot({ permission: "banner", question: "banner" }, "system");
+    pushNotificationSettings(ALL_BANNER, "yes", false);
+    pushNotificationSettings(ALL_BANNER, "system", "yes");
+    pushNotificationSettings({ ...ALL_BANNER, idle: "mark" }, "system", false);
     await openSettings();
 
     expect(screen.queryByText("系统通知")).not.toBeInTheDocument();

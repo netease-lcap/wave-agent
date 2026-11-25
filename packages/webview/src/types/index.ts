@@ -616,8 +616,13 @@ export type NotificationChannel = "permission" | "question" | "idle";
 
 /** 某类通知的提醒等级：banner = 弹系统通知，mark = 仅标记（不弹窗；角标 / 闪烁由
  *  host 侧 `notificationService.ts` 的注意力信号层实现，spec 故事 4），off = 完全
- *  不提醒。镜像同上。 */
+ *  不提醒。`mark` 只属于确认类：回合完成（idle）不计角标、也不触发闪烁 / 弹跳，
+ *  只有「弹窗提醒」「关闭」两档（spec 故事 3 场景 1）。镜像同上。 */
 export type NotificationLevel = "banner" | "mark" | "off";
+
+/** 提示音两档：system = 系统提示音，none = 静音（spec 故事 3 场景 5；与 CC 桌面端
+ *  同名偏好同取值）。镜像同上。 */
+export type NotificationSound = "system" | "none";
 
 /** 三类通知各自的等级。host 下发的是全量快照（`desktopNotificationSettings` 广播），
  *  webview 上送的是局部补丁（`setNotificationSettings.levels`）。 */

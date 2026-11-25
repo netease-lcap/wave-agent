@@ -103,8 +103,14 @@ export type UpdateChannel = "stable" | "beta";
  *  提问，idle = 回合完成。镜像自 packages/desktop/src/main/notificationService.ts。 */
 export type NotificationChannel = "permission" | "question" | "idle";
 
-/** 某类通知的提醒等级：banner = 弹系统通知，mark = 仅标记不弹窗，off = 不提醒。 */
+/** 某类通知的提醒等级：banner = 弹系统通知，mark = 仅标记不弹窗，off = 不提醒。
+ *  `mark` 只属于确认类：回合完成（idle）不计角标、也不触发闪烁 / 弹跳，只有
+ *  「弹窗提醒」「关闭」两档（spec desktop-notifications.md 故事 3 场景 1）。 */
 export type NotificationLevel = "banner" | "mark" | "off";
+
+/** 提示音两档：system = 系统提示音，none = 静音（故事 3 场景 5）。与 CC 桌面端
+ *  同名偏好的取值一致。 */
+export type NotificationSound = "system" | "none";
 
 /** 三类通知各自的等级（`desktopNotificationSettings` 下发全量）。 */
 export type NotificationLevels = Record<NotificationChannel, NotificationLevel>;
@@ -1069,14 +1075,16 @@ export interface DesktopUpdateChannelMessage extends HostToWebviewMessageBase {
 }
 
 /** Desktop notification settings broadcast（设置页「桌面端设置」「系统通知」分组：
- *  三类等级 + 提示音）。**全量快照**：webviewReady 后随其它窗口级状态推一次，
- *  每次 setNotificationSettings 后再推；未打 paneId。插件端宿主不发——webview 据
- *  缺席不渲染该分组（spec desktop-notifications.md 故事 3 场景 7）。 */
+ *  三类等级 + 提示音 + 「通知时提醒我」）。**全量快照**：webviewReady 后随其它
+ *  窗口级状态推一次，每次 setNotificationSettings 后再推；未打 paneId。插件端宿主
+ *  不发——webview 据缺席不渲染该分组（spec desktop-notifications.md 故事 3 场景 9）。 */
 export interface DesktopNotificationSettingsMessage
   extends HostToWebviewMessageBase {
   command: "desktopNotificationSettings";
   levels: NotificationLevels;
-  sound: boolean;
+  sound: NotificationSound;
+  /** 「通知时提醒我」：关着就不闪任务栏 / 弹 Dock（故事 3 场景 6）。 */
+  drawAttention: boolean;
 }
 
 /** Action a toast's button triggers when clicked (host-side semantics). Only

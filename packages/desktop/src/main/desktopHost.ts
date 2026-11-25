@@ -84,7 +84,7 @@ import {
 import {
   ConfigStore,
   NOTIFICATION_CHANNELS,
-  isNotificationLevel,
+  isNotificationLevelFor,
   type ArtifactCategoryRecord,
   type DesktopConfigData,
   type SessionIndexEntry,
@@ -645,7 +645,10 @@ export class DesktopHost {
     // 等级与提示音每次发通知时现读本地偏好（故事 3 场景 6「即时生效」）：设置页
     // 改完不用再通知 service 一声，下一条通知自然按新值走。
     getLevel: (channel) => this.configStore.getNotificationLevels()[channel],
-    getSound: () => this.configStore.getNotificationSound(),
+    // 设置里是「系统提示音 / 无」两档，service 只认布尔：映射在这一层做。
+    getSound: () => this.configStore.getNotificationSound() === "system",
+    // 「通知时提醒我」：关着就不闪 / 弹（故事 3 场景 6、故事 4 场景 2）。
+    getDrawAttention: () => this.configStore.getNotificationDrawAttention(),
     // 故事 4：任务栏闪烁 / Dock 弹跳 / 角标。service 对每个调用都单独 try/catch
     // （场景 6「静默降级」），这里不包；窗口已销毁 / 没有 dock 按没事处理。
     attention: {
@@ -4595,6 +4598,7 @@ export class DesktopHost {
       command: "desktopNotificationSettings",
       levels: this.configStore.getNotificationLevels(),
       sound: this.configStore.getNotificationSound(),
+      drawAttention: this.configStore.getNotificationDrawAttention(),
     });
     this.postMessage({
       command: "configurationResponse",
@@ -9434,13 +9438,17 @@ export class DesktopHost {
         this.notifications.closeChannel(channel);
       }
     }
-    if (typeof msg.sound === "boolean") {
+    if (msg.sound === "system" || msg.sound === "none") {
       this.configStore.setNotificationSound(msg.sound);
+    }
+    if (typeof msg.drawAttention === "boolean") {
+      this.configStore.setNotificationDrawAttention(msg.drawAttention);
     }
     this.postMessage({
       command: "desktopNotificationSettings",
       levels: this.configStore.getNotificationLevels(),
       sound: this.configStore.getNotificationSound(),
+      drawAttention: this.configStore.getNotificationDrawAttention(),
     });
   }
 
@@ -11125,7 +11133,7 @@ function parseNotificationLevelsPatch(
   for (const channel of NOTIFICATION_CHANNELS) {
     const level = record[channel];
     if (level === undefined) continue;
-    if (!isNotificationLevel(level)) return undefined;
+    if (!isNotificationLevelFor(channel, level)) return undefined;
     patch[channel] = level;
   }
   return patch;

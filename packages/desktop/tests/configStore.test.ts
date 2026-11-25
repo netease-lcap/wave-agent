@@ -622,13 +622,15 @@ describe("ConfigStore", () => {
     idle: "banner",
   };
 
-  it("defaults every channel to banner and the sound to on", () => {
+  it("defaults every channel to banner, the sound to system and draw-attention off", () => {
     const store = new ConfigStore(STORE_PATH);
     expect(store.getNotificationLevels()).toEqual(ALL_BANNER);
-    expect(store.getNotificationSound()).toBe(true);
+    expect(store.getNotificationSound()).toBe("system");
+    // 「通知时提醒我」默认关，与 CC 桌面端的 dockBounceEnabled 同口径。
+    expect(store.getNotificationDrawAttention()).toBe(false);
   });
 
-  it("loads levels and sound from disk", () => {
+  it("loads levels, sound and draw-attention from disk", () => {
     h.files.set(
       STORE_PATH,
       JSON.stringify({
@@ -637,7 +639,8 @@ describe("ConfigStore", () => {
           question: "mark",
           idle: "off",
         },
-        notificationSound: false,
+        notificationSound: "none",
+        notificationDrawAttention: true,
       }),
     );
     const store = new ConfigStore(STORE_PATH);
@@ -646,7 +649,8 @@ describe("ConfigStore", () => {
       question: "mark",
       idle: "off",
     });
-    expect(store.getNotificationSound()).toBe(false);
+    expect(store.getNotificationSound()).toBe("none");
+    expect(store.getNotificationDrawAttention()).toBe(true);
   });
 
   it("fills a channel missing on disk with its default and drops unknown keys", () => {
@@ -677,7 +681,8 @@ describe("ConfigStore", () => {
     expect(new ConfigStore(STORE_PATH).getNotificationLevels()).toEqual({
       permission: "off",
       question: "banner",
-      idle: "mark",
+      // idle 的 mark 同样被拒（下半段用例），回缺省 banner。
+      idle: "banner",
     });
   });
 
@@ -691,13 +696,46 @@ describe("ConfigStore", () => {
     );
   });
 
+  it("rejects「mark」for the idle channel (回合完成 only has banner / off)", () => {
+    // 故事 3 场景 1：它不计角标、也不闪不弹，「仅标记」在它身上与「关闭」
+    // 表现完全相同，所以落盘校验也拒绝 —— 否则旧版本写进来的值会留下一个
+    // 没有效果的档位。
+    h.files.set(
+      STORE_PATH,
+      JSON.stringify({ notificationLevels: { idle: "mark" } }),
+    );
+    expect(new ConfigStore(STORE_PATH).getNotificationLevels()).toEqual(
+      ALL_BANNER,
+    );
+  });
+
   it.each([
-    { name: "a non-boolean", raw: "no", expected: true },
-    { name: "false", raw: false, expected: false },
+    { name: "系统提示音", raw: "system", expected: "system" },
+    { name: "无", raw: "none", expected: "none" },
+    { name: "旧布尔 true（升级迁移）", raw: true, expected: "system" },
+    { name: "旧布尔 false（升级迁移）", raw: false, expected: "none" },
+    { name: "未知值", raw: "loud", expected: "system" },
   ])("reads the sound as $expected for $name on disk", ({ raw, expected }) => {
     h.files.set(STORE_PATH, JSON.stringify({ notificationSound: raw }));
     expect(new ConfigStore(STORE_PATH).getNotificationSound()).toBe(expected);
   });
+
+  it.each([
+    { name: "true", raw: true, expected: true },
+    { name: "false", raw: false, expected: false },
+    { name: "非布尔", raw: "yes", expected: false },
+  ])(
+    "reads draw-attention as $expected for $name on disk",
+    ({ raw, expected }) => {
+      h.files.set(
+        STORE_PATH,
+        JSON.stringify({ notificationDrawAttention: raw }),
+      );
+      expect(new ConfigStore(STORE_PATH).getNotificationDrawAttention()).toBe(
+        expected,
+      );
+    },
+  );
 
   it("setNotificationLevels merges: untouched channels keep their value", () => {
     const store = new ConfigStore(STORE_PATH);
@@ -713,20 +751,23 @@ describe("ConfigStore", () => {
   it("persists levels and sound across instances into the local store only", () => {
     const store = new ConfigStore(STORE_PATH);
     store.setNotificationLevels({ question: "off" });
-    store.setNotificationSound(false);
+    store.setNotificationSound("none");
+    store.setNotificationDrawAttention(true);
     const reloaded = new ConfigStore(STORE_PATH);
     expect(reloaded.getNotificationLevels()).toEqual({
       ...ALL_BANNER,
       question: "off",
     });
-    expect(reloaded.getNotificationSound()).toBe(false);
+    expect(reloaded.getNotificationSound()).toBe("none");
+    expect(reloaded.getNotificationDrawAttention()).toBe(true);
     // 落点是 wave-desktop.json 顶层键，与 updateChannel 同档……
     const onDisk = JSON.parse(h.files.get(STORE_PATH) ?? "{}");
     expect(onDisk.notificationLevels).toEqual({
       ...ALL_BANNER,
       question: "off",
     });
-    expect(onDisk.notificationSound).toBe(false);
+    expect(onDisk.notificationSound).toBe("none");
+    expect(onDisk.notificationDrawAttention).toBe(true);
     // ……而不是 DesktopConfigData（settings.json 的用户偏好载荷，场景 6）。
     expect(reloaded.getConfiguration()).toEqual({});
   });
