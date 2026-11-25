@@ -474,10 +474,15 @@ wave -p --show-stats "分析这个项目的依赖关系"
 
 ### 7.17 结构化输出 {#structured-output}
 
-打印模式默认输出给人看的纯文本。要让脚本或 CI 消费结果，用 `--output-format` 换成结构化格式，stdout 上就只剩 JSON：
+打印模式默认 `--output-format text`，stdout 上只有**最终答案**——最后一条助手消息的文本，结尾补一个换行。运行期间不打印任何过程信息：推理、`📝 Response:` 标题、`🔧` 工具行既不写 stdout 也不写 stderr（与 Claude Code 的 print 模式一致），所以 `wave -p … | …` 拿到的是一段可直接消费的纯文本。诊断信息——`❌` 错误行、worktree 提示、`--show-stats` 的用量与耗时汇总——写 **stderr**。运行失败时 stdout 上是一行 `Execution error`（与 Claude Code 一致），退出码 1，失败原因在 stderr。
+
+要程序化消费过程或结构化结果，用 `--output-format` 换成下面两种格式：
 
 ```bash
-# 取助手回复的纯文本
+# 直接拿答案
+wave -p "列出当前目录" > answer.txt
+
+# 取助手回复的纯文本 + 结构化字段
 wave -p "列出当前目录" --output-format json | jq -r .result
 
 # 逐事件消费（打印进度、审计工具调用）

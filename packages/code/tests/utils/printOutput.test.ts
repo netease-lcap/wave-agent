@@ -98,29 +98,86 @@ test("json 模式只写一条 envelope，result 取最后一条助手消息的�
   expect(envelope.result).toBe("最终答案");
 });
 
-test("结构化模式丢弃人读输出，诊断走 stderr", () => {
+test("结构化模式：诊断走 stderr，人读过程不打印", () => {
   const out = collector();
   const stderr = vi
     .spyOn(process.stderr, "write")
     .mockImplementation(() => true);
   const output = new PrintOutput({ format: "json", write: out.write });
 
-  output.human("🔧 Bash\n");
   output.diag("worktree kept\n");
 
   expect(out.chunks).toEqual([]);
   expect(stderr).toHaveBeenCalledWith("worktree kept\n");
 });
 
-test("text 模式写人读输出，不写 envelope", () => {
+test("text 模式：过程信息一个字都不打印，stdout 只有最终答案", () => {
+  const out = collector();
+  const stderr: string[] = [];
+  vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+    stderr.push(String(chunk));
+    return true;
+  });
+  const output = new PrintOutput({ format: "text", write: out.write });
+
+  output.assistantMessageAdded();
+  // 推理只有 stream-json 会变成事件，text 模式里它不落地
+  output.reasoningDelta("msg-1", "想一想");
+  output.contentDelta("msg-1", "最终答案\n");
+  output.toolUpdate(toolParams({ id: "call-1" }));
+  output.diag("\n❌ Error: boom\n");
+  const envelope = output.result({
+    sessionId: "s",
+    durationMs: 1,
+    usages: [],
+  });
+
+  // stdout 上只有答案，且是一次写入
+  expect(out.chunks).toEqual(["最终答案\n"]);
+  // stderr 上只有诊断：没有 💭 / 📝 / 🔧 任何一种过程信息
+  expect(stderr.join("")).toBe("\n❌ Error: boom\n");
+  expect(envelope.result).toBe("最终答案\n");
+});
+
+test("text 模式：答案没有结尾换行时补一个，空答案只有一个换行", () => {
   const out = collector();
   const output = new PrintOutput({ format: "text", write: out.write });
 
-  output.human("🔧 Bash\n");
-  output.diag("worktree kept\n");
+  output.assistantMessageAdded();
+  output.contentDelta("msg-1", "没有换行的答案");
   output.result({ sessionId: "s", durationMs: 1, usages: [] });
 
-  expect(out.chunks).toEqual(["🔧 Bash\n", "worktree kept\n"]);
+  expect(out.chunks).toEqual(["没有换行的答案\n"]);
+
+  const emptyOut = collector();
+  const emptyOutput = new PrintOutput({
+    format: "text",
+    write: emptyOut.write,
+  });
+  emptyOutput.result({ sessionId: "s", durationMs: 1, usages: [] });
+
+  expect(emptyOut.chunks).toEqual(["\n"]);
+});
+
+test("text 模式：运行失败时 stdout 是一行 Execution error，不输出模型文本", () => {
+  const out = collector();
+  vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  const output = new PrintOutput({ format: "text", write: out.write });
+
+  output.assistantMessageAdded();
+  output.contentDelta("msg-1", "半截正文");
+  output.error("HTTP 400 Bad Request: MODEL_NOT_ENABLED");
+  output.assistantMessageAdded();
+  output.assistantMessageDiscarded();
+  const envelope = output.result({
+    sessionId: "s",
+    durationMs: 1,
+    usages: [],
+    isError: true,
+  });
+
+  expect(envelope.is_error).toBe(true);
+  expect(out.chunks).toEqual(["Execution error\n"]);
 });
 
 test("作废的半截消息不计入 result 与 num_turns", () => {

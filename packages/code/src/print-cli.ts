@@ -32,7 +32,7 @@ export interface PrintCliOptions extends BaseAppProps {
   outputFormat?: OutputFormat;
 }
 
-/** A diagnostics writer: stdout in text mode, stderr once stdout carries JSON. */
+/** A diagnostics writer: always stderr — stdout carries the answer alone. */
 type Writer = (text: string) => void;
 
 function displayTimingInfo(
@@ -97,38 +97,32 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
   }
 
   const output = new PrintOutput({ format: outputFormat });
-  const structured = output.structured;
   // Structured modes promise stdout carries nothing but JSON, so a stray
   // console.log from anywhere in the process is diverted to stderr instead of
-  // tearing the NDJSON stream.
-  if (structured) installStdoutGuard();
-  /** Diagnostics: stderr when stdout is the JSON channel, stdout otherwise. */
+  // tearing the NDJSON stream. Text mode cannot be guarded that way (its answer
+  // is plain text, indistinguishable from a stray line), so it relies on the
+  // code discipline of never writing to stdout outside `PrintOutput`.
+  if (output.structured) installStdoutGuard();
+  // stdout carries the answer alone in every format, and the run prints no
+  // progress at all (no reasoning, no `🔧` lines, no response headers) — that is
+  // Claude Code's print-mode contract. Only diagnostics (error blocks, worktree
+  // notes, usage/timing summary) go to stderr.
   const diag: Writer = (text) => output.diag(text);
-  const usageWriter = structured
-    ? toLineWriter(process.stderr.write.bind(process.stderr))
-    : undefined;
-  // Text mode keeps the exact call shape it had (console.log); structured mode
-  // is the only one that redirects the summary, and it needs stderr for it.
+  const usageWriter = toLineWriter(process.stderr.write.bind(process.stderr));
   const showUsage = (usages: Usage[], sessionFilePath: string): void => {
-    if (usageWriter) {
-      displayUsageSummary(usages, sessionFilePath, usageWriter);
-    } else {
-      displayUsageSummary(usages, sessionFilePath);
-    }
+    displayUsageSummary(usages, sessionFilePath, usageWriter);
   };
 
   let agent: Agent;
-  let isReasoning = false;
-  let isContent = false;
 
-  // Setup callbacks for agent
-  // Print mode only outputs the main agent's response (matching Claude Code's
-  // behavior). Subagent output is internal — the main agent incorporates
-  // relevant results in its own response.
+  // Setup callbacks for agent. Like Claude Code's print mode, nothing about the
+  // run's progress is printed — not to stdout, not to stderr. Reasoning never
+  // reaches a stream (outside `stream-json`), tool calls are only recorded for
+  // the envelope's `tool_calls`, and the answer itself is written once at the
+  // end by `PrintOutput.result()`. Subagent output stays internal: the main
+  // agent folds the relevant parts into its own answer.
   const callbacks: AgentCallbacks = {
     onAssistantMessageAdded: () => {
-      isReasoning = false;
-      isContent = false;
       output.assistantMessageAdded();
     },
     onAssistantMessageDiscarded: () => {
@@ -139,39 +133,18 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       messageId: string;
       chunk: string;
     }) => {
-      if (!isReasoning) {
-        output.human("\n💭 Reasoning:\n");
-        isReasoning = true;
-      }
-      output.human(params.chunk);
+      // 只有 stream-json 会把它变成事件；其余格式里推理不落地。
       output.reasoningDelta(params.messageId, params.chunk);
     },
     onAssistantContentUpdated: (params: {
       messageId: string;
       chunk: string;
     }) => {
-      if (!isContent) {
-        if (isReasoning) {
-          output.human("\n\n📝 Response:\n");
-        } else {
-          output.human("\n");
-        }
-        isContent = true;
-      }
-      output.human(params.chunk);
       output.contentDelta(params.messageId, params.chunk);
     },
 
-    // Tool block callback - display tool name when tool starts
+    // Tool calls are recorded for `tool_calls` / `tool` events, never printed.
     onToolBlockUpdated: (params) => {
-      // Print tool name only during 'running' stage (happens once per tool call)
-      if (params.stage === "running" && params.name) {
-        output.human(`\n🔧 ${params.name}`);
-        if (params.compactParams) {
-          output.human(` ${params.compactParams}`);
-        }
-        output.human(`\n`);
-      }
       output.toolUpdate(params);
     },
 
@@ -236,7 +209,6 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     // Send message if provided and not empty
     if (typeof message === "string" && message.trim() !== "") {
       await agent.sendMessage(message);
-      output.human("\n");
     }
 
     // Wait for running background tasks/subagents to complete AND for the main
@@ -328,17 +300,17 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       }
     }
 
-    // The result line goes out last on stdout; everything above that is either
-    // suppressed (structured) or on stderr. The exit code reads the envelope so
-    // "did this run fail" has one answer, not two: a request-level failure (model
-    // unreachable, auth rejected) never throws out of sendMessage — it only
-    // leaves an error block behind.
+    // The answer goes out last on stdout — in every format, and it is the only
+    // thing written there; everything above went to stderr. The exit code reads
+    // the envelope so "did this run fail" has one answer, not two: a
+    // request-level failure (model unreachable, auth rejected) never throws out
+    // of sendMessage — it only leaves an error block behind.
     const envelope = output.result({
       sessionId,
       durationMs: Date.now() - startTime.getTime(),
       usages: usageSnapshot?.usages ?? [],
     });
-    await exitWithFlushedStdout(structured, envelope.is_error ? 1 : 0);
+    await exitWithFlushedStdout(envelope.is_error ? 1 : 0);
   } catch (error) {
     console.error("Failed to send message:", error);
     output.error((error as Error)?.message ?? String(error));
@@ -421,7 +393,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       usages,
       isError: true,
     });
-    await exitWithFlushedStdout(structured, envelope.is_error ? 1 : 0);
+    await exitWithFlushedStdout(envelope.is_error ? 1 : 0);
   }
 }
 
@@ -440,18 +412,14 @@ function readUsageSnapshot(
 }
 
 /**
- * Structured modes hand stdout to a consumer reading it line by line, so the
- * queued writes must land before the process goes away: a truncated last line
- * is a parse error on their side. Text mode keeps its existing exit path.
+ * The answer goes out last on stdout in every format, so the queued write must
+ * land before the process goes away: structured consumers would see a truncated
+ * last line (parse error), text consumers a truncated answer. `uninstallStdoutGuard`
+ * is the no-op half in text mode — it only ever installed in structured ones.
  */
-async function exitWithFlushedStdout(
-  structured: boolean,
-  code: number,
-): Promise<void> {
-  if (structured) {
-    uninstallStdoutGuard();
-    await drainStdout();
-  }
+async function exitWithFlushedStdout(code: number): Promise<void> {
+  uninstallStdoutGuard();
+  await drainStdout();
   process.exit(code);
 }
 
