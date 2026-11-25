@@ -44,14 +44,14 @@ const BACKGROUND_MAX_HOURS = REPL_BACKGROUND_MAX_MS / 3_600_000;
  * The path is the very expression the signature renderer uses, and both come from
  * the constant the sandbox assigns the entry under, so the two cannot drift.
  *
- * The entry is a bare global now, so `tools.<name>` is mentioned as the compat
- * spelling rather than as the canonical one: a script writes
- * `searchTools("...")`, exactly as the reference implementation teaches.
+ * The entry is a bare global only, as the reference implementation declares it
+ * (`declare function searchTools`, beside `setTimeout`) — not a member of `tools`,
+ * which carries only `list()` and the pool's tool names. Offering `tools.searchTools` here
+ * would teach a spelling the sandbox rejects with `is not a function`.
  */
 const SEARCH_ENTRY =
   `- \`${REPL_SEARCH_EXPRESSION}(query, max?)\` — ` +
-  "find a tool's parameters when the pool only announced its name, so this is how a call is built. " +
-  `The same function is reachable as \`tools.${REPL_SEARCH_EXPRESSION}(query, max?)\`.`;
+  "find a tool's parameters when the pool only announced its name, so this is how a call is built.";
 
 /**
  * The bullet with the entry point's own signature indented under it.
