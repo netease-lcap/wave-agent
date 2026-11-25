@@ -225,6 +225,9 @@ describe("Agent additional coverage", () => {
         "test-session-id",
         "/tmp/test-title-exit",
         "  我的标题  ",
+        // The session's own file — the one adopted at restore, when there is
+        // one — is what gets the entry.
+        expect.stringContaining("test-session-id.jsonl"),
       );
       // ...and the value is remembered in memory, then flushed back to EOF when
       // the session is left behind.
@@ -243,6 +246,8 @@ describe("Agent additional coverage", () => {
         "/tmp/test-title-exit",
         "我的标题",
         "main",
+        // No transcript adopted from another project directory.
+        undefined,
       );
     });
 

@@ -219,6 +219,8 @@ describe("SubagentManager - Session Functionality", () => {
         expect.any(Array), // messages
         "/tmp/test", // workdir
         "subagent", // sessionType
+        // A subagent never adopts a transcript from another project directory.
+        undefined,
       );
     });
 
@@ -377,6 +379,8 @@ describe("SubagentManager - Session Functionality", () => {
         expect.any(Array), // messages
         "/tmp/test", // workdir
         "subagent", // sessionType
+        // A subagent never adopts a transcript from another project directory.
+        undefined,
       );
     });
 

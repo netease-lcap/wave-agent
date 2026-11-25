@@ -1,4 +1,12 @@
-import { describe, it, expect, beforeEach, vi, type Mock } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  vi,
+  type Mock,
+} from "vitest";
 import { randomUUID } from "crypto";
 import { join } from "path";
 import { homedir } from "os";
@@ -35,6 +43,10 @@ import {
   loadSessionFromJsonl,
   sessionExistsAnywhere,
   readSessionWorkdir,
+  appendMessages,
+  reAppendSessionMetadata,
+  setSessionCustomTitle,
+  truncateSession,
 } from "../../src/services/session.js";
 import type { Message } from "../../src/types/index.js";
 import type { TranscriptSnapshot } from "../../src/services/sessionEntries.js";
@@ -68,6 +80,8 @@ describe("Session resume: cross-directory listing & restore", () => {
     readMetadata: ReturnType<typeof vi.fn>;
     readCustomTitle: ReturnType<typeof vi.fn>;
     appendCustomTitle: ReturnType<typeof vi.fn>;
+    append: ReturnType<typeof vi.fn>;
+    truncateSession: ReturnType<typeof vi.fn>;
   };
 
   const makeMessage = (timestamp: string): Message =>
@@ -123,6 +137,8 @@ describe("Session resume: cross-directory listing & restore", () => {
       readMetadata: vi.fn().mockResolvedValue(null),
       readCustomTitle: vi.fn().mockResolvedValue(undefined),
       appendCustomTitle: vi.fn(),
+      append: vi.fn().mockResolvedValue(1),
+      truncateSession: vi.fn().mockResolvedValue(undefined),
     };
 
     // Point the mocked constructors at our per-test instances
@@ -516,6 +532,9 @@ describe("Session resume: cross-directory listing & restore", () => {
 
       expect(session).not.toBeNull();
       expect(mockJsonlHandler.read).toHaveBeenCalledWith(fallbackPath);
+      // 命中的路径要带出来：调用方据此把后续写入锚到这份文件，而不是按
+      // workdir 重算出启动目录下的路径（spec 验收场景 5）。
+      expect(session?.transcriptPath).toBe(fallbackPath);
     });
 
     it("sessionExistsAnywhere answers without reading the transcript", async () => {
@@ -708,6 +727,114 @@ describe("Session resume: cross-directory listing & restore", () => {
       const session = await loadSessionFromJsonl(sessionId, "/mock/workdir");
 
       expect(session?.metadata.latestTotalTokens).toBe(0);
+    });
+  });
+
+  describe("explicit transcript path on write", () => {
+    // `appendMessages` / `truncateSession` short-circuit under NODE_ENV=test,
+    // so the write path is only observable with a production-shaped env.
+    const originalNodeEnv = process.env.NODE_ENV;
+
+    beforeEach(() => {
+      process.env.NODE_ENV = "production";
+    });
+
+    afterEach(() => {
+      process.env.NODE_ENV = originalNodeEnv;
+    });
+
+    it("appendMessages writes to the given path, not the workdir-derived one", async () => {
+      const fs = await import("fs");
+      const sessionId = randomUUID();
+      const foreignPath = join(
+        SESSION_DIR,
+        "other-project",
+        `${sessionId}.jsonl`,
+      );
+      vi.mocked(fs.promises.access).mockResolvedValue(undefined);
+      const message = makeMessage(new Date().toISOString());
+
+      await appendMessages(
+        sessionId,
+        [message],
+        "/mock/workdir",
+        "main",
+        foreignPath,
+      );
+
+      expect(mockJsonlHandler.append).toHaveBeenCalledWith(
+        foreignPath,
+        [message],
+        { atomic: false },
+      );
+    });
+
+    it("truncateSession (/rewind) rewrites the given path", async () => {
+      const fs = await import("fs");
+      const sessionId = randomUUID();
+      const foreignPath = join(
+        SESSION_DIR,
+        "other-project",
+        `${sessionId}.jsonl`,
+      );
+      vi.mocked(fs.promises.access).mockResolvedValue(undefined);
+
+      await truncateSession(sessionId, 2, "/mock/workdir", "main", foreignPath);
+
+      expect(mockJsonlHandler.truncateSession).toHaveBeenCalledWith(
+        foreignPath,
+        2,
+      );
+    });
+
+    it("setSessionCustomTitle appends the title to the given path", async () => {
+      const fs = await import("fs");
+      const sessionId = randomUUID();
+      const foreignPath = join(
+        SESSION_DIR,
+        "other-project",
+        `${sessionId}.jsonl`,
+      );
+      vi.mocked(fs.promises.access).mockResolvedValue(undefined);
+
+      await setSessionCustomTitle(
+        sessionId,
+        "/mock/workdir",
+        "跨目录会话",
+        foreignPath,
+      );
+
+      expect(mockJsonlHandler.appendCustomTitle).toHaveBeenCalledWith(
+        foreignPath,
+        "跨目录会话",
+        sessionId,
+      );
+    });
+
+    it("reAppendSessionMetadata re-appends the title at the given path", async () => {
+      const fs = await import("fs");
+      const sessionId = randomUUID();
+      const foreignPath = join(
+        SESSION_DIR,
+        "other-project",
+        `${sessionId}.jsonl`,
+      );
+      vi.mocked(fs.promises.access).mockResolvedValue(undefined);
+      mockJsonlHandler.readCustomTitle.mockResolvedValue(undefined);
+
+      await reAppendSessionMetadata(
+        sessionId,
+        "/mock/workdir",
+        "跨目录会话",
+        "main",
+        foreignPath,
+      );
+
+      expect(mockJsonlHandler.appendCustomTitle).toHaveBeenCalledWith(
+        foreignPath,
+        "跨目录会话",
+        sessionId,
+      );
     });
   });
 });

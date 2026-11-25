@@ -93,6 +93,8 @@ describe("MessageManager History Truncation Integration", () => {
       1,
       "/test/workdir",
       "main",
+      // No transcript adopted from another project directory.
+      undefined,
     );
   });
 

@@ -74,6 +74,8 @@ describe("MessageManager.setWorkdir", () => {
       expect.any(Array),
       otherWorkdir,
       "main",
+      // No transcript adopted from another project directory.
+      undefined,
     );
     expect(basename(manager.getTranscriptPath())).toBe(
       `${manager.getSessionId()}.jsonl`,
