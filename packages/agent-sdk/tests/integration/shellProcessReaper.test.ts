@@ -121,6 +121,15 @@ function readLeftoverPid(file: string): number {
   return pid;
 }
 
+// The exit code rides `data.exitCode` since issue #3055 阶段 2 (it used to be
+// `ToolResult.metadata.exitCode`).
+function exitCodeOf(result: { data?: unknown }): number | undefined {
+  return (result.data as { exitCode?: number } | undefined)?.exitCode;
+}
+
+/** 20 × 50 ms ≈ 1 s of in-shell polling, well inside the 5 s test budget. */
+const LEFTOVER_POLL_ATTEMPTS = 20;
+
 /**
  * Kill a leftover by the pid its shell reported, and wait until it is gone.
  *
@@ -130,23 +139,41 @@ function readLeftoverPid(file: string): number {
  * space onto Windows pids, so nothing here has to reproduce the translation
  * (`/proc/<pid>/winpid` read right after a fork can still hand back the slot's
  * previous occupant — exactly the kind of guess that would kill a stranger).
+ *
+ * Signal and wait share **one** `Bash` call:
+ *
+ * - A call costs a Git Bash start plus the session prelude — ~150 ms here once
+ *   the worker's shell snapshot exists, ~1.3 s for the first one that has to
+ *   build it. One call instead of one per poll is what keeps the wait bounded.
+ * - `ToolResult.success` says "the command ran", **not** "it exited 0" (spec
+ *   `core/bash-tools.md`「退出码不是工具成败」, #3087), so a `vi.waitFor` that
+ *   waited for `success === false` could never be satisfied — that is what
+ *   turned this case red on `main`. The exit code is the fact, so the exit code
+ *   is what gets asserted.
+ *
+ * The wait is a bounded poll of `kill -0` in that same shell (exit 0 = the pid
+ * still resolves, 1 = gone): the script ends as soon as the pid is gone, and
+ * exits 2 when it outlives the budget, so a leftover that refuses to die shows
+ * up as `exitCode: 2` instead of an opaque test timeout.
  */
 async function killLeftoverShellProcess(
   dir: string,
   pid: number,
 ): Promise<void> {
-  await bashTool.execute({ command: `kill -9 ${pid}` }, makeContext(dir));
-  await vi.waitFor(
-    async () => {
-      const probe = await bashTool.execute(
-        { command: `kill -0 ${pid}` },
-        makeContext(dir),
-      );
-      // `kill -0` only exits 0 while the pid still resolves.
-      expect(probe.success).toBe(false);
+  const result = await bashTool.execute(
+    {
+      command:
+        `kill -9 ${pid} 2>/dev/null; ` +
+        `n=0; while kill -0 ${pid} 2>/dev/null; do ` +
+        `n=$((n+1)); [ $n -ge ${LEFTOVER_POLL_ATTEMPTS} ] && exit 2; ` +
+        `sleep 0.05; done`,
     },
-    { timeout: 5000 },
+    makeContext(dir),
   );
+  expect({ success: result.success, exitCode: exitCodeOf(result) }).toEqual({
+    success: true,
+    exitCode: 0,
+  });
 }
 
 describe("ShellProcessReaper with real shells", () => {

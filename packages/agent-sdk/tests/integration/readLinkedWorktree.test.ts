@@ -41,10 +41,14 @@ function initRepo(dir: string): string {
 }
 
 describe("readLinkedWorktree", () => {
-  // `mkdtemp`'`s own spelling is what the assertions build on, so resolve the
-  // temp root once: on macOS `/tmp` and `/var` are symlinks and a mixed
-  // spelling would fail the string comparisons below for the wrong reason.
-  const root = fs.realpathSync(
+  // The assertions compare full paths, so the fixture's own spelling must be the
+  // spelling git records — otherwise they fail for a reason that has nothing to
+  // do with `readLinkedWorktree`. `realpathSync` is not enough: on macOS `/tmp`
+  // and `/var` are symlinks it does resolve, but on Windows an 8.3 short name
+  // (`C:\Users\RUNNER~1\…`, which is what `os.tmpdir()` returns on a CI runner)
+  // passes straight through while git canonicalizes it to the long name
+  // (`runneradmin`). `realpathSync.native` normalizes both.
+  const root = fs.realpathSync.native(
     fs.mkdtempSync(path.join(os.tmpdir(), "wave-wt-read-")),
   );
 
