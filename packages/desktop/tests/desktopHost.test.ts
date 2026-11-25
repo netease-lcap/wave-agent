@@ -3886,6 +3886,85 @@ describe("system notifications (desktop-notifications.md story 2)", () => {
     expect(notifications()).toHaveLength(2);
     expect(notifications()[1].options.body).toBe("已完成");
   });
+
+  it("denying one of two pending confirmations drops the other too — same semantics as the stop button", async () => {
+    const { host, store, sent, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    setFocused(false);
+    const waitingConfirmationFor = (sessionId: string) =>
+      treeSessions(sent("desktopSessionTree").at(-1)).find(
+        (s) => s.sessionId === sessionId,
+      )?.waitingConfirmation;
+    agent1.callbacks.onLoadingChange(true);
+
+    // Two requests pile up on one session (parallel tools): the second
+    // replaces the first on screen, so the one to watch is the latest instance.
+    agent1.callbacks.onPermissionRequest("req-1", {
+      toolName: "Bash",
+      toolInput: { command: "pnpm test" },
+    });
+    agent1.callbacks.onPermissionRequest("req-2", {
+      toolName: "Bash",
+      toolInput: { command: "pnpm lint" },
+    });
+    expect(notifications()[0].close).toHaveBeenCalledTimes(1);
+    const confirmation = notifications().at(-1)!;
+    expect(waitingConfirmationFor("sess-1")).toBe(true);
+
+    // The user denies the first one. A denial ends the turn on the user's
+    // terms — like the stop button — so the second request must not survive it.
+    await host.handleWebviewMessage({
+      command: "confirmationResponse",
+      confirmationId: sent("showConfirmation")[0].confirmationId,
+      approved: false,
+    });
+    expect(agent1.abortMessage).toHaveBeenCalledTimes(1);
+
+    // The other card is retracted (the denied one is dismissed by the webview
+    // itself), the sidebar flag is off, the notification is closed, and the
+    // denied turn's end announces nothing.
+    expect(sent("hideConfirmation")).toEqual([
+      expect.objectContaining({
+        paneId: "pane-1",
+        confirmationId: sent("showConfirmation")[1].confirmationId,
+      }),
+    ]);
+    expect(waitingConfirmationFor("sess-1")).toBe(false);
+    expect(confirmation.close).toHaveBeenCalledTimes(1);
+    // The denied turn ends on the user's terms: no third notification.
+    agent1.callbacks.onLoadingChange(false);
+    expect(notifications()).toHaveLength(2);
+  });
+
+  it("does not flag the queued turn that follows an aborted one — the abort's own notice arrives late", async () => {
+    const { host, store, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    setFocused(false);
+    agent1.callbacks.onLoadingChange(true);
+
+    // Stop while a second message is queued. `abortMessage()` dispatches the
+    // queued turn synchronously (#2965), so the wire order is: the aborted
+    // turn ends → the queued turn starts → only then does the aborted turn's
+    // error notice land (its catch block runs in a later microtask). The SDK
+    // sends that notice without `scope`; a `"turn"` here would be attributed
+    // to the queued turn.
+    await host.handleWebviewMessage({
+      command: "abortMessage",
+      paneId: "pane-1",
+    });
+    agent1.callbacks.onLoadingChange(false);
+    agent1.callbacks.onLoadingChange(true);
+    agent1.callbacks.onNoticeAdded({
+      level: "error",
+      content: "Request was aborted",
+    });
+
+    // The queued turn finishes on its own: its notification must say 已完成,
+    // not 任务出错 (spec scenario 3 keeps a normal turn-end off the error list).
+    agent1.callbacks.onLoadingChange(false);
+    expect(notifications()).toHaveLength(1);
+    expect(notifications()[0].options.body).toBe("已完成");
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -3673,11 +3673,15 @@ ${question}`;
             error instanceof Error ? error.message : undefined,
           );
 
-          this.messageManager.addNoticeBlock(
-            error instanceof Error ? error.message : "Unknown error occurred",
-            "error",
-            "turn",
-          );
+          // 用户中断不是故障，不带 `scope`：宿主用 `"turn"` 判「任务出错」，而中断的
+          // notice 晚于 `abortMessage()` 同步派发的下一条排队消息，带上会记到下一轮。
+          const noticeText =
+            error instanceof Error ? error.message : "Unknown error occurred";
+          if (turnAborted) {
+            this.messageManager.addNoticeBlock(noticeText, "error");
+          } else {
+            this.messageManager.addNoticeBlock(noticeText, "error", "turn");
+          }
 
           // Exit inner loop on error
           break inner;
