@@ -587,28 +587,49 @@ function buildSource(code: string, analysis: ReplAnalysis): string {
 
 function formatError(error: unknown): string {
   if (error === null || typeof error !== "object") return String(error);
-  const record = error as {
-    name?: unknown;
-    message?: unknown;
-    stack?: unknown;
-  };
+  const record = error as { name?: unknown; message?: unknown };
   const name =
     typeof record.name === "string" && record.name.length > 0
       ? record.name
       : "Error";
   const message =
     typeof record.message === "string" ? record.message : String(error);
-  const head = name === "Error" ? message : `${name}: ${message}`;
-  const location = scriptLocation(record.stack);
-  return location === null ? head : `${head} (${location})`;
+  return name === "Error" ? message : `${name}: ${message}`;
 }
 
-/** First frame belonging to the script, so injected offsets never leak as line numbers. */
-function scriptLocation(stack: unknown): string | null {
-  if (typeof stack !== "string") return null;
-  const match = new RegExp(`${SCRIPT_FILENAME}:(\\d+):(\\d+)`).exec(stack);
-  if (!match) return null;
-  return `${SCRIPT_FILENAME}:${match[1]}:${match[2]}`;
+const MAX_QUOTED_FRAMES = 4;
+const MAX_QUOTED_LINE_CHARS = 200;
+/** One V8 frame, `at (async )?(fn )?(file:line:column)`; the column is matched only to be dropped. */
+const STACK_FRAME =
+  /^\s*at (?:async )?(?:(\S[^()]*?) \()?([^\s():]+):(\d+):\d+\)?$/;
+
+/**
+ * The script's own frames, each quoting the line the model wrote. No column:
+ * `__replStep()` is spliced onto the same line as the code it counts, so line
+ * numbers come through instrumentation verbatim and columns do not. Frames past
+ * the script's last line belong to the wrapper (`finally`, the IIFEs) and are
+ * left out. Same shape as Claude Code's `xYr`.
+ */
+function scriptWhere(stack: unknown, script: string): string {
+  if (typeof stack !== "string") return "";
+  const lines = script.split("\n");
+  const frames: string[] = [];
+  for (const line of stack.split("\n")) {
+    if (frames.length >= MAX_QUOTED_FRAMES) break;
+    const match = STACK_FRAME.exec(line);
+    if (!match || match[2] !== SCRIPT_FILENAME) continue;
+    const index = Number(match[3]) - 1;
+    if (!(index >= 0 && index < lines.length)) continue;
+    const text = lines[index].trim().slice(0, MAX_QUOTED_LINE_CHARS);
+    if (text === "") continue;
+    const fn = (match[1] ?? "<anonymous>").slice(0, 80);
+    const frame = `  in ${fn} (line ${index + 1}): ${text}`;
+    if (frame !== frames[frames.length - 1]) frames.push(frame);
+  }
+  if (frames.length === 0) return "";
+  return ["Thrown at (statements quoted from the script):", ...frames].join(
+    "\n",
+  );
 }
 
 function wallClockMessage(timeoutMs: number): string {
@@ -627,8 +648,14 @@ function describeRunError(
   const errno = (error as { code?: unknown } | null)?.code;
   if (errno === "ERR_SCRIPT_EXECUTION_TIMEOUT")
     return wallClockMessage(timeoutMs);
-  const text = formatError(error);
-  return text + runtimeErrorHint(text, script);
+  const head = formatError(error);
+  const where = scriptWhere(
+    (error as { stack?: unknown } | null)?.stack,
+    script,
+  );
+  return (
+    head + (where === "" ? "" : `\n${where}`) + runtimeErrorHint(head, script)
+  );
 }
 
 function overwriteMessage(name: string): string {
