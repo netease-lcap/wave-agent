@@ -795,6 +795,63 @@ describe("repl sandbox: termination", () => {
     );
     expect(result.ok).toBe(false);
     expect(result.error).toContain("row two");
-    expect(result.error).toContain("repl-script.js:3:");
+    expect(result.error).toContain(
+      '  in <anonymous> (line 3): if (row === 2) throw new Error("row two");',
+    );
+    expect(result.error).not.toContain("repl-script.js");
+  });
+
+  it("quotes up to four script frames and leaves the wrapper's own out", async () => {
+    const sandbox = open();
+    const result = await sandbox.run(
+      [
+        "function a() {",
+        "  b();",
+        "}",
+        "function b() {",
+        "  c();",
+        "}",
+        "function c() {",
+        "  d();",
+        "}",
+        "function d() {",
+        '  throw new Error("deep");',
+        "}",
+        "a();",
+      ].join("\n"),
+      opts(),
+    );
+    expect(result.ok).toBe(false);
+    const text = result.error ?? "";
+    expect(text).toContain(
+      "deep\nThrown at (statements quoted from the script):",
+    );
+    expect(text.split("\n").filter((line) => line.startsWith("  in "))).toEqual(
+      [
+        '  in d (line 11): throw new Error("deep");',
+        "  in c (line 8): d();",
+        "  in b (line 5): c();",
+        "  in a (line 2): b();",
+      ],
+    );
+    expect(text).not.toContain("line 13");
+    expect(text).not.toMatch(/:\d+:\d+/);
+  });
+
+  it("keeps one of consecutive identical frames", async () => {
+    const sandbox = open();
+    const result = await sandbox.run(
+      [
+        'function f(n) { if (n === 0) throw new Error("bottom"); f(n - 1); }',
+        "f(3);",
+      ].join("\n"),
+      opts(),
+    );
+    const text = result.error ?? "";
+    const quoted = text.split("\n").filter((line) => line.startsWith("  in "));
+    expect(quoted).toEqual([
+      '  in f (line 1): function f(n) { if (n === 0) throw new Error("bottom"); f(n - 1); }',
+      "  in <anonymous> (line 2): f(3);",
+    ]);
   });
 });
