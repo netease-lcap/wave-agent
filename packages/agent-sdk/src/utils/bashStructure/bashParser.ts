@@ -28,7 +28,6 @@ import {
   type WordToken,
   type OpToken,
 } from "./bashLexer.js";
-import type { BashParseStats } from "./types.js";
 
 /** A simple command: a word list (may start with VAR=value assignments). */
 export interface CmdNode {
@@ -159,17 +158,8 @@ export class BashParser {
   private pos = 0;
   private depth = 0;
 
-  constructor(
-    tokens: Token[],
-    private readonly stats?: BashParseStats,
-  ) {
+  constructor(tokens: Token[]) {
     this.tokens = tokens;
-  }
-
-  /** Out of nesting budget: a scale limit, not a syntax error (see the detail type). */
-  private budgetExceeded(): null {
-    if (this.stats) this.stats.aborted = true;
-    return null;
   }
 
   /** Parse the full token stream. */
@@ -219,7 +209,7 @@ export class BashParser {
    * closing op. Used for compound bodies (do…done, then…fi, case arms).
    */
   private parseSequence(stop: ReadonlySet<string>): StmtNode[] | null {
-    if (this.depth > MAX_DEPTH) return this.budgetExceeded();
+    if (this.depth > MAX_DEPTH) return null;
     this.depth++;
     try {
       const stmts: StmtNode[] = [];
@@ -245,10 +235,7 @@ export class BashParser {
             this.next();
             continue;
           }
-          // An opening paren starts a command (`( a; b )`); parseChain below
-          // dispatches it to parseCommand's subshell branch. Any other
-          // operator here cannot begin one.
-          if (t.op !== "(") return null;
+          return null; // '(' or others not valid here
         }
         if (t.t === "word") {
           if (STRUCTURAL_KEYWORDS.has(t.raw) && this.isBareWord(t.raw)) {
@@ -317,7 +304,7 @@ export class BashParser {
 
   /** Parse a single command (simple or compound). Returns nodes array. */
   private parseCommand(): StmtNode[] | null {
-    if (this.depth > MAX_DEPTH) return this.budgetExceeded();
+    if (this.depth > MAX_DEPTH) return null;
     this.depth++;
     try {
       this.skipNl();
@@ -701,11 +688,8 @@ export class BashParser {
  * Parse a token stream into a program. Returns null on any construct that
  * cannot be statically modelled (fail-closed → caller asks).
  */
-export function parseTokens(
-  tokens: Token[],
-  stats?: BashParseStats,
-): Program | null {
+export function parseTokens(tokens: Token[]): Program | null {
   if (tokens === null) return null;
-  const parser = new BashParser(tokens, stats);
+  const parser = new BashParser(tokens);
   return parser.parseProgram();
 }

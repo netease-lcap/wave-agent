@@ -3,91 +3,17 @@ import fs from "node:fs";
 import { homedir } from "node:os";
 
 /**
- * `\\?\` / `\\.\` — a device or a namespace the filesystem APIs read
- * differently from an ordinary path, so asking "what is the real path of this"
- * is the wrong question (`\\.\PhysicalDrive0` has no directory behind it).
- *
- * `\\?\C:\x` is the same shape and is deliberately *not* unwrapped here: the
- * reminder is that the caller resolves it first (`restoreWindowsPath`), and a
- * path that still carries the prefix is one this module refuses to interpret.
- */
-const DEVICE_PATH = /^[\\/]{2}[?.][\\/]/;
-/**
- * `\\host\admin$` / `\\host\d$` — a share that *is* a whole disk or a whole
- * installation. Together with the `\\?\` / `\\.\` shapes above these are the UNC
- * paths that cannot be placed on a local drive: a `<letter>$` share of *this*
- * machine is expanded to the drive before it gets here (`restoreWindowsPath`),
- * so whatever is left names another machine's disk — an entire drive, which no
- * removal should reach, or something this check cannot see into at all.
- */
-const UNPLACEABLE_UNC =
-  /^[\\/]{2}(?:[?.][\\/]|[^\\/]+[\\/](?:admin|[A-Za-z])\$(?=$|[\\/]))/i;
-
-/**
- * What the filesystem said about a path.
- *
- * Three outcomes are not the same question, and collapsing them is how a
- * symlink or a not-yet-created directory stops being comparable to the path it
- * will resolve to. Claude Code draws the same three lines around its own
- * `realpathSync.native` call.
- */
-type RealPathProbe =
-  | { state: "resolved"; path: string }
-  /** Nothing there yet (ENOENT / ENOTDIR) — resolve through the nearest parent. */
-  | { state: "absent" }
-  /** A device path: there is no such question to ask. */
-  | { state: "unprobed" }
-  /** Any other failure (EACCES, ELOOP, …) — keep the spelling rather than guess. */
-  | { state: "error" };
-
-function isDevicePath(p: string): boolean {
-  return DEVICE_PATH.test(p);
-}
-
-/**
- * `realpathSync.native`, deliberately, and not the JavaScript one.
- *
- * The JS implementation resolves each segment as a link and leaves everything
- * else alone, so an 8.3 short name comes back unchanged: `C:\Users\LIUYIQ~1`
- * stays `C:\Users\LIUYIQ~1` and never compares equal to `C:\Users\liuyiqi02`.
- * The native call goes to the OS, which expands the short name — the only way
- * "delete the user's profile", typed in the 8.3 spelling, is recognised as the
- * profile. Claude Code made the same call for the same reason.
- */
-function probeRealPath(p: string): RealPathProbe {
-  if (isDevicePath(p)) return { state: "unprobed" };
-  try {
-    const resolved = fs.realpathSync.native(p);
-    if (typeof resolved !== "string" || resolved.length === 0) {
-      return { state: "error" };
-    }
-    return { state: "resolved", path: resolved };
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException | undefined)?.code;
-    return code === "ENOENT" || code === "ENOTDIR"
-      ? { state: "absent" }
-      : { state: "error" };
-  }
-}
-
-/**
  * Get the real path of a file or directory, even if it doesn't exist.
  * For non-existent paths, it resolves the real path of the nearest existing parent.
- *
- * A path that cannot be resolved at all (a device path, EACCES) keeps its own
- * spelling: guessing there would turn something unreachable into something that
- * looks like an ordinary directory, and every caller compares real paths to
- * decide whether a deletion is allowed.
  */
 function getSafeRealPath(p: string): string {
-  const probe = probeRealPath(p);
-  if (probe.state === "resolved") return probe.path;
-  if (probe.state === "absent") {
+  try {
+    return fs.realpathSync(p);
+  } catch {
     const parent = path.dirname(p);
     if (parent === p) return p; // Root reached
     return path.join(getSafeRealPath(parent), path.basename(p));
   }
-  return p;
 }
 
 /**
@@ -134,10 +60,7 @@ export function isPathAtOrAbove(target: string, inner: string): boolean {
  * Mirrors Claude Code's first-level directory list plus the Windows entries the
  * PowerShell hard-deny already had. Only these exact directories are critical —
  * everything below them (`/usr/local/lib/x`, `C:\Windows\Temp\x.txt`) is an
- * ordinary path. On Windows this list is not what does the work: there, *every*
- * drive's first-level directory is critical (see
- * {@link isCriticalSystemDirectory}), because `D:\media` and `E:\tmp` are as
- * unrecoverable as `C:\Windows` when they are the only copy.
+ * ordinary path.
  */
 const CRITICAL_SYSTEM_DIRS: ReadonlySet<string> = new Set([
   // POSIX first-level directories
@@ -185,19 +108,6 @@ const CRITICAL_SYSTEM_DIRS: ReadonlySet<string> = new Set([
   "windows/syswow64",
 ]);
 
-/** `true` for a drive-qualified path: `C:\…`, `C:/…`. */
-const DRIVE_PATH = /^[A-Za-z]:[\\/]/;
-
-/** The path's segments below its root, `/`-normalised and empty-free. */
-function segmentsBelowRoot(resolved: string): string[] {
-  const { root } = path.parse(resolved);
-  return resolved
-    .slice(root.length)
-    .replace(/[\\/]+$/, "")
-    .split(/[\\/]+/)
-    .filter((segment) => segment.length > 0);
-}
-
 /** true when [p] is a filesystem root: `/`, `\`, `C:\`. */
 export function isFilesystemRoot(p: string): boolean {
   const resolved = path.resolve(p);
@@ -206,56 +116,23 @@ export function isFilesystemRoot(p: string): boolean {
 
 /**
  * true when [p] is a home directory itself. Compared against the real answer
- * rather than a spelling: `C:\Users\me`, `$env:USERPROFILE` and the 8.3 form
- * `C:\Users\LIUYIQ~1` are one place.
+ * rather than a spelling: `C:\Users\me` and `$env:USERPROFILE` are one place.
  */
 export function isHomeDirectoryPath(p: string): boolean {
-  const resolved = getSafeRealPath(path.resolve(p));
+  const resolved = path.resolve(p);
   return [process.env.USERPROFILE, process.env.HOME, homedir()].some(
-    (home) =>
-      typeof home === "string" &&
-      home.trim().length > 0 &&
-      samePath(resolved, getSafeRealPath(path.resolve(home))),
+    (home) => typeof home === "string" && path.resolve(home) === resolved,
   );
 }
 
-/** Windows paths are case-insensitive; POSIX paths are not. */
-function samePath(a: string, b: string): boolean {
-  const left = stripTrailingSeparator(a);
-  const right = stripTrailingSeparator(b);
-  return process.platform === "win32"
-    ? left.toLowerCase() === right.toLowerCase()
-    : left === right;
-}
-
-function stripTrailingSeparator(p: string): string {
-  return p.length > 1 ? p.replace(/[\\/]+$/, "") : p;
-}
-
-/**
- * true when [p] is a directory that must never be deleted on its own.
- *
- * Three families, and the last two are the Windows-specific half:
- *
- * - **First-level directories by name** (`/etc`, `/usr/bin`, `C:\Windows`) —
- *   one list for every platform.
- * - **Any drive's first-level directory** (`D:\media`, `E:\tmp`, `C:\Users`) —
- *   Claude Code's rule (`/^[A-Za-z]:\/[^/]+$/`), and the reason `rm -rf
- *   D:/media` cannot be waved through as "some folder the agent knows". It
- *   applies whether or not the directory is there: a deletion target is judged
- *   by what it names, and a name one level below a drive root is never an
- *   ordinary build artefact.
- * - **Paths that cannot be placed on a drive at all** — device and namespace
- *   paths (`\\.\PhysicalDrive0`, `\\?\GLOBALROOT\…`), and administrative shares
- *   that are not this machine's (`\\host\admin$`, `\\host\D$`) — refused rather
- *   than guessed at, because there is nothing local to compare them to.
- */
+/** true when [p] is one of the critical system directories itself. */
 export function isCriticalSystemDirectory(p: string): boolean {
-  const resolved = getSafeRealPath(path.resolve(p));
-  if (UNPLACEABLE_UNC.test(resolved)) return true;
-
-  const segments = segmentsBelowRoot(resolved);
-  if (segments.length === 0) return true; // a root, by definition
-  if (DRIVE_PATH.test(resolved) && segments.length === 1) return true;
-  return CRITICAL_SYSTEM_DIRS.has(segments.join("/").toLowerCase());
+  const resolved = path.resolve(p);
+  const parsed = path.parse(resolved);
+  const relative = resolved
+    .slice(parsed.root.length)
+    .replace(/[\\/]+$/, "")
+    .replace(/\\/g, "/")
+    .toLowerCase();
+  return relative.length > 0 && CRITICAL_SYSTEM_DIRS.has(relative);
 }

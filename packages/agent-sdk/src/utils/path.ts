@@ -1,5 +1,5 @@
 import { resolve } from "path";
-import { homedir, hostname } from "os";
+import { homedir } from "os";
 import { relative } from "path";
 
 /**
@@ -101,79 +101,4 @@ export function toWindowsPath(p: string): string {
   }
   // Already Windows or relative — just flip slashes
   return p.replace(/\//g, "\\");
-}
-
-/** `\\?\D:\x` or `\\?\D:` — a drive path behind the "no normalisation" prefix. */
-const VERBATIM_DRIVE = /^[\\/]{2}\?\\([A-Za-z]):(?=[\\/]|$)/;
-/** Any other `\\?\…` / `\\.\…` path: a device or a namespace, not a place on a drive. */
-const DEVICE_PATH = /^[\\/]{2}[?.][\\/]/;
-/** `//host/D$/x` — an administrative share, which always names that drive. */
-const ADMIN_SHARE = /^[\\/]{2}([^\\/]+)[\\/]([A-Za-z])\$(?=$|[\\/])/;
-/** `/c/x`, `/cygdrive/c/x`, `/proc/cygdrive/c/x` — MSYS. */
-const MSYS_DRIVE = /^\/(?:(?:proc\/)?cygdrive\/)?([A-Za-z])(?=\/|$)/;
-
-/**
- * Read a path the way the shell on Windows will read it.
- *
- * The **reverse** of {@link toWindowsPath}, and the direction a *judgment* has
- * to use. `toWindowsPath` answers "where does this shell output live on disk"
- * (`pwd -P` prints `/c/Users/foo`); this one answers "which directory does this
- * command line actually delete", where the model may have written any of Git
- * Bash's spellings: `rm -rf /d/x`, `rm -rf /cygdrive/d/x`,
- * `rm -rf //localhost/D$/x` and `rm -rf \\?\D:\x` all delete `D:\x`.
- *
- * Judging with the forward mapping instead is how "the path that gets judged is
- * not the path that gets deleted" happens: it turns `/usr` into `\usr` on the
- * *current* drive and `D:/x` into a form the drive-letter question no longer
- * recognises. So the comparison always runs on the restored spelling.
- *
- * Returns the path as written on non-Windows platforms, where none of these
- * spellings name a drive.
- */
-export function restoreWindowsPath(p: string): string {
-  if (process.platform !== "win32") return p;
-
-  const verbatim = p.match(VERBATIM_DRIVE);
-  if (verbatim) {
-    return withDriveRoot(verbatim[1]!, p.slice(verbatim[0].length));
-  }
-  // A device path (`\\?\GLOBALROOT\Device\…`, `\\.\PhysicalDrive0`) has no
-  // place on a drive, so there is nothing to restore. The callers refuse it.
-  if (DEVICE_PATH.test(p)) return p;
-
-  const admin = p.match(ADMIN_SHARE);
-  if (admin) {
-    const rest = p.slice(admin[0].length).replace(/\//g, "\\");
-    // `\\localhost\D$\x` is `D:\x` on this machine — the same drive, reached
-    // through the share Windows creates for it. Only the local host is expanded:
-    // another machine's `D$` is a different disk, so the share is kept as it is
-    // and `isCriticalSystemDirectory` refuses it instead of guessing.
-    if (isOwnHost(admin[1]!)) return withDriveRoot(admin[2]!, rest);
-    return `\\\\${admin[1]}\\${admin[2]!.toUpperCase()}$${rest}`;
-  }
-  // A UNC share is already native once the session separator is flipped.
-  if (p.startsWith("//")) return p.replace(/\//g, "\\");
-
-  const msys = p.match(MSYS_DRIVE);
-  if (msys) return withDriveRoot(msys[1]!, p.slice(msys[0].length));
-
-  return p;
-}
-
-/** `C` + `\rest` → `C:\rest`; an empty rest is the drive root itself. */
-function withDriveRoot(letter: string, rest: string): string {
-  return letter.toUpperCase() + ":" + (rest.replace(/\//g, "\\") || "\\");
-}
-
-/**
- * Does [host] name this machine? `localhost`, a loopback address, the host name
- * and its short form — the spellings that reach the same disks. Claude Code draws
- * the same line before it expands an administrative share (`ne` there), because
- * only then does `<letter>$` name a local drive.
- */
-function isOwnHost(host: string): boolean {
-  const name = host.toLowerCase().replace(/\.$/, "");
-  if (name === "localhost" || /^127(?:\.\d{1,3}){3}$/.test(name)) return true;
-  const own = hostname().toLowerCase();
-  return own.length > 0 && (name === own || name === own.split(".")[0]);
 }
