@@ -168,6 +168,13 @@ describe("replTool description", () => {
     expect(description()).toMatch(/inside the script are essentially free/);
   });
 
+  it("never names a tool the default configuration keeps out of the pool", () => {
+    // enableReplCoreTools defaults to off, so Read is flat-only: an example like
+    // `await tools.Read({...})` teaches a call that throws in a script (spec: the
+    // description names only what the announcement / tools.list() lists, or `$`).
+    expect(description()).not.toMatch(/tools\.Read\(|await Read\(/);
+  });
+
   it("defines what the output is", () => {
     expect(description()).toContain("value of the last expression");
     expect(description()).toContain("self.log(...)");

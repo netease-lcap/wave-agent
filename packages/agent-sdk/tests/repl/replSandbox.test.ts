@@ -338,8 +338,11 @@ describe("repl sandbox: sealed context", () => {
       expect(result.ok).toBe(false);
       expect(result.rejected).toBeUndefined();
       expect(result.error).toContain("sealed");
-      expect(result.error).toContain("Read({ file_path");
+      // Claude Code's shape: names the pool's tools, never a flat-only one (Read
+      // while enableReplCoreTools is off).
       expect(result.error).toContain("Glob({ pattern");
+      expect(result.error).toContain("Grep({ pattern");
+      expect(result.error).not.toContain("Read({");
     }
   });
 

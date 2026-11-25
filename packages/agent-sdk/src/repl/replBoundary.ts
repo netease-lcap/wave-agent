@@ -37,8 +37,11 @@
 /** Message used when a script reaches a code path the sealed context forbids. */
 export const REPL_SEALED_MESSAGE =
   "REPL scripts run in a sealed context: modules cannot be loaded, so import / import() / require are not available. " +
-  'Use the tools instead — for example await Read({ file_path: "..." }), await Glob({ pattern: "..." }), ' +
-  'await Grep({ pattern: "..." }), or await $`rg ...` for a shell command.';
+  // Names only what the default configuration keeps in the pool — the folded search
+  // pair and `$` — in Claude Code's shape (it names Read/Write/Glob; those are
+  // code-mode-only there, flat-only here while enableReplCoreTools is off).
+  'Use the tools instead — for example await Glob({ pattern: "..." }), await Grep({ pattern: "..." }), ' +
+  "or await $`rg ...` for a shell command.";
 
 /** Array entries moved across the boundary (spec: 4096). */
 export const REPL_MAX_ARRAY_ITEMS = 4096;
