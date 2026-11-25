@@ -35,6 +35,7 @@ import {
   NotificationChannel,
   NotificationLevel,
   NotificationLevels,
+  NotificationSound,
   ThemeSource,
   UpdateChannel,
   UserPreferenceKey,
@@ -94,16 +95,20 @@ export interface SettingsPageProps {
   onUpdateChannelChange?: (channel: UpdateChannel) => void;
   /** 系统通知三类的等级（仅桌面端传入；未传入 = 插件端或尚未收到 host 推送，
    *  不渲染「桌面端设置」区块的「系统通知」分组，spec desktop-notifications.md
-   *  故事 3 场景 7）。值是 host `desktopNotificationSettings` 广播的全量快照 +
+   *  故事 3 场景 9）。值是 host `desktopNotificationSettings` 广播的全量快照 +
    *  本实例的乐观改动；选择即时生效（onNotificationLevelsChange 触发 host
    *  setNotificationSettings），不依赖保存按钮。 */
   notificationLevels?: NotificationLevels;
-  /** 提示音开关（仅桌面端传入，与 notificationLevels 同来同去；默认开）。 */
-  notificationSound?: boolean;
+  /** 提示音（仅桌面端传入，与 notificationLevels 同来同去；默认「系统提示音」）。 */
+  notificationSound?: NotificationSound;
+  /** 「通知时提醒我」（仅桌面端传入，同上）：关着就不闪任务栏 / 弹 Dock。 */
+  notificationDrawAttention?: boolean;
   /** 用户改了某一类的等级，载荷只带**本次改动的类别**（host 侧合并）。 */
   onNotificationLevelsChange?: (patch: Partial<NotificationLevels>) => void;
   /** 用户切换提示音，host 持久化并静音/恢复后续系统通知。 */
-  onNotificationSoundChange?: (on: boolean) => void;
+  onNotificationSoundChange?: (sound: NotificationSound) => void;
+  /** 用户切换「通知时提醒我」，host 持久化并即时约束后续闪烁 / 弹跳。 */
+  onNotificationDrawAttentionChange?: (on: boolean) => void;
   /** 关闭设置页（desktop 返回会话视图 / 标签页关闭） */
   onClose: () => void;
   /** 写盘失败回执（宿主 `configurationError`）。设置页据此把乐观改动**回滚**到
@@ -279,6 +284,17 @@ const NOTIFICATION_LEVEL_OPTIONS = [
   { value: "mark", label: "仅标记（不弹窗）" },
   { value: "off", label: "关闭" },
 ];
+/** 「回合完成」只有两档（spec 故事 3 场景 1）：它不计入角标、也不触发闪烁 /
+ *  弹跳（故事 4 场景 2），「仅标记」在它身上与「关闭」表现完全相同 —— 给了就是
+ *  让用户选一个没有效果的档位（CC 桌面端同样是两档）。 */
+const NOTIFICATION_LEVEL_OPTIONS_IDLE = NOTIFICATION_LEVEL_OPTIONS.filter(
+  (option) => option.value !== "mark",
+);
+/** 提示音下拉（spec 故事 3 场景 5）：与 CC 桌面端「System sound / None」同两档。 */
+const NOTIFICATION_SOUND_OPTIONS = [
+  { value: "system", label: "系统提示音" },
+  { value: "none", label: "无" },
+];
 /** 「系统通知」分组的三行（顺序固定：权限请求 / 回答提问 / 回合完成）。 */
 const NOTIFICATION_ROWS: Array<{
   channel: NotificationChannel;
@@ -384,8 +400,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   onUpdateChannelChange,
   notificationLevels,
   notificationSound,
+  notificationDrawAttention,
   onNotificationLevelsChange,
   onNotificationSoundChange,
+  onNotificationDrawAttentionChange,
   onClose,
   configurationError,
   userAgentsContent,
@@ -1261,8 +1279,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                   configStore，不走 stdio updateConfiguration/共享 settings.json，
                   选择即时生效、无「保存」按钮。2026-09-08 拍板从「基础设置」拆出。
                   「系统通知」分组（spec desktop-notifications.md 故事 3）同属此档：
-                  经 setNotificationSettings 持久化于同一 configStore，三类等级 +
-                  提示音；插件端收不到 desktopNotificationSettings 广播，不渲染。 */}
+                  经 setNotificationSettings 持久化于同一 configStore，三类等级
+                  （回合完成只有两档）+ 提示音下拉 + 「通知时提醒我」开关；插件端
+                  收不到 desktopNotificationSettings 广播，不渲染。 */}
               {(themeSource !== undefined ||
                 updateChannel !== undefined ||
                 notificationLevels !== undefined) && (
@@ -1338,7 +1357,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                 testId={`settings-select-notification-${row.channel}`}
                                 label={`${row.title}提醒`}
                                 value={notificationLevels[row.channel]}
-                                options={NOTIFICATION_LEVEL_OPTIONS}
+                                options={
+                                  row.channel === "idle"
+                                    ? NOTIFICATION_LEVEL_OPTIONS_IDLE
+                                    : NOTIFICATION_LEVEL_OPTIONS
+                                }
                                 onChange={(next) =>
                                   onNotificationLevelsChange?.({
                                     [row.channel]: next as NotificationLevel,
@@ -1353,15 +1376,53 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                             <h3>提示音</h3>
                             <p>系统通知弹出时播放提示音</p>
                           </div>
+                          <div className="settings-control">
+                            <SettingsSelect
+                              testId="settings-select-notification-sound"
+                              label="提示音"
+                              value={notificationSound ?? "system"}
+                              options={NOTIFICATION_SOUND_OPTIONS}
+                              onChange={(next) =>
+                                onNotificationSoundChange?.(
+                                  next as NotificationSound,
+                                )
+                              }
+                            />
+                          </div>
+                        </div>
+                        <div className="settings-row">
+                          <div className="settings-row-copy">
+                            <h3>通知时提醒我</h3>
+                            <p>
+                              {notificationLevels.permission === "off" &&
+                              notificationLevels.question === "off"
+                                ? "权限请求和回答提问都是「关闭」，这条不会触发"
+                                : "窗口不在前台时，弹跳 Dock 图标（macOS）/ 闪烁任务栏按钮（Windows）"}
+                            </p>
+                          </div>
                           <label className="settings-switch">
                             <input
                               type="checkbox"
-                              aria-label="提示音"
-                              data-testid="settings-switch-notification-sound"
-                              checked={notificationSound ?? true}
-                              onChange={(e) =>
-                                onNotificationSoundChange?.(e.target.checked)
+                              aria-label="通知时提醒我"
+                              data-testid="settings-switch-notification-draw-attention"
+                              checked={notificationDrawAttention ?? false}
+                              disabled={
+                                notificationLevels.permission === "off" &&
+                                notificationLevels.question === "off"
                               }
+                              onChange={(e) => {
+                                // 置灰时不可切换（spec 故事 3 场景 7）：disabled 已
+                                // 挡住真实点击，这里再挡一次自动化派发。
+                                if (
+                                  notificationLevels.permission === "off" &&
+                                  notificationLevels.question === "off"
+                                ) {
+                                  return;
+                                }
+                                onNotificationDrawAttentionChange?.(
+                                  e.target.checked,
+                                );
+                              }}
                             />
                             <span className="settings-switch-slider"></span>
                           </label>

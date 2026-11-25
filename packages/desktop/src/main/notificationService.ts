@@ -47,6 +47,10 @@ export type NotificationChannel = "permission" | "question" | "idle";
  * （故事 4），不弹窗（故事 3 场景 3）；`off` = 什么都不做、不计数，屏上已有的
  * 那条由宿主在等级变更时 `closeChannel` 按类别撤（故事 3 场景 4 / 6），service
  * 的 off 分支不碰它。
+ *
+ * **`mark` 只属于确认类**：回合完成不计角标、也不触发闪烁 / 弹跳（故事 4 场景
+ * 2），「仅标记」在它身上与 `off` 表现完全相同，所以设置页不给它这一档，落盘
+ * 校验也拒绝（`configStore.ts` 的 `isNotificationLevelFor`）。
  */
 export type NotificationLevel = "banner" | "mark" | "off";
 
@@ -141,8 +145,15 @@ export interface NotificationServiceDeps {
    * 再通知 service 一声。等级是设置的事，请求入参不带。
    */
   getLevel: (channel: NotificationChannel) => NotificationLevel;
-  /** 提示音开关（故事 3 场景 5）：`false` 时发出的通知静音。同样现读。 */
+  /** 提示音（故事 3 场景 5）：`false` 时发出的通知静音。同样现读；设置里是
+   *  「系统提示音 / 无」两档，映射成布尔由宿主做。 */
   getSound: () => boolean;
+  /**
+   * 「通知时提醒我」开关（故事 3 场景 6 / 故事 4 场景 2）：关闭时**不发**闪烁 /
+   * 弹跳，角标与系统通知照旧。默认关闭（与 CC 桌面端的 dockBounceEnabled 同口径）。
+   * 每次事件现读，改完即时生效。
+   */
+  getDrawAttention: () => boolean;
   /** 故事 4：任务栏闪烁 / Dock 弹跳 / 角标。必填 —— 漏接就是「仅标记」什么都不剩。 */
   attention: AttentionDeps;
   /**
@@ -281,10 +292,11 @@ export class NotificationService {
       this.retract(request.session);
       return false;
     }
-    // 不在场：闪 / 弹一下（spec 故事 4 场景 2）。「仅标记」到此为止 —— 不弹窗
-    // （故事 3 场景 3），角标与闪烁就是它全部的信号。banner 再往下 post，平台
-    // 支持在那里判：角标 / 闪烁不经过系统通知，Linux 没有通知守护进程时照常。
-    this.startAttention();
+    // 不在场：开关开着才闪 / 弹一下（spec 故事 4 场景 2；开关叫「通知时提醒我」，
+    // 默认关闭）。「仅标记」到此为止 —— 不弹窗（故事 3 场景 3），角标（开关关着
+    // 时它就是唯一信号）与闪烁就是它全部的信号。banner 再往下 post，平台支持在
+    // 那里判：角标 / 闪烁不经过系统通知，Linux 没有通知守护进程时照常。
+    if (this.deps.getDrawAttention()) this.startAttention();
     if (level !== "banner") return false;
     return this.post(request, request.channel);
   }
@@ -307,7 +319,10 @@ export class NotificationService {
     // 通知，而这里要保的恰恰是那条确认通知。
     if (this.showingConfirmation(request.session)) return false;
     const level = this.deps.getLevel("idle");
-    if (level === "off") {
+    // 回合完成只有「弹窗提醒」「关闭」两档（spec 故事 3 场景 1）：`mark` 落不到
+    // 这里（configStore / host / webview 三处落盘与消息校验都拒绝），万一来了
+    // 也按「关闭」处理 —— 它本来就不计角标、不闪不弹，没有「仅标记」可言。
+    if (level !== "banner") {
       this.retract(request.session);
       return false;
     }
@@ -317,10 +332,9 @@ export class NotificationService {
       this.retract(request.session);
       return false;
     }
-    // 闪烁 / 弹跳一下就够（spec 故事 4 场景 2），不计数：回合完成不是「在等人
-    // 点头」，角标只数等待确认的会话（故事 4 场景 1）。
-    this.startAttention();
-    if (level !== "banner") return false;
+    // 回合完成**不闪不弹**（spec 故事 4 场景 2）：它不是「需要你介入」，CC 桌面端
+    // 的 Dock 弹跳 / 任务栏闪烁也只对确认类生效。这里只剩两档：上面 `off` 已经
+    // 提前返回，走到这就是「弹窗提醒」。
     return this.post(request, "idle");
   }
 
@@ -463,7 +477,8 @@ export class NotificationService {
    * 闪一次；`bounce()` 每次都调 —— macOS 的 informational 弹跳只弹一秒就自停，
    * 守卫会吞掉同一阵里后续事件的弹跳（第一个事件弹完停了，30 秒后的第二个就
    * 再也叫不响），实现方覆盖上一个请求 id 即可，旧的在应用激活时自然结束。
-   * 不碰角标 —— 回合完成也走这里，而它不计数。
+   * 不碰角标 —— 角标只数等待确认的会话（故事 4 场景 1），与闪烁解耦。只有确认类
+   * 事件会走到这里（回合完成不闪不弹，故事 4 场景 2）。
    */
   private startAttention(): void {
     if (!this.attentionLive) {

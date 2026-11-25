@@ -4039,13 +4039,15 @@ describe("system notifications (desktop-notifications.md story 3)", () => {
       ...ALL_BANNER,
       idle: "off",
     });
-    // sound was not in the patch → untouched.
-    expect(store.getNotificationSound()).toBe(true);
+    // sound / drawAttention were not in the patch → untouched.
+    expect(store.getNotificationSound()).toBe("system");
+    expect(store.getNotificationDrawAttention()).toBe(false);
     const broadcasts = settingsSent(rawSent);
     expect(broadcasts.at(-1)).toEqual({
       command: "desktopNotificationSettings",
       levels: { ...ALL_BANNER, idle: "off" },
-      sound: true,
+      sound: "system",
+      drawAttention: false,
     });
     // Window-level like desktopUpdateChannel: the settings page's root instance
     // does not consume pane-tagged messages.
@@ -4109,12 +4111,12 @@ describe("system notifications (desktop-notifications.md story 3)", () => {
     expect(notifications()).toHaveLength(1);
   });
 
-  it("sound: false mutes the notifications that follow (scenario 5)", async () => {
+  it("sound:「无」mutes the notifications that follow (scenario 5)", async () => {
     const { host, store, setFocused } = await readyHost();
     const agent1 = seedSession(store, "sess-1", "任务A");
     setFocused(false);
 
-    await setSettings(host, { sound: false });
+    await setSettings(host, { sound: "none" });
     agent1.callbacks.onLoadingChange(true);
     agent1.callbacks.onLoadingChange(false);
     expect(notifications()).toHaveLength(1);
@@ -4123,15 +4125,34 @@ describe("system notifications (desktop-notifications.md story 3)", () => {
     expect(store.getNotificationLevels()).toEqual(ALL_BANNER);
   });
 
+  it("drawAttention: 开关进广播与落盘，且不改 levels（场景 6）", async () => {
+    const { host, store, rawSent } = await readyHost();
+
+    await setSettings(host, { drawAttention: true });
+
+    expect(store.getNotificationDrawAttention()).toBe(true);
+    expect(store.getNotificationLevels()).toEqual(ALL_BANNER);
+    expect(settingsSent(rawSent).at(-1)).toMatchObject({
+      levels: ALL_BANNER,
+      sound: "system",
+      drawAttention: true,
+    });
+    expect(
+      JSON.parse(h.files.get(STORE_PATH)?.toString() ?? "{}")
+        .notificationDrawAttention,
+    ).toBe(true);
+  });
+
   it("ignores malformed items wholesale and still broadcasts the (unchanged) full state", async () => {
     const { host, store, rawSent } = await readyHost();
-    await setSettings(host, { levels: { idle: "off" }, sound: false });
+    await setSettings(host, { levels: { idle: "off" }, sound: "none" });
     const before = settingsSent(rawSent).length;
 
     await expect(
       setSettings(host, {
         levels: { idle: "loud", permission: "banner" },
         sound: "no",
+        drawAttention: "yes",
       }),
     ).resolves.toBeUndefined();
 
@@ -4141,12 +4162,20 @@ describe("system notifications (desktop-notifications.md story 3)", () => {
       ...ALL_BANNER,
       idle: "off",
     });
-    expect(store.getNotificationSound()).toBe(false);
+    expect(store.getNotificationSound()).toBe("none");
     const broadcasts = settingsSent(rawSent);
     expect(broadcasts).toHaveLength(before + 1);
     expect(broadcasts.at(-1)).toMatchObject({
       levels: { ...ALL_BANNER, idle: "off" },
-      sound: false,
+      sound: "none",
+      drawAttention: false,
+    });
+
+    // 回合完成的「仅标记」与坏值同级：落盘校验拒绝，保持原值。
+    await setSettings(host, { levels: { idle: "mark" } });
+    expect(store.getNotificationLevels()).toEqual({
+      ...ALL_BANNER,
+      idle: "off",
     });
   });
 
@@ -4157,23 +4186,30 @@ describe("system notifications (desktop-notifications.md story 3)", () => {
     expect(pushes.at(-1)).toEqual({
       command: "desktopNotificationSettings",
       levels: ALL_BANNER,
-      sound: true,
+      sound: "system",
+      drawAttention: false,
     });
 
     // 重启后保持（场景 5 / 场景 6）：磁盘上的偏好随启动下发一起推给设置页。
     new ConfigStore(STORE_PATH).setNotificationLevels({ question: "mark" });
-    new ConfigStore(STORE_PATH).setNotificationSound(false);
+    new ConfigStore(STORE_PATH).setNotificationSound("none");
+    new ConfigStore(STORE_PATH).setNotificationDrawAttention(true);
     const restored = await readyHost();
     expect(settingsSent(restored.rawSent).at(-1)).toMatchObject({
       levels: { ...ALL_BANNER, question: "mark" },
-      sound: false,
+      sound: "none",
+      drawAttention: true,
     });
   });
 
   it("setNotificationSettings never touches settings.json (scenario 6)", async () => {
     const { host, store } = await readyHost();
 
-    await setSettings(host, { levels: { idle: "off" }, sound: false });
+    await setSettings(host, {
+      levels: { idle: "off" },
+      sound: "none",
+      drawAttention: true,
+    });
 
     // settings.json is written only through updateUserSettings in the session
     // process (the user-preference path); the notification settings are a
@@ -4185,7 +4221,8 @@ describe("system notifications (desktop-notifications.md story 3)", () => {
     // They land in wave-desktop.json instead, next to theme / updateChannel.
     const onDisk = JSON.parse(h.files.get(STORE_PATH)?.toString() ?? "{}");
     expect(onDisk.notificationLevels).toEqual({ ...ALL_BANNER, idle: "off" });
-    expect(onDisk.notificationSound).toBe(false);
+    expect(onDisk.notificationSound).toBe("none");
+    expect(onDisk.notificationDrawAttention).toBe(true);
     expect(onDisk).not.toHaveProperty("configuration.notificationLevels");
   });
 });
@@ -4249,10 +4286,19 @@ describe("system notifications (desktop-notifications.md story 4)", () => {
       toolInput: { command: "pnpm test" },
     });
 
+  /**
+   * 打开「通知时提醒我」（产品默认关，与 CC 桌面端的 dockBounceEnabled 同口径）：
+   * 本段所有关于任务栏闪烁 / Dock 弹跳的断言都要它，否则 flash / bounce 一次都不发。
+   */
+  async function enableFlash(host: ReturnType<typeof createHost>["host"]) {
+    await setSettings(host, { drawAttention: true });
+  }
+
   it("a confirmation arriving unfocused badges 1 and flashes; focus stops the flash; answering clears the badge", async () => {
     const { host, store, sent, win, setFocused, fire } = await readyHost();
     const agent = seedSession(store, "sess-1", "任务A");
     setFocused(false);
+    await enableFlash(host);
 
     permissionRequest(agent, "req-1");
 
@@ -4293,6 +4339,7 @@ describe("system notifications (desktop-notifications.md story 4)", () => {
     });
     const agent2 = seedSession(store, "sess-2", "任务B");
     setFocused(false);
+    await enableFlash(host);
 
     permissionRequest(agent1, "req-1");
     permissionRequest(agent2, "req-2");
@@ -4315,7 +4362,10 @@ describe("system notifications (desktop-notifications.md story 4)", () => {
     const { host, store, win, setFocused } = await readyHost();
     const agent = seedSession(store, "sess-1", "任务A");
     setFocused(false);
-    await setSettings(host, { levels: { permission: "mark" } });
+    await setSettings(host, {
+      levels: { permission: "mark" },
+      drawAttention: true,
+    });
 
     permissionRequest(agent, "req-1");
 
@@ -4378,9 +4428,10 @@ describe("system notifications (desktop-notifications.md story 4)", () => {
     const dock = appMock.dock;
     appMock.__setDock(undefined);
     try {
-      const { store, setFocused } = await readyHost();
+      const { host, store, setFocused } = await readyHost();
       const agent = seedSession(store, "sess-1", "任务A");
       setFocused(false);
+      await enableFlash(host);
 
       permissionRequest(agent, "req-1");
 
@@ -4449,12 +4500,13 @@ describe("system notifications (desktop-notifications.md story 4)", () => {
   it("setNotificationSettings still broadcasts the full state after a downgrade", async () => {
     const { host, rawSent } = await readyHost();
 
-    await setSettings(host, { levels: { idle: "mark" } });
+    await setSettings(host, { levels: { permission: "mark" } });
 
     expect(rawSent("desktopNotificationSettings").at(-1)).toEqual({
       command: "desktopNotificationSettings",
-      levels: { ...ALL_BANNER, idle: "mark" },
-      sound: true,
+      levels: { ...ALL_BANNER, permission: "mark" },
+      sound: "system",
+      drawAttention: false,
     });
   });
 });

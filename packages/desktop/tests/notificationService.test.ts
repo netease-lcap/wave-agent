@@ -99,21 +99,30 @@ function makeService(
     iconPath: "/fake/icon.png",
     createNotification: factory.createNotification,
     ...opts.deps,
-    // 故事 3 的两个 getter 必填：缺省 = 开箱状态（三类「弹窗」、提示音开），
-    // 用例按需覆盖 —— 等级不再走请求入参，设置是唯一来源。
+    // 故事 3 的三个 getter 必填：缺省 = 开箱状态（三类「弹窗」、提示音开、
+    // 「通知时提醒我」开），用例按需覆盖 —— 等级不再走请求入参，设置是唯一来源。
     getLevel: opts.deps?.getLevel ?? BANNER_SETTINGS.getLevel,
     getSound: opts.deps?.getSound ?? BANNER_SETTINGS.getSound,
+    getDrawAttention:
+      opts.deps?.getDrawAttention ?? BANNER_SETTINGS.getDrawAttention,
     // 故事 4 的四个信号必填：恒接同一组 spy，用例经返回值断言 / 改实现。
     attention,
   });
   return { service, win, factory, attention };
 }
 
-/** 故事 3 两个必填 getter 的开箱值：三类都「弹窗」、提示音开。 */
+/** 故事 3 三个必填 getter 的开箱值：三类都「弹窗」、提示音开、「通知时提醒我」开。
+ *  提醒开关的产品默认是**关**（与 CC 桌面端 dockBounceEnabled 同口径，见 configStore
+ *  的 DEFAULT_NOTIFICATION_DRAW_ATTENTION）；这里取「开」只是为了让本文的闪 / 弹
+ *  用例不必逐条打开它，关的那一档由 story 3 场景 6 的两条用例覆盖。 */
 const BANNER_SETTINGS = {
   getLevel: () => "banner",
   getSound: () => true,
-} satisfies Pick<NotificationServiceDeps, "getLevel" | "getSound">;
+  getDrawAttention: () => true,
+} satisfies Pick<
+  NotificationServiceDeps,
+  "getLevel" | "getSound" | "getDrawAttention"
+>;
 
 const SESSION = { host: "local", sessionId: "sess-1" };
 const OTHER_SESSION = { host: "local", sessionId: "sess-2" };
@@ -707,12 +716,15 @@ describe("NotificationService", () => {
       expect(attention.flashFrame).not.toHaveBeenCalled();
 
       probe.focused = false;
-      service.notifyTurnEnd(turnEnd({ session: OTHER_SESSION }));
-      // The flash starts now (the user is away); the badge already said 1 —
-      // the icon never showed a wrong number in between.
+      // 回合完成已经不闪了（故事 3 场景 1），换第二个会话的确认来起闪。
+      service.notifyConfirmation(
+        request({ session: OTHER_SESSION, channel: "question" }),
+      );
+      // The flash starts now (the user is away); the badge already said 1 and
+      // goes straight to 2 — the icon never showed a wrong number in between.
       expect(attention.flashFrame).toHaveBeenCalledWith(true);
-      expect(attention.setBadgeCount).toHaveBeenCalledTimes(1);
-      expect(badge(attention)).toBe(1);
+      expect(attention.setBadgeCount).toHaveBeenCalledTimes(2);
+      expect(badge(attention)).toBe(2);
     });
 
     it("mark: no banner, but a badge and one flash (story 3 scenario 3)", () => {
@@ -730,11 +742,13 @@ describe("NotificationService", () => {
       expect(badge(attention)).toBe(0);
     });
 
-    it("a finished turn flashes but never badges (scenario 2)", () => {
+    it("a finished turn neither flashes, bounces nor badges (story 3 场景 1 / 故事 4 场景 2)", () => {
+      // 回合完成只有「弹窗提醒」「关闭」两档：它不计角标、也不闪不弹，
+      //「仅标记」在它身上与「关闭」完全相同，所以没有那个档位。
       const { service, attention } = makeService(background);
-      service.notifyTurnEnd(turnEnd());
-      expect(attention.flashFrame).toHaveBeenCalledWith(true);
-      expect(attention.bounce).toHaveBeenCalledTimes(1);
+      expect(service.notifyTurnEnd(turnEnd())).toBe(true);
+      expect(attention.flashFrame).not.toHaveBeenCalled();
+      expect(attention.bounce).not.toHaveBeenCalled();
       expect(attention.setBadgeCount).not.toHaveBeenCalled();
     });
 
@@ -755,7 +769,7 @@ describe("NotificationService", () => {
 
     it("a focus with nothing flashing touches nothing", () => {
       const { service, attention } = makeService(background);
-      service.notifyTurnEnd(turnEnd());
+      // 没有任何事件 → 从没起过闪。
       service.stopAttention();
       attention.flashFrame.mockClear();
       attention.cancelBounce.mockClear();
@@ -772,9 +786,9 @@ describe("NotificationService", () => {
       service.notifyConfirmation(
         request({ session: OTHER_SESSION, channel: "question" }),
       );
-      service.notifyTurnEnd(
-        turnEnd({ session: { host: "local", sessionId: "sess-3" } }),
-      );
+      // 第三个事件仍是确认类（回合完成不闪了，故事 3 场景 1）：同一会话再来的
+      // 一条不重计角标，所以下面的 badge 仍是 2。
+      service.notifyConfirmation(request());
       // Flash: one round for the burst (Windows keeps flashing until stopped).
       expect(attention.flashFrame).toHaveBeenCalledTimes(1);
       expect(attention.flashFrame).toHaveBeenCalledWith(true);
@@ -786,9 +800,7 @@ describe("NotificationService", () => {
       // Back to front → away again: the guard was reset on focus, so the next
       // event starts a fresh flash round (and bounces again).
       service.stopAttention();
-      service.notifyTurnEnd(
-        turnEnd({ session: { host: "local", sessionId: "sess-3" } }),
-      );
+      service.notifyConfirmation(request());
       expect(attention.flashFrame.mock.calls).toEqual([
         [true],
         [false],
@@ -871,6 +883,9 @@ describe("NotificationService", () => {
       expect(factory.created).toHaveLength(0);
       expect(service.isShowing(REMOTE)).toBe(false);
       probe.focused = false;
+      // 回合完成已经不闪了（故事 3 场景 1）：用**同一会话**再来一条确认起闪 ——
+      // 同会话不重计角标，badge 仍是 1。另外给 local 造一条横幅，验证不越界。
+      service.notifyConfirmation(request({ session: REMOTE }));
       service.notifyTurnEnd(turnEnd({ session: OTHER_SESSION }));
       expect(attention.flashFrame).toHaveBeenCalledWith(true);
 
@@ -889,6 +904,8 @@ describe("NotificationService", () => {
       expect(badge(attention)).toBe(1);
       expect(factory.created).toHaveLength(0);
       probe.focused = false;
+      // 同上：同会话再来一条确认才起闪（回合完成不闪了）。
+      service.notifyConfirmation(request());
       service.notifyTurnEnd(turnEnd({ session: OTHER_SESSION }));
       expect(attention.flashFrame).toHaveBeenCalledWith(true);
 
@@ -897,6 +914,37 @@ describe("NotificationService", () => {
       expect(attention.setBadgeCount).toHaveBeenLastCalledWith(0);
       expect(attention.flashFrame).toHaveBeenLastCalledWith(false);
       expect(service.isShowing(OTHER_SESSION)).toBe(false);
+    });
+
+    it("「通知时提醒我」关闭时确认类不闪不弹，但横幅与角标照旧（故事 3 场景 6）", () => {
+      const { service, factory, attention } = makeService({
+        ...background,
+        deps: { getDrawAttention: () => false },
+      });
+      expect(service.notifyConfirmation(request())).toBe(true);
+      // 开关只管闪 / 弹：系统通知（故事 1）与角标（故事 4 场景 1）不受影响。
+      expect(factory.created).toHaveLength(1);
+      expect(factory.created[0].show).toHaveBeenCalledTimes(1);
+      expect(badge(attention)).toBe(1);
+      expect(attention.flashFrame).not.toHaveBeenCalled();
+      expect(attention.bounce).not.toHaveBeenCalled();
+    });
+
+    it("「通知时提醒我」每次事件现读（改完即时生效）", () => {
+      let draw = false;
+      const { service, attention } = makeService({
+        ...background,
+        deps: { getDrawAttention: () => draw },
+      });
+      service.notifyConfirmation(request());
+      expect(attention.bounce).not.toHaveBeenCalled();
+
+      draw = true;
+      service.notifyConfirmation(
+        request({ body: "命令执行待确认：pnpm lint" }),
+      );
+      expect(attention.flashFrame).toHaveBeenCalledWith(true);
+      expect(attention.bounce).toHaveBeenCalledTimes(1);
     });
   });
 });

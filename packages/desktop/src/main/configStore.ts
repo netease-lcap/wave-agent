@@ -91,8 +91,20 @@ export const NOTIFICATION_CHANNELS = Object.keys(
   DEFAULT_NOTIFICATION_LEVELS,
 ) as NotificationChannel[];
 
-/** 提示音缺省：开（故事 3 场景 5）。 */
-export const DEFAULT_NOTIFICATION_SOUND = true;
+/**
+ * 提示音两档（故事 3 场景 5）：`system` = 系统提示音，`none` = 静音。与 CC 桌面端
+ *  `notificationSound` 的取值同形 —— 它也是「System sound / None」两档下拉。
+ */
+export type NotificationSound = "system" | "none";
+
+/** 提示音缺省：系统提示音（故事 3 场景 5）。 */
+export const DEFAULT_NOTIFICATION_SOUND: NotificationSound = "system";
+
+/**
+ * 「通知时提醒我」缺省：关（故事 3 场景 6）。开着才在确认类事件上闪任务栏 /
+ * 弹 Dock —— 与 CC 桌面端的 dockBounceEnabled 默认关同口径。
+ */
+export const DEFAULT_NOTIFICATION_DRAW_ATTENTION = false;
 
 /**
  * A recent workdir, tagged with the host it lives on. `host` is the ssh config
@@ -148,8 +160,10 @@ interface StoreData {
   updateChannel: UpdateChannel;
   /** Per-channel notification level (设置页「系统通知」分组，desktop-notifications.md 故事 3). Defaults to all "banner". */
   notificationLevels: Record<NotificationChannel, NotificationLevel>;
-  /** Notification sound switch (故事 3 场景 5). Defaults to true. */
-  notificationSound: boolean;
+  /** Notification sound (故事 3 场景 5): "system" | "none". Defaults to "system". */
+  notificationSound: NotificationSound;
+  /** 「通知时提醒我」(故事 3 场景 6): 闪烁 / 弹跳的总开关. Defaults to false. */
+  notificationDrawAttention: boolean;
   /** Disk form: WorkdirRef, or legacy plain strings migrated to {host:'local', path} on load. */
   recentWorkdirs: Array<string | WorkdirRef>;
   sessions: SessionIndexEntry[];
@@ -190,10 +204,8 @@ export class ConfigStore {
         notificationLevels: normalizeNotificationLevels(
           parsed.notificationLevels,
         ),
-        notificationSound:
-          typeof parsed.notificationSound === "boolean"
-            ? parsed.notificationSound
-            : DEFAULT_NOTIFICATION_SOUND,
+        notificationSound: parseNotificationSound(parsed.notificationSound),
+        notificationDrawAttention: parsed.notificationDrawAttention === true,
         // Legacy plain-string entries (pre-remote) become local-host refs.
         // Deduped on load so older data where one directory was persisted with
         // two slash styles (e.g. `C:\a` and `C:/a`) collapses into one entry.
@@ -238,6 +250,7 @@ export class ConfigStore {
         updateChannel: "stable",
         notificationLevels: { ...DEFAULT_NOTIFICATION_LEVELS },
         notificationSound: DEFAULT_NOTIFICATION_SOUND,
+        notificationDrawAttention: DEFAULT_NOTIFICATION_DRAW_ATTENTION,
         recentWorkdirs: [],
         sessions: [],
         artifactCategories: {},
@@ -352,14 +365,25 @@ export class ConfigStore {
     this.save();
   }
 
-  /** 通知提示音开关（缺省开）。 */
-  getNotificationSound(): boolean {
+  /** 通知提示音（缺省「系统提示音」）。 */
+  getNotificationSound(): NotificationSound {
     return this.data.notificationSound;
   }
 
-  /** Persist the notification sound switch (the host reads it per notification). */
-  setNotificationSound(on: boolean): void {
-    this.data.notificationSound = on;
+  /** Persist the notification sound (the host reads it per notification). */
+  setNotificationSound(sound: NotificationSound): void {
+    this.data.notificationSound = sound;
+    this.save();
+  }
+
+  /** 「通知时提醒我」（缺省关）：闪烁 / 弹跳的总开关。 */
+  getNotificationDrawAttention(): boolean {
+    return this.data.notificationDrawAttention;
+  }
+
+  /** Persist the attention switch (the host reads it per confirmation). */
+  setNotificationDrawAttention(on: boolean): void {
+    this.data.notificationDrawAttention = on;
     this.save();
   }
 
@@ -640,11 +664,38 @@ function isUpdateChannel(value: unknown): value is UpdateChannel {
   return value === "stable" || value === "beta";
 }
 
-/** Type guard for notification level values (disk + webview `setNotificationSettings`). */
+/**
+ * 磁盘上的提示音守卫。旧版本把它存成布尔（true = 有声音）—— 迁移成两档而不是
+ * 回缺省：用户刻意关掉的提示音不该在升级后自己响回来。新旧都对不上才回缺省。
+ */
+function parseNotificationSound(raw: unknown): NotificationSound {
+  if (raw === "system" || raw === "none") return raw;
+  if (raw === true) return "system";
+  if (raw === false) return "none";
+  return DEFAULT_NOTIFICATION_SOUND;
+}
+
+/**
+ * Type guard for notification level values (disk + webview `setNotificationSettings`).
+ * 类别相关的那条规则在 `isNotificationLevelFor`。
+ */
 export function isNotificationLevel(
   value: unknown,
 ): value is NotificationLevel {
   return value === "banner" || value === "mark" || value === "off";
+}
+
+/**
+ * 某类别可选的等级：`idle` 没有「仅标记」（spec 故事 3 场景 1）—— 回合完成不
+ * 计角标、也不闪不弹（故事 4 场景 2），「仅标记」在它身上与「关闭」表现相同。
+ * 落盘与 webview 上送两条路都按这条判：坏值回缺省 / 忽略，不猜用户意图。
+ */
+export function isNotificationLevelFor(
+  channel: NotificationChannel,
+  value: unknown,
+): value is NotificationLevel {
+  if (value === "banner" || value === "off") return true;
+  return value === "mark" && channel !== "idle";
 }
 
 /**
@@ -666,7 +717,7 @@ function normalizeNotificationLevels(
   const levels = { ...DEFAULT_NOTIFICATION_LEVELS };
   for (const channel of NOTIFICATION_CHANNELS) {
     const level = record[channel];
-    if (isNotificationLevel(level)) levels[channel] = level;
+    if (isNotificationLevelFor(channel, level)) levels[channel] = level;
   }
   return levels;
 }
