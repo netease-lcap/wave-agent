@@ -976,8 +976,12 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           // `end` carries the authoritative final values.
           setMessages((prev) => applyToolBlockUpdate(prev, params));
         },
-        onNoticeAdded: ({ level, content }) => {
-          remoteStream?.onNoticeAdded({ level, content });
+        onNoticeAdded: (notice) => {
+          // The whole notice, `scope` included: the phone needs the
+          // turn/event distinction as much as the desktop does. The local
+          // block below stores level and content only.
+          const { level, content } = notice;
+          remoteStream?.onNoticeAdded(notice);
           if (isExpandedRef.current) return;
           // One-shot structural update — applied directly (a failure must not
           // be delayed by the tool-running window; a hook's round line must

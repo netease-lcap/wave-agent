@@ -1115,8 +1115,16 @@ export class HookManager {
 
     switch (event) {
       case "UserPromptSubmit":
-        // Block prompt processing, show error to user, erase prompt
-        messageManager.addNoticeBlock(this.hookNoticeText(result), "error");
+        // Block prompt processing, show error to user, erase prompt.
+        // `"turn"`: the prompt never reaches the model and the caller
+        // releases the loading state it reserved right after — from the
+        // host's side a full turn ended in this error. The other events
+        // below stay event-scoped: the turn runs on past them.
+        messageManager.addNoticeBlock(
+          this.hookNoticeText(result),
+          "error",
+          "turn",
+        );
         messageManager.removeLastUserMessage();
         return {
           shouldBlock: true,

@@ -82,6 +82,8 @@ import type {
   DesktopPanelKind,
   FileViewState,
   Message,
+  NotificationLevel,
+  NotificationLevels,
   OpenFileTab,
   PanelTab,
   PrefillDraftRequest,
@@ -279,6 +281,12 @@ const autoPanelWidth = (containerW: number): number => {
   );
   return Math.max(PANEL_MIN_WIDTH, containerW - conversation);
 };
+
+/** `desktopNotificationSettings.levels` 的值守卫（镜像 desktopHost 侧
+ *  isNotificationLevel）：三档之外一律视为坏载荷，整条消息丢弃而不是让某一
+ *  行静默回落到第一项「弹窗提醒」。 */
+const isNotificationLevel = (value: unknown): value is NotificationLevel =>
+  value === "banner" || value === "mark" || value === "off";
 
 /**
  * Any background task (shell / subagent / workflow) still running in the
@@ -814,6 +822,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // 驱动（见「接收 Beta 版更新」开关重启后回落的修复）。VSCE/JetBrains 无此
   // 字段，恒为默认 "stable" 且不渲染开关行。
   const [updateChannel, setUpdateChannel] = useState<UpdateChannel>("stable");
+  // 桌面端系统通知设置（host 为真源，spec desktop-notifications.md 故事 3）：同上，
+  // 只由窗口级广播 desktopNotificationSettings 驱动。初值 undefined = 尚未收到
+  // host 推送 / 插件端——设置页据此不渲染「系统通知」分组（场景 7）；收到后是
+  // 三类等级的全量快照，用户改动先乐观合并、再由 host 回广播对齐。
+  const [notificationLevels, setNotificationLevels] = useState<
+    NotificationLevels | undefined
+  >(undefined);
+  const [notificationSound, setNotificationSound] = useState<
+    boolean | undefined
+  >(undefined);
   // Context-usage percentage pushed by the host (batch 2 compress button).
   // Undefined = no usage info received yet (spec 场景 4: label without %).
   const [contextUsage, setContextUsage] = useState<number | undefined>();
@@ -3097,6 +3115,24 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // 选中态 in sync on every instance after the toggle is flipped.
         if (message.channel === "beta" || message.channel === "stable") {
           setUpdateChannel(message.channel);
+        }
+        break;
+      case "desktopNotificationSettings":
+        // 系统通知设置广播（全量快照）——设置页「系统通知」分组的三行 + 提示音
+        // 开关据此对齐。三个类别的值都必须合法、sound 必须是 boolean 才写：半截
+        // 载荷会让分组以残缺状态渲染（某行回落到第一项），宁可保持上一份。
+        if (
+          isNotificationLevel(message.levels?.permission) &&
+          isNotificationLevel(message.levels?.question) &&
+          isNotificationLevel(message.levels?.idle) &&
+          typeof message.sound === "boolean"
+        ) {
+          setNotificationLevels({
+            permission: message.levels.permission,
+            question: message.levels.question,
+            idle: message.levels.idle,
+          });
+          setNotificationSound(message.sound);
         }
         break;
       case "showToast":
@@ -6932,6 +6968,19 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // 乐观更新本实例选中态；host 持久化后回广播 desktopUpdateChannel（幂等）。
         setUpdateChannel(channel);
         postToHost({ command: "setUpdateChannel", channel });
+      }}
+      notificationLevels={notificationLevels}
+      notificationSound={notificationSound}
+      onNotificationLevelsChange={(patch) => {
+        // 乐观合并本实例选中态；host 持久化后回全量广播 desktopNotificationSettings。
+        // 分组只在收到过快照（prev 已定义）后才渲染，`prev &&` 只是把这个前提
+        // 写给类型看。
+        setNotificationLevels((prev) => prev && { ...prev, ...patch });
+        postToHost({ command: "setNotificationSettings", levels: patch });
+      }}
+      onNotificationSoundChange={(on) => {
+        setNotificationSound(on);
+        postToHost({ command: "setNotificationSettings", sound: on });
       }}
       onClose={handleCloseSettings}
       userAgentsContent={userAgentsContent}

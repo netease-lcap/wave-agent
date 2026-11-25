@@ -6,6 +6,10 @@ import type {
   UserPreferenceSource,
 } from "wave-agent-sdk/host";
 import { LOCAL_HOST, type SshConnection } from "./sshHosts";
+import type {
+  NotificationChannel,
+  NotificationLevel,
+} from "./notificationService";
 
 /**
  * 桌面本地存储的键。**只剩服务地址**：用户偏好都不落这里——
@@ -68,6 +72,29 @@ export type ThemeSource = "system" | "light" | "dark";
 export type UpdateChannel = "stable" | "beta";
 
 /**
+ * 通知等级缺省：三类都是「弹窗提醒」（spec desktop-notifications.md 故事 3
+ * 场景 1「开箱即生效，无需任何配置」）。类型钉全三档 —— 少写一类是编译错误。
+ * 等级与提示音是**桌面端本地偏好**：与主题 / 更新通道同档落本存储，不进用户级
+ * `settings.json`、不影响插件端与 CLI（场景 6）。
+ */
+export const DEFAULT_NOTIFICATION_LEVELS: Record<
+  NotificationChannel,
+  NotificationLevel
+> = {
+  permission: "banner",
+  question: "banner",
+  idle: "banner",
+};
+
+/** 三个通知类别，顺序同上 —— 校验 / 迭代都按这份，别再手写一遍。 */
+export const NOTIFICATION_CHANNELS = Object.keys(
+  DEFAULT_NOTIFICATION_LEVELS,
+) as NotificationChannel[];
+
+/** 提示音缺省：开（故事 3 场景 5）。 */
+export const DEFAULT_NOTIFICATION_SOUND = true;
+
+/**
  * A recent workdir, tagged with the host it lives on. `host` is the ssh config
  * host name, or LOCAL_HOST ('local') for this machine. (host, path) is the
  * identity — the same path on two hosts are distinct entries.
@@ -119,6 +146,10 @@ interface StoreData {
   theme: ThemeSource;
   /** Desktop update feed channel (设置页「接收 Beta 版更新」). Defaults to "stable". */
   updateChannel: UpdateChannel;
+  /** Per-channel notification level (设置页「系统通知」分组，desktop-notifications.md 故事 3). Defaults to all "banner". */
+  notificationLevels: Record<NotificationChannel, NotificationLevel>;
+  /** Notification sound switch (故事 3 场景 5). Defaults to true. */
+  notificationSound: boolean;
   /** Disk form: WorkdirRef, or legacy plain strings migrated to {host:'local', path} on load. */
   recentWorkdirs: Array<string | WorkdirRef>;
   sessions: SessionIndexEntry[];
@@ -156,6 +187,13 @@ export class ConfigStore {
         updateChannel: isUpdateChannel(parsed.updateChannel)
           ? parsed.updateChannel
           : "stable",
+        notificationLevels: normalizeNotificationLevels(
+          parsed.notificationLevels,
+        ),
+        notificationSound:
+          typeof parsed.notificationSound === "boolean"
+            ? parsed.notificationSound
+            : DEFAULT_NOTIFICATION_SOUND,
         // Legacy plain-string entries (pre-remote) become local-host refs.
         // Deduped on load so older data where one directory was persisted with
         // two slash styles (e.g. `C:\a` and `C:/a`) collapses into one entry.
@@ -198,6 +236,8 @@ export class ConfigStore {
         configuration: {},
         theme: "system",
         updateChannel: "stable",
+        notificationLevels: { ...DEFAULT_NOTIFICATION_LEVELS },
+        notificationSound: DEFAULT_NOTIFICATION_SOUND,
         recentWorkdirs: [],
         sessions: [],
         artifactCategories: {},
@@ -288,6 +328,38 @@ export class ConfigStore {
   /** Persist the update feed channel (desktop host re-checks against the new feed). */
   setUpdateChannel(channel: UpdateChannel): void {
     this.data.updateChannel = channel;
+    this.save();
+  }
+
+  // ── Notification settings (desktop-notifications.md 故事 3) ─────
+
+  /** 三类通知各自的等级（缺省全「弹窗」）。返回副本。 */
+  getNotificationLevels(): Record<NotificationChannel, NotificationLevel> {
+    return { ...this.data.notificationLevels };
+  }
+
+  /**
+   * 合并写入：只改 `partial` 里在场的类别，其余保持现值 —— 设置页一次只动
+   * 一档，不能让它把另外两档的用户选择抹回默认。
+   */
+  setNotificationLevels(
+    partial: Partial<Record<NotificationChannel, NotificationLevel>>,
+  ): void {
+    this.data.notificationLevels = {
+      ...this.data.notificationLevels,
+      ...partial,
+    };
+    this.save();
+  }
+
+  /** 通知提示音开关（缺省开）。 */
+  getNotificationSound(): boolean {
+    return this.data.notificationSound;
+  }
+
+  /** Persist the notification sound switch (the host reads it per notification). */
+  setNotificationSound(on: boolean): void {
+    this.data.notificationSound = on;
     this.save();
   }
 
@@ -566,4 +638,35 @@ function sanitizeSshConnections(value: unknown): SshConnection[] {
 /** Type guard for update channel values loaded from disk. */
 function isUpdateChannel(value: unknown): value is UpdateChannel {
   return value === "stable" || value === "beta";
+}
+
+/** Type guard for notification level values (disk + webview `setNotificationSettings`). */
+export function isNotificationLevel(
+  value: unknown,
+): value is NotificationLevel {
+  return value === "banner" || value === "mark" || value === "off";
+}
+
+/**
+ * 磁盘上 `notificationLevels` 的守卫（照 isUpdateChannel 的口径：不猜用户意图）。
+ * 必须是对象，否则整表回缺省。**按键回退**：坏的那一类不猜、回缺省；好的那
+ * 几类不动 —— 任一坏值就整表回缺省会把同表里合法的 `permission: "off"` 一起
+ * 抹回 banner，恰恰是把用户想关的通知弹出来。与 patch 路径
+ * （`parseNotificationLevelsPatch`：坏项忽略、保留现值）对称。缺的类别补缺省
+ * （新加类别时旧文件没有它），未知键丢弃。
+ */
+function normalizeNotificationLevels(
+  raw: unknown,
+): Record<NotificationChannel, NotificationLevel> {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return { ...DEFAULT_NOTIFICATION_LEVELS };
+  }
+  const record = raw as Record<string, unknown>;
+  // 先铺缺省：缺的类别落在这里，坏的那一类也落在这里。
+  const levels = { ...DEFAULT_NOTIFICATION_LEVELS };
+  for (const channel of NOTIFICATION_CHANNELS) {
+    const level = record[channel];
+    if (isNotificationLevel(level)) levels[channel] = level;
+  }
+  return levels;
 }

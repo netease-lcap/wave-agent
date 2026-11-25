@@ -19,6 +19,7 @@ import {
 import type {
   Message,
   NoticeBlock,
+  NoticeScope,
   Usage,
   ToolBlock,
   InvokedSkillRecord,
@@ -107,14 +108,17 @@ export interface MessageManagerCallbacks {
   }) => void;
   onToolBlockUpdated?: (params: ToolBlockUpdateCallbackParams) => void;
   /**
-   * A line that belongs to the human, never to the model: an error that ended
-   * the turn, or a hook's status narration (`level: "info"`). Hosts append it
-   * where the SDK put it — onto the last assistant message — so a host that
-   * ignores this callback simply never shows the line.
+   * A line that belongs to the human, never to the model: an error, or a
+   * hook's status narration (`level: "info"`). Hosts append it where the SDK
+   * put it — onto the last assistant message — so a host that ignores this
+   * callback simply never shows the line. `scope` is present only when the
+   * caller passed one: `"turn"` = the error that ended the turn, `"event"` = a
+   * non-blocking error the turn continued past.
    */
   onNoticeAdded?: (notice: {
     level: NoticeBlock["level"];
     content: string;
+    scope?: NoticeScope;
   }) => void;
   /**
    * Fires after compaction has written its state. `content` is the summary
@@ -1137,14 +1141,25 @@ export class MessageManager {
     return toolBlockId;
   }
 
-  public addNoticeBlock(content: string, level: NoticeBlock["level"]): void {
+  public addNoticeBlock(
+    content: string,
+    level: NoticeBlock["level"],
+    scope?: NoticeScope,
+  ): void {
     const newMessages = addNoticeBlockToMessage({
       messages: this.messages,
       content,
       level,
     });
     this.setMessages(newMessages);
-    this.callbacks.onNoticeAdded?.({ level, content });
+    // `scope` rides the callback only — the persisted NoticeBlock keeps its
+    // shape — and is left out entirely when absent, so a consumer comparing
+    // the payload sees no new key.
+    this.callbacks.onNoticeAdded?.({
+      level,
+      content,
+      ...(scope === undefined ? {} : { scope }),
+    });
   }
 
   /**

@@ -83,6 +83,8 @@ import {
 } from "./stdio/binaryResolver";
 import {
   ConfigStore,
+  NOTIFICATION_CHANNELS,
+  isNotificationLevel,
   type ArtifactCategoryRecord,
   type DesktopConfigData,
   type SessionIndexEntry,
@@ -151,6 +153,13 @@ import { execFileAsyncHidden } from "wave-agent-sdk/host";
 
 import { hostLog } from "./hostLog";
 import { type SessionMessageStat, type MessageStats } from "./memorySampler";
+import {
+  NotificationService,
+  oneLine,
+  type NotificationChannel,
+  type NotificationLevel,
+  type NotificationSessionRef,
+} from "./notificationService";
 import {
   parseCloneDeepLink,
   repoDirectoryName,
@@ -620,6 +629,51 @@ export class DesktopHost {
    *  (spec「后台会话确认提醒」scenario 4): cleared once the agent has no pending
    *  confirmations left, so a later request starts a fresh cycle. */
   private confirmationToastAgents = new WeakSet<StdioAgent>();
+  /**
+   * 系统通知（spec desktop-notifications.md 故事 1 / 2）：上面那条 toast、确认
+   * 框、侧边栏状态点与「已完成未读」绿点都要窗口在眼前才看得见，用户切走后
+   * 同时失效 —— 窗口不可见 / 失焦 / 最小化时，确认请求与回合结束各再走一条
+   * OS 通知。应用内通道的规则一个字不变，这是它们盖不到的那段的补充通道。
+   * 窗口还没建 / 已销毁按「没人在看」处理，判在 service 里。
+   */
+  private readonly notifications = new NotificationService({
+    getWindow: () =>
+      this.mainWindow && !this.mainWindow.isDestroyed()
+        ? this.mainWindow
+        : null,
+    isSessionLive: (session) => this.isSessionLive(session),
+    // 等级与提示音每次发通知时现读本地偏好（故事 3 场景 6「即时生效」）：设置页
+    // 改完不用再通知 service 一声，下一条通知自然按新值走。
+    getLevel: (channel) => this.configStore.getNotificationLevels()[channel],
+    getSound: () => this.configStore.getNotificationSound(),
+    // 故事 4：任务栏闪烁 / Dock 弹跳 / 角标。service 对每个调用都单独 try/catch
+    // （场景 6「静默降级」），这里不包；窗口已销毁 / 没有 dock 按没事处理。
+    attention: {
+      flashFrame: (on) => {
+        const win = this.mainWindow;
+        if (win && !win.isDestroyed()) win.flashFrame(on);
+      },
+      bounce: () => {
+        this.dockBounceId = app.dock?.bounce("informational");
+      },
+      cancelBounce: () => {
+        if (this.dockBounceId === undefined) return;
+        app.dock?.cancelBounce(this.dockBounceId);
+        this.dockBounceId = undefined;
+      },
+      setBadgeCount: (count) => {
+        app.setBadgeCount(count);
+      },
+    },
+  });
+  /**
+   * macOS Dock 弹跳的请求 id：`app.dock.bounce()` 返回它，`cancelBounce(id)` 才
+   * 停得掉那一次弹跳。service 只看见 `bounce()` / `cancelBounce()` 两个无参
+   * 函数，id 是这边的实现细节；Linux / Windows 上 `app.dock` 不存在，恒为
+   * undefined。informational 弹跳一秒自停，所以 service 每个事件都调 `bounce()`，
+   * 这里直接覆盖上一个 id：旧请求在应用激活时自然结束，不用逐个撤。
+   */
+  private dockBounceId: number | undefined;
   /** Agents whose current turn the user aborted (stop button / denied a
    *  confirmation). Consumed by onLoadingChange(false): an aborted turn never
    *  lights the sidebar「已完成未读」green dot. */
@@ -633,6 +687,19 @@ export class DesktopHost {
    *  Consumed (deleted) by each loading:false; a fresh loading:true re-adds for
    *  the next turn. */
   private streamedAgents = new WeakSet<StdioAgent>();
+  /**
+   * Agents whose **current** turn ended in an error: `noticeAdded` with
+   *  `level: "error"` **and** `scope: "turn"`. An error notice without that
+   *  scope is non-blocking (a hook or a compaction failed; the turn ran on)
+   *  and must not turn 已完成 into 任务出错 (spec desktop-notifications.md 故事 2
+   *  场景 3). Same lifecycle as the two sets above: set from onNoticeAdded,
+   *  cleared when a new turn starts (an earlier turn's error is stale),
+   *  consumed (deleted) by onLoadingChange(false). A user abort (AbortError)
+   *  also ends the turn and its notice carries `scope: "turn"` too, so this
+   *  set alone cannot tell the two apart — `userAbortedAgents` is read
+   *  alongside it and wins (an aborted turn is never reported as 任务出错).
+   */
+  private erroredTurnAgents = new WeakSet<StdioAgent>();
   /**
    * Agents whose last real turn finished while no pane displayed the session —
    * drives the sidebar「已完成未读」green dot (DesktopSessionEntry.newCompleted,
@@ -894,6 +961,36 @@ export class DesktopHost {
     return entry?.title || "会话";
   }
 
+  /**
+   * 系统通知标题：会话标题，缺失时回退为**项目名**（spec
+   * desktop-notifications.md 故事 1 场景 1）。与 `sessionTitleFor` 分开：那个
+   * 给 toast 文案用，回退是「会话」（desktop-sessions.md），不跟着改。
+   *
+   * 空标题这条路可达：索引首次登记写的是 `title || existing?.title || ""`，
+   * 模型生成标题前就来的确认请求标题还是空串 —— 恰好是用户刚开会话就切走、
+   * 最需要知道是哪个项目的场景。项目名取索引里的 `workdir`（侧边栏分组键，
+   * worktree 会话也是原仓库目录）；远端是 POSIX 路径，本地按平台分隔符，与
+   * `searchFiles` 那处分叉同一口径。
+   */
+  private notificationTitleFor(agent: StdioAgent): string {
+    const sessionId = agent.sessionId;
+    const entry = sessionId
+      ? this.configStore
+          .getSessionIndex()
+          .find((e) => e.sessionId === sessionId)
+      : undefined;
+    if (entry?.title) return entry.title;
+    const workdir = entry?.workdir;
+    if (workdir) {
+      const projectName =
+        this.hostForAgent(agent) === LOCAL_HOST
+          ? path.basename(workdir)
+          : path.posix.basename(workdir);
+      if (projectName) return projectName;
+    }
+    return "会话";
+  }
+
   /** Composite agent registry key — keeps hosts' sessionId namespaces apart. */
   private agentKey(host: string, sessionId: string): string {
     return `${host}\u0000${sessionId}`;
@@ -1007,8 +1104,15 @@ export class DesktopHost {
     installSshConnections(connections);
   }
 
+  /**
+   * 主窗口接进来（index.ts 建完窗口调一次；macOS 关窗后点 Dock 图标重建时会是
+   * 一个新窗口，监听随旧窗口销毁一起走）。顺手挂上「用户回到前台」：任务栏
+   * 闪烁 / Dock 弹跳到此为止（spec desktop-notifications.md 故事 4 场景 3）；
+   * 角标不动 —— 等确认真的处理完才经 `close` 清零。
+   */
   setMainWindow(win: BrowserWindow): void {
     this.mainWindow = win;
+    win.on("focus", () => this.notifications.stopAttention());
   }
 
   /**
@@ -1093,6 +1197,7 @@ export class DesktopHost {
     // The app is quitting — that is not an accidental drop, so no reconnect
     // sequence may outlive this call (spec scenario 13).
     this.disposed = true;
+    this.notifications.closeAll();
     for (const host of [...this.hostReconnects.keys()]) {
       this.cancelHostReconnect(host);
     }
@@ -2279,7 +2384,7 @@ export class DesktopHost {
         if (paneId)
           this.postMessage({ command: "updateToolBlock", paneId, params });
       },
-      onNoticeAdded: ({ level, content }) => {
+      onNoticeAdded: ({ level, content, scope }) => {
         // `updateNoticeBlock` carries the level and the text only; the renderer
         // places the block (APPEND_NOTICE_BLOCK: onto the last message if it is
         // an assistant one, otherwise a new assistant message below the latest
@@ -2293,6 +2398,15 @@ export class DesktopHost {
             level,
             content,
           });
+        // An error notice scoped to the turn = this turn ended in that error;
+        // remember it so the turn-end system notification says so instead of
+        // 已完成 (spec desktop-notifications.md 故事 2 场景 3). An error notice
+        // with no scope / `scope: "event"` is non-blocking — a hook or a
+        // compaction failed and the turn ran on — so it must not. Recorded
+        // regardless of pane / window state — the window probe is read when
+        // the turn ends.
+        if (level === "error" && scope === "turn")
+          this.erroredTurnAgents.add(agentRef);
       },
       onTasksChange: (tasks: Task[]) => {
         const paneId = paneIdOf();
@@ -2366,14 +2480,19 @@ export class DesktopHost {
           });
         if (loading) {
           // A new turn starts — any earlier abort marker is stale (the user may
-          // have aborted the previous turn, then sent a fresh prompt).
+          // have aborted the previous turn, then sent a fresh prompt), and so
+          // is an earlier turn's error notice.
           this.userAbortedAgents.delete(agentRef);
+          this.erroredTurnAgents.delete(agentRef);
           this.streamedAgents.add(agentRef);
           // Activity supersedes an unread-completion dot: the session is no
           // longer "completed & unviewed", it is producing again.
           this.newCompletedAgents.delete(agentRef);
         } else {
           this.touchSessionInIndex(agentRef);
+          // Whether this turn ended in an error — consumed here, alongside the
+          // two markers below (one reading per loading:false).
+          const erroredTurn = this.erroredTurnAgents.delete(agentRef);
           // A real background turn finished on its own — flag it unread for the
           // sidebar「已完成未读」green dot. Only for sessions shown in no pane (a
           // session displayed in a pane, focused or not, is directly visible)
@@ -2386,6 +2505,33 @@ export class DesktopHost {
           const finishedTurn = this.streamedAgents.delete(agentRef);
           if (!paneId && !aborted && finishedTurn && agentRef.sessionId) {
             this.newCompletedAgents.add(agentRef);
+          }
+          // 系统通知（spec desktop-notifications.md 故事 2）：一个回合真的结束
+          // 了（loading:true 观察过，不是 restore 重放的快照）、不是用户亲手停
+          // 的（场景 2），窗口不在眼前时叫一声。与上面的绿点是两条独立通道：
+          // 绿点只给没有 pane 的会话、且窗口在眼前才看得见；通知不分有没有
+          // pane（分屏里的会话用户也看不见了）、窗口在眼前时 service 自己判
+          // 「不发」（场景 4）。该会话还有待确认请求时让路 —— 模型在等人点头，
+          // 确认通知已经挂在屏幕上，不能被「已完成」顶掉（场景 5）。
+          if (
+            finishedTurn &&
+            !aborted &&
+            agentRef.sessionId &&
+            !this.disposed &&
+            ![...this.pendingConfirmations.values()].some(
+              (p) => p.agent === agentRef,
+            )
+          ) {
+            const host = this.hostForAgent(agentRef);
+            const sessionId = agentRef.sessionId;
+            this.notifications.notifyTurnEnd({
+              session: { host, sessionId },
+              title: this.notificationTitleFor(agentRef),
+              body: erroredTurn ? "任务出错，需要你查看" : "已完成",
+              onClick: () => {
+                void this.focusSessionFromToast(host, sessionId);
+              },
+            });
           }
         }
         this.refreshSessionTree();
@@ -3512,6 +3658,10 @@ export class DesktopHost {
     }
 
     this.configStore.removeSession(sessionId);
+    // 与 handleDeleteSession 同一条收尾：会话没了，屏幕上那条系统通知与角标
+    // 计数里的一席都得跟着走（spec desktop-notifications.md 故事 1 场景 7 / 故事
+    // 4 场景 1「不得残留」）。
+    this.notifications.close({ host, sessionId });
     this.inputDrafts.delete(`session:${sessionId}`);
     this.portForwardManager.releaseSession(sessionId);
     this.refreshSessionTree();
@@ -3568,6 +3718,9 @@ export class DesktopHost {
       }
     }
     if (released.size > 0) {
+      // 这个 host 上的会话此刻都够不着了，它们的通知留着只会把人叫到一个
+      // 连不上的会话（service 的 `closeHost` 正是为这条准备的）。
+      this.notifications.closeHost(host);
       this.refreshSessionTree();
       this.pushPanes();
     }
@@ -4007,6 +4160,58 @@ export class DesktopHost {
   // Tool permission flow
   // ------------------------------------------------------------------
 
+  /**
+   * 会话是否还在：池子里有它的 agent，或会话索引里还有它。两者都没有 = 已
+   * 归档 / 已删除 / 通知到达时就不在了 —— 这种会话的通知一律跳过（spec
+   * desktop-notifications.md 故事 1 场景 7）。
+   */
+  private isSessionLive(session: NotificationSessionRef): boolean {
+    if (this.agents.has(this.agentKey(session.host, session.sessionId))) {
+      return true;
+    }
+    return this.configStore
+      .getSessionIndex()
+      .some(
+        (e) => e.sessionId === session.sessionId && e.host === session.host,
+      );
+  }
+
+  /**
+   * 系统通知正文：待确认类别 + 一句关键内容（命令首行 / 文件路径 / 首个
+   * 问题），压成一行截断 —— 不得整段倾泻（spec desktop-notifications.md 故事
+   * 1 场景 1/2）。
+   */
+  private confirmationNotificationBody(
+    confirmationType: string,
+    context: ToolPermissionContext,
+  ): string {
+    const input = context.toolInput ?? {};
+    let detail: unknown;
+    if (isShellToolName(context.toolName)) {
+      detail =
+        typeof input.command === "string"
+          ? input.command.split("\n")[0]
+          : undefined;
+    } else if ([EDIT_TOOL_NAME, WRITE_TOOL_NAME].includes(context.toolName)) {
+      detail = input.file_path;
+    } else if (context.toolName === ASK_USER_QUESTION_TOOL_NAME) {
+      const questions = input.questions as
+        | Array<{ question: string }>
+        | undefined;
+      detail = questions?.[0]?.question;
+    }
+    const summary = typeof detail === "string" ? oneLine(detail) : "";
+    return summary ? `${confirmationType}：${summary}` : confirmationType;
+  }
+
+  /** 等待周期结束（该 agent 已无待确认）：撤掉它的系统通知（spec 场景 4/5）。 */
+  private closeConfirmationNotification(agent: StdioAgent): void {
+    this.notifications.close({
+      host: this.hostForAgent(agent),
+      sessionId: agent.sessionId ?? "",
+    });
+  }
+
   private handleToolPermissionRequest(
     agent: StdioAgent,
     context: ToolPermissionContext,
@@ -4077,6 +4282,32 @@ export class DesktopHost {
           type: "focusSession",
           host: this.hostForAgent(agent),
           sessionId: agent.sessionId ?? "",
+        },
+      });
+    }
+
+    // 系统通知（spec desktop-notifications.md 故事 1）：上面那条 toast 与下面
+    // 的确认框都要窗口在眼前，用户切走后同时失效 —— 窗口不可见 / 失焦 / 最
+    // 小化时再走一条 OS 通知。与 toast 的条件互不相干：分屏里的会话不弹
+    // toast（它有确认框），但窗口在后台时照样要叫人；用户在场时 service
+    // 自己判「不发」。点击 = 与 toast 的「查看」走同一条定位链路；标题走
+    // `notificationTitleFor`（缺标题回退项目名），不是 toast 那个「会话」。
+    // dispose 之后到达的请求不再发：`closeAll` 已经撤过一轮，等 agent
+    // destroy 期间再来一条就是没人会撤的僵尸（边界「应用正在退出过程中：
+    // 不再发出新通知」）。
+    if (!this.disposed) {
+      const host = this.hostForAgent(agent);
+      const sessionId = agent.sessionId ?? "";
+      this.notifications.notifyConfirmation({
+        session: { host, sessionId },
+        channel:
+          context.toolName === ASK_USER_QUESTION_TOOL_NAME
+            ? "question"
+            : "permission",
+        title: this.notificationTitleFor(agent),
+        body: this.confirmationNotificationBody(confirmationType, context),
+        onClick: () => {
+          void this.focusSessionFromToast(host, sessionId);
         },
       });
     }
@@ -4182,9 +4413,52 @@ export class DesktopHost {
         )
       ) {
         this.confirmationToastAgents.delete(pending.agent);
+        // 通知是按会话合并的：还有别的请求在等就留着，最后一条答完才撤
+        //（spec desktop-notifications.md 故事 1 场景 4/5）。
+        this.closeConfirmationNotification(pending.agent);
       }
       this.refreshSessionTree();
     }
+  }
+
+  /**
+   * 停止按钮：回合被用户终结，挂着的确认请求一并作废。
+   *
+   * 为什么得由桌面端动手：用户在确认框还挂着时点「停止」，SDK 侧不会发
+   * `permissionResolved`（桥只在用户答话时发），这条记录就永久留在
+   * `pendingConfirmations` 里 —— 之后该会话每个回合的「已完成」通知都被
+   * `onLoadingChange(false)` 的守卫压住、侧边栏「等待确认」一直亮、那条确认
+   * 系统通知一直挂在屏幕上撤不掉。
+   *
+   * 收尾与 `handlePermissionResolved` 同一套，只是按 agent 整批：删记录、在卡片
+   * 所在 pane 撤卡、把 promise 用 `undefined` 了结 —— 语义仍是「本端不再回包」
+   * （回合都没了，没有答复可发；桥那边的 `pendingPermissions` 条目是既有行为，
+   * 不动）。全部删完才算等待周期结束：撤 toast 周期标记 + 关系统通知。
+   *
+   * **必须在 `abortMessage()` 之前调**：abort 会触发 `loading:false`，桌面端在
+   * 那一刻读这张 Map 判要不要发完成通知。
+   */
+  private dropPendingConfirmationsFor(agent: StdioAgent): void {
+    let dropped = false;
+    for (const [confirmationId, pending] of this.pendingConfirmations) {
+      if (pending.agent !== agent) continue;
+      this.pendingConfirmations.delete(confirmationId);
+      const paneId = this.paneIdForAgent(pending.agent);
+      if (paneId) {
+        this.postMessage({
+          command: "hideConfirmation",
+          paneId,
+          confirmationId,
+        });
+      }
+      pending.resolve(undefined);
+      dropped = true;
+    }
+    if (!dropped) return;
+    this.confirmationToastAgents.delete(agent);
+    this.closeConfirmationNotification(agent);
+    // 侧边栏「等待确认」跟着灭：不等 abort 带来的那次 loading:false 再刷。
+    this.refreshSessionTree();
   }
 
   private handleConfirmationResponse(
@@ -4206,6 +4480,9 @@ export class DesktopHost {
       )
     ) {
       this.confirmationToastAgents.delete(pending.agent);
+      // 用户回到应用里点掉也算解决：窗口失焦时发出的那条通知不能留着指向
+      // 一张已经消失的对话框（spec desktop-notifications.md 场景 4）。
+      this.closeConfirmationNotification(pending.agent);
     }
     this.refreshSessionTree();
     if (approved) {
@@ -4292,9 +4569,9 @@ export class DesktopHost {
    * 不消费带 paneId 的 setInitialState（forThisPane），所以这些值放进 pane 快照
    * 就永远送不到真正使用它们的实例（症状=重启后「接收 Beta 版更新」开关回落到
    * 默认关闭、主题选中项回落到跟随系统，spec desktop-distribution「接收 Beta 版更新」
-   * 场景 3 /「主题设置」场景 1）。因此 theme/updateChannel/全局配置一律走窗口级：
-   * desktopThemeChange / desktopThemeSource / desktopUpdateChannel /
-   * configurationResponse。
+   * 场景 3 /「主题设置」场景 1）。因此 theme/updateChannel/通知设置/全局配置一律
+   * 走窗口级：desktopThemeChange / desktopThemeSource / desktopUpdateChannel /
+   * desktopNotificationSettings / configurationResponse。
    */
   private pushAppLevelState(
     configurationData: DesktopConfigData = this.cachedConfigurationData(),
@@ -4310,6 +4587,11 @@ export class DesktopHost {
     this.postMessage({
       command: "desktopUpdateChannel",
       channel: this.configStore.getUpdateChannel(),
+    });
+    this.postMessage({
+      command: "desktopNotificationSettings",
+      levels: this.configStore.getNotificationLevels(),
+      sound: this.configStore.getNotificationSound(),
     });
     this.postMessage({
       command: "configurationResponse",
@@ -4901,6 +5183,10 @@ export class DesktopHost {
       : Promise.resolve();
 
     this.configStore.removeSession(sessionId);
+    // 已经发出去的系统通知一并撤掉：会话没了，不能留一条点进去指向空的通知
+    // （spec desktop-notifications.md 故事 1 场景 7 管「发出前跳过」，这里是
+    // 「发出后删除」那一侧）。
+    this.notifications.close({ host, sessionId });
     // The conversation (and its per-session draft) is gone.
     this.inputDrafts.delete(`session:${sessionId}`);
     // The session is gone — release every tunnel it referenced. Tunnels are
@@ -5721,7 +6007,12 @@ export class DesktopHost {
         // The stop button — the turn ends on the user's terms, so its finish
         // must never light the sidebar 已完成未读 green dot.
         const agent = this.agentForPane(pid);
-        if (agent) this.userAbortedAgents.add(agent);
+        if (agent) {
+          this.userAbortedAgents.add(agent);
+          // 挂着的确认请求随回合一起作废；必须先于 abortMessage（它触发的
+          // loading:false 要读这张 Map）。
+          this.dropPendingConfirmationsFor(agent);
+        }
         await agent?.abortMessage();
         break;
       }
@@ -6420,6 +6711,11 @@ export class DesktopHost {
       case "setUpdateChannel":
         // 设置页「全局设置」「接收 Beta 版更新」开关（仅桌面端 UI）。
         await this.handleSetUpdateChannel(msg.channel as string);
+        break;
+
+      case "setNotificationSettings":
+        // 设置页「桌面端设置」「系统通知」分组：三类等级 + 提示音（仅桌面端 UI）。
+        this.handleSetNotificationSettings(msg);
         break;
 
       // -- auth ----------------------------------------------------------------
@@ -9109,6 +9405,42 @@ export class DesktopHost {
     await this.handleCheckForUpdates(true);
   }
 
+  /**
+   * 设置页「桌面端设置」「系统通知」分组（webview setNotificationSettings，spec
+   * desktop-notifications.md 故事 3）：三类各一档等级 + 提示音。两项都是**桌面端
+   * 本地偏好** —— 与主题 / 「接收 Beta 版更新」同档，落 wave-desktop.json，不进
+   * 用户级 `settings.json`、不影响插件端与 CLI（场景 6）。
+   *
+   * 两项都是可选的部分更新，坏值**忽略整项**、不回退成默认值（设置页不会发出
+   * 它们；发了也不能把用户已有的选择抹掉）。持久化后广播**全量** —— 初值推送
+   * （pushAppLevelState）与每次改动后都是同一条 desktopNotificationSettings，
+   * webview 不必自己合并。
+   *
+   * 「即时生效」（场景 6）对**下一条**事件不需要额外动作：service 每次发通知都
+   * 经 getLevel / getSound 现读 configStore。已经挂在屏幕上的那条需要：类别从
+   * 「弹窗」降到「仅标记」/「关闭」时立刻撤掉 —— 用户刚说了不弹窗，屏上那条
+   * 留着就是违背意愿。角标与闪烁留给「仅标记」，那正是它的信号（故事 4）。
+   */
+  private handleSetNotificationSettings(msg: Record<string, unknown>): void {
+    const before = this.configStore.getNotificationLevels();
+    const levels = parseNotificationLevelsPatch(msg.levels);
+    if (levels) this.configStore.setNotificationLevels(levels);
+    const after = this.configStore.getNotificationLevels();
+    for (const channel of NOTIFICATION_CHANNELS) {
+      if (before[channel] === "banner" && after[channel] !== "banner") {
+        this.notifications.closeChannel(channel);
+      }
+    }
+    if (typeof msg.sound === "boolean") {
+      this.configStore.setNotificationSound(msg.sound);
+    }
+    this.postMessage({
+      command: "desktopNotificationSettings",
+      levels: this.configStore.getNotificationLevels(),
+      sound: this.configStore.getNotificationSound(),
+    });
+  }
+
   /** A toast's button was clicked: focus a background session. The webview
    *  sends the opaque action payload back verbatim, so the host stays the
    *  single source of the action semantics. `ToastAction` 现在只有「聚焦后台
@@ -10772,4 +11104,26 @@ function firstUserTextOf(message: Message | undefined): string | undefined {
     .join(" ")
     .trim();
   return text || undefined;
+}
+
+/**
+ * webview `setNotificationSettings.levels` 的守卫：在场的类别值都必须是合法
+ * 等级，否则整项忽略（undefined）—— 不回退成默认值，那会把用户没碰的两档抹掉。
+ * 未在场的类别不进 patch（合并写，保持现值）；未知键丢弃。
+ */
+function parseNotificationLevelsPatch(
+  raw: unknown,
+): Partial<Record<NotificationChannel, NotificationLevel>> | undefined {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return undefined;
+  }
+  const record = raw as Record<string, unknown>;
+  const patch: Partial<Record<NotificationChannel, NotificationLevel>> = {};
+  for (const channel of NOTIFICATION_CHANNELS) {
+    const level = record[channel];
+    if (level === undefined) continue;
+    if (!isNotificationLevel(level)) return undefined;
+    patch[channel] = level;
+  }
+  return patch;
 }

@@ -266,6 +266,47 @@ describe("MessageManager additional coverage", () => {
     );
   });
 
+  it("addNoticeBlock forwards scope to onNoticeAdded and keeps it off the persisted block", () => {
+    const onNoticeAdded = vi.fn();
+    const scoped = new MessageManager(container, {
+      callbacks: { onNoticeAdded },
+      workdir,
+    });
+    scoped.addAssistantMessage("hello");
+    scoped.addNoticeBlock("Stopped to avoid an infinite loop", "error", "turn");
+
+    expect(onNoticeAdded).toHaveBeenCalledTimes(1);
+    expect(onNoticeAdded.mock.calls[0][0]).toStrictEqual({
+      level: "error",
+      content: "Stopped to avoid an infinite loop",
+      scope: "turn",
+    });
+    // scope rides the callback only — the persisted NoticeBlock keeps its shape.
+    const block = scoped
+      .getMessages()[0]
+      .blocks.find((b) => b.type === "notice");
+    expect(block).toStrictEqual({
+      type: "notice",
+      level: "error",
+      content: "Stopped to avoid an infinite loop",
+    });
+  });
+
+  it("addNoticeBlock without scope adds no scope key to the onNoticeAdded payload", () => {
+    const onNoticeAdded = vi.fn();
+    const scoped = new MessageManager(container, {
+      callbacks: { onNoticeAdded },
+      workdir,
+    });
+    scoped.addAssistantMessage("hello");
+    scoped.addNoticeBlock("hook failed", "error");
+
+    expect(onNoticeAdded).toHaveBeenCalledTimes(1);
+    const notice = onNoticeAdded.mock.calls[0][0];
+    expect(notice).toStrictEqual({ level: "error", content: "hook failed" });
+    expect("scope" in notice).toBe(false);
+  });
+
   it("should handle addFileHistoryBlock", () => {
     messageManager.addAssistantMessage("hello");
     messageManager.addFileHistoryBlock([

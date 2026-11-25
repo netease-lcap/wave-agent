@@ -318,6 +318,43 @@ describe("SlashCommandManager", () => {
       });
     });
 
+    it("reports a skill that fails to execute as a turn-scoped error, before releasing loading", async () => {
+      slashCommandManager.registerSkillCommands([
+        {
+          name: "plain-skill",
+          description: "d",
+          type: "project",
+          skillPath: "/p",
+        },
+      ] as unknown as SkillMetadata[]);
+      vi.mocked(mockSkillManager.executeSkill).mockRejectedValueOnce(
+        new Error("skill exploded"),
+      );
+      const addNoticeSpy = vi.spyOn(messageManager, "addNoticeBlock");
+
+      await slashCommandManager.getCommand("plain-skill")?.handler();
+
+      // The model was never called, but loading went true → false: from the
+      // host's side a whole turn ended in this error — hence `"turn"`.
+      expect(addNoticeSpy).toHaveBeenCalledWith(
+        "Failed to execute skill command 'plain-skill': skill exploded",
+        "error",
+        "turn",
+      );
+      expect(aiManager.sendAIMessage).not.toHaveBeenCalled();
+      // Hosts read their turn-error marker on loading:false, so the notice
+      // has to reach them first.
+      const loading = vi.mocked(aiManager.setIsLoading).mock;
+      const releaseOrder =
+        loading.invocationCallOrder[
+          loading.calls.findIndex(([isLoading]) => !isLoading)
+        ];
+      expect(releaseOrder).toBeDefined();
+      expect(addNoticeSpy.mock.invocationCallOrder[0]).toBeLessThan(
+        releaseOrder!,
+      );
+    });
+
     it("falls back to description for the menu row", () => {
       slashCommandManager.registerSkillCommands([
         {
@@ -631,6 +668,43 @@ describe("SlashCommandManager", () => {
 
       expect(executeBashOrder).toBeLessThan(updateUserMessageOrder);
       expect(updateUserMessageOrder).toBeLessThan(sendAIMessageOrder);
+    });
+
+    it("reports a custom command whose bash fails as a turn-scoped error, before releasing loading", async () => {
+      // `executeBashCommands` throws on a denied permission / a broken
+      // session shell — the catch under test.
+      slashCommandManager.registerPluginCommands("test", [
+        {
+          id: "test-bash-fail",
+          name: "test-bash-fail",
+          content: "Content with !`echo hello`!",
+        },
+      ] as CustomSlashCommand[]);
+      vi.mocked(markdownParser.executeBashCommands).mockRejectedValueOnce(
+        new Error("bash exploded"),
+      );
+      const addNoticeSpy = vi.spyOn(messageManager, "addNoticeBlock");
+
+      await slashCommandManager.getCommand("test:test-bash-fail")?.handler();
+
+      // Loading went true → false without the model being called: the host
+      // saw a whole turn end in this error — hence `"turn"`, and the notice
+      // lands ahead of loading:false so the host's turn-end read sees it.
+      expect(addNoticeSpy).toHaveBeenCalledWith(
+        "Failed to execute custom command 'test:test-bash-fail': bash exploded",
+        "error",
+        "turn",
+      );
+      expect(aiManager.sendAIMessage).not.toHaveBeenCalled();
+      const loading = vi.mocked(aiManager.setIsLoading).mock;
+      const releaseOrder =
+        loading.invocationCallOrder[
+          loading.calls.findIndex(([isLoading]) => !isLoading)
+        ];
+      expect(releaseOrder).toBeDefined();
+      expect(addNoticeSpy.mock.invocationCallOrder[0]).toBeLessThan(
+        releaseOrder!,
+      );
     });
 
     // spec `ecosystem/agent-skills` / 注入命令执行前的权限校验
@@ -986,11 +1060,14 @@ describe("SlashCommandManager", () => {
 
       await cmd?.handler();
 
+      // `"turn"`: loading went true → false without the model ever being
+      // called, so the host saw a whole turn end in this error.
       expect(addErrorSpy).toHaveBeenCalledWith(
         expect.stringContaining(
           "Subagent configuration for general-purpose not found",
         ),
         "error",
+        "turn",
       );
     });
 

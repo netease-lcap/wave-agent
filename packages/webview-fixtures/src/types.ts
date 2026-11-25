@@ -98,6 +98,17 @@ export type ThemeSource = "system" | "light" | "dark";
  *  desktop 有 UI）。stable = codechat 正式下载 feed，beta = desktop-beta feed。 */
 export type UpdateChannel = "stable" | "beta";
 
+/** 系统通知的类别（设置页「桌面端设置」「系统通知」分组，仅 desktop 有 UI）：
+ *  permission = 权限审批请求（Bash / Edit 等工具），question = AskUserQuestion
+ *  提问，idle = 回合完成。镜像自 packages/desktop/src/main/notificationService.ts。 */
+export type NotificationChannel = "permission" | "question" | "idle";
+
+/** 某类通知的提醒等级：banner = 弹系统通知，mark = 仅标记不弹窗，off = 不提醒。 */
+export type NotificationLevel = "banner" | "mark" | "off";
+
+/** 三类通知各自的等级（`desktopNotificationSettings` 下发全量）。 */
+export type NotificationLevels = Record<NotificationChannel, NotificationLevel>;
+
 /** Desktop conversation-level side panels. VSCE/JetBrains never render these. */
 export type DesktopPanelKind =
   | "preview"
@@ -1020,8 +1031,9 @@ export interface SetInitialStateMessage extends HostToWebviewMessageBase {
    *  的正是 root）。 */
   configurationData?: ConfigurationData;
   /** 会话作用域快照：desktop 把「本 pane 的会话状态」打上 paneId 下发。窗口级
-   *  数据（主题偏好 / 更新通道）**不得**放进这里，一律走未打标签的窗口级广播
-   *  desktopThemeChange / desktopThemeSource / desktopUpdateChannel。 */
+   *  数据（主题偏好 / 更新通道 / 系统通知设置）**不得**放进这里，一律走未打标签的
+   *  窗口级广播 desktopThemeChange / desktopThemeSource / desktopUpdateChannel /
+   *  desktopNotificationSettings。 */
   pendingConfirmations: ConfirmationRequest[];
   pendingConfirmation?: ConfirmationRequest;
   selection?: SelectionInfo;
@@ -1054,6 +1066,17 @@ export interface DesktopThemeSourceMessage extends HostToWebviewMessageBase {
 export interface DesktopUpdateChannelMessage extends HostToWebviewMessageBase {
   command: "desktopUpdateChannel";
   channel: UpdateChannel;
+}
+
+/** Desktop notification settings broadcast（设置页「桌面端设置」「系统通知」分组：
+ *  三类等级 + 提示音）。**全量快照**：webviewReady 后随其它窗口级状态推一次，
+ *  每次 setNotificationSettings 后再推；未打 paneId。插件端宿主不发——webview 据
+ *  缺席不渲染该分组（spec desktop-notifications.md 故事 3 场景 7）。 */
+export interface DesktopNotificationSettingsMessage
+  extends HostToWebviewMessageBase {
+  command: "desktopNotificationSettings";
+  levels: NotificationLevels;
+  sound: boolean;
 }
 
 /** Action a toast's button triggers when clicked (host-side semantics). Only
@@ -2046,6 +2069,7 @@ export type HostToWebviewMessage =
   | DesktopThemeChangeMessage
   | DesktopThemeSourceMessage
   | DesktopUpdateChannelMessage
+  | DesktopNotificationSettingsMessage
   | ShowToastMessage
   | PluginChangePendingMessage
   | DesktopTogglePanelMessage

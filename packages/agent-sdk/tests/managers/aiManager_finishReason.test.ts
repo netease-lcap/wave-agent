@@ -269,6 +269,7 @@ describe("AIManager finish reason", () => {
     expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
       expect.stringContaining("output token limit"),
       "error",
+      "turn",
     );
   });
 
@@ -310,6 +311,7 @@ describe("AIManager finish reason", () => {
     expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
       expect.stringContaining("output token limit"),
       "error",
+      "turn",
     );
   });
 });

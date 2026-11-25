@@ -847,7 +847,14 @@ import { DesktopHost } from "../src/main/desktopHost";
 import { ConfigStore } from "../src/main/configStore";
 import { setSshConnections } from "../src/main/sshHosts";
 import { HOST_CHANNEL } from "../src/main/channels";
-import { shell, dialog, nativeTheme, powerMonitor } from "electron";
+import {
+  app,
+  shell,
+  dialog,
+  nativeTheme,
+  powerMonitor,
+  Notification,
+} from "electron";
 import { autoUpdater } from "electron-updater";
 import {
   ensureRemoteDaemon,
@@ -877,6 +884,9 @@ const STORE_PATH = "/mock-userData/wave-desktop.json";
 type ElectronMock = typeof import("./__mocks__/electron");
 const themeMock = nativeTheme as unknown as ElectronMock["nativeTheme"];
 const powerMock = powerMonitor as unknown as ElectronMock["powerMonitor"];
+const notificationMock =
+  Notification as unknown as ElectronMock["Notification"];
+const appMock = app as unknown as ElectronMock["app"];
 
 /** The send mock of the most recently created host (shownToasts reads it). */
 let lastSend: ReturnType<typeof vi.fn> | undefined;
@@ -948,11 +958,30 @@ function createHost(winWidth = 1280, winHeight = 800) {
   // Focus state the reconnect sequence reads to decide whether somebody is at
   // the computer (spec「SSH 远程会话断线自动重连」场景 9).
   let focused = true;
+  // Presence the system-notification service reads (spec desktop-notifications.md
+  // story 1): visible + not minimized by default, so the default window counts as
+  // "in front of the user" and nothing is posted unless a case flips a probe.
+  let visible = true;
+  let minimized = false;
+  // Window events the host subscribes to (story 4: `focus` in setMainWindow →
+  // stop the taskbar flash). `fire` replays them for a case.
+  const windowListeners = new Map<string, Set<() => void>>();
   const win = {
     webContents: { send },
     isDestroyed: () => false,
     isFocused: () => focused,
+    isVisible: () => visible,
+    isMinimized: () => minimized,
+    show: vi.fn(),
+    restore: vi.fn(),
+    focus: vi.fn(),
     getContentSize: () => [winWidth, winHeight],
+    on: vi.fn((event: string, cb: () => void) => {
+      const set = windowListeners.get(event) ?? new Set();
+      set.add(cb);
+      windowListeners.set(event, set);
+    }),
+    flashFrame: vi.fn(),
   } as unknown as BrowserWindow;
   host.setMainWindow(win);
   // Typed against the shared host→webview contract: an unknown command string
@@ -988,8 +1017,17 @@ function createHost(winWidth = 1280, winHeight = 800) {
     send,
     sent,
     rawSent,
+    /** The window stand-in itself (its show / focus / flashFrame are spies). */
+    win,
+    /** Fire a window event the host subscribed to (`focus`, …). */
+    fire: (event: string) => {
+      for (const cb of [...(windowListeners.get(event) ?? [])]) cb();
+    },
     setFocused: (value: boolean) => {
       focused = value;
+    },
+    setMinimized: (value: boolean) => {
+      minimized = value;
     },
   };
 }
@@ -1203,6 +1241,7 @@ beforeEach(() => {
   for (const key of Object.keys(auListeners)) delete auListeners[key];
   themeMock.__reset();
   powerMock.__reset();
+  notificationMock.__reset();
   // Silence error logs from intentionally-triggered failure paths (restore
   // session tunnel down, SSO callback forward failure, update check failure…).
   consoleSpies = [vi.spyOn(console, "error"), vi.spyOn(console, "warn")].map(
@@ -3057,6 +3096,1287 @@ describe("background session toasts", () => {
       expect(sent("showConfirmation")).toHaveLength(1);
     });
     expect(sent("showConfirmation").at(-1)?.paneId).toBe("pane-2");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// system notifications (desktop-notifications.md story 1)
+//
+// The in-app channels (sidebar dot, dialog, bottom-right toast) all need the
+// window in front of the user; this is the second channel for when it is not.
+// Every case here is about the wiring in pushPendingConfirmation / the resolve
+// paths — the window-probe and lifecycle rules themselves live in
+// notificationService.test.ts.
+// ---------------------------------------------------------------------------
+
+describe("system notifications (desktop-notifications.md story 1)", () => {
+  /** Every Electron Notification the host built in this case, oldest first. */
+  const notifications = () => notificationMock.__instances();
+  const notificationFor = (index = 0) => notifications()[index];
+  const confirmationToasts = (sent: ReturnType<typeof createHost>["sent"]) =>
+    sent("showToast").filter((m) => m.toast.message.includes("需要确认"));
+
+  /** A registered session the host can title and locate (agent pool + index). */
+  function seedSession(
+    store: ReturnType<typeof createHost>["store"],
+    sessionId: string,
+    title: string,
+    workdir = "/work/a",
+  ) {
+    const agent = lastAgent();
+    seedConversation(agent, sessionId);
+    store.upsertSession({
+      sessionId,
+      title,
+      host: "local",
+      workdir,
+      cwd: workdir,
+      createdAt: Date.now(),
+      lastActiveAt: Date.now(),
+    });
+    return agent;
+  }
+
+  /** Detach the seeded agent from every pane: open pane-2, then close pane-1. */
+  async function sendToBackground(host: ReturnType<typeof createHost>["host"]) {
+    const before = h.agentInstances.length;
+    await host.handleWebviewMessage({
+      command: "desktopOpenPane",
+      workdir: "/work/a",
+      sessionId: "sess-2",
+    });
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(before + 1);
+    });
+    await host.handleWebviewMessage({
+      command: "desktopClosePane",
+      paneId: "pane-1",
+    });
+  }
+
+  it("posts a system notification for a background session while the window is unfocused", async () => {
+    const { host, store, sent, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    await sendToBackground(host);
+    setFocused(false);
+
+    agent1.callbacks.onPermissionRequest("req-1", {
+      toolName: "Bash",
+      toolInput: { command: "pnpm test --filter desktop\n&& echo done" },
+    });
+
+    expect(notifications()).toHaveLength(1);
+    expect(notificationFor().options).toMatchObject({
+      title: "任务A",
+      // 类别 + 命令首行压成一行（spec 故事 1 场景 1）。
+      body: "命令执行待确认：pnpm test --filter desktop",
+    });
+    expect(notificationFor().show).toHaveBeenCalledTimes(1);
+    // The in-app channel is untouched: the background-session toast still goes.
+    expect(confirmationToasts(sent)).toHaveLength(1);
+  });
+
+  it("posts a system notification for a minimized window even while it reports focus", async () => {
+    const { store, setMinimized } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    setMinimized(true);
+
+    agent1.callbacks.onPermissionRequest("req-1", {
+      toolName: "Edit",
+      toolInput: { file_path: "/work/a/packages/desktop/src/main/index.ts" },
+    });
+
+    expect(notifications()).toHaveLength(1);
+    expect(notificationFor().options.body).toBe(
+      "代码修改待确认：/work/a/packages/desktop/src/main/index.ts",
+    );
+  });
+
+  it("posts no system notification while the window is in front (the in-app channels carry it)", async () => {
+    const { host, store, sent } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    await sendToBackground(host);
+
+    agent1.callbacks.onPermissionRequest("req-1", {
+      toolName: "Bash",
+      toolInput: { command: "pnpm test" },
+    });
+
+    expect(notifications()).toHaveLength(0);
+    // Existing in-app behaviour is unchanged.
+    expect(confirmationToasts(sent)).toHaveLength(1);
+  });
+
+  it("closes the notification once the request is resolved elsewhere", async () => {
+    const { host, store, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    await sendToBackground(host);
+    setFocused(false);
+    agent1.callbacks.onPermissionRequest("req-1", {
+      toolName: "Bash",
+      toolInput: { command: "pnpm test" },
+    });
+    expect(notificationFor().close).not.toHaveBeenCalled();
+
+    // e.g. answered from the remote-control page.
+    agent1.callbacks.onPermissionResolved("req-1");
+
+    expect(notificationFor().close).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes the notification when the user answers in-app", async () => {
+    const { host, store, sent, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    // The dialog pops in pane-1 while the window is unfocused → notification.
+    setFocused(false);
+    agent1.callbacks.onPermissionRequest("req-1", {
+      toolName: "Bash",
+      toolInput: { command: "pnpm test" },
+    });
+    expect(notifications()).toHaveLength(1);
+
+    // The user comes back and clicks the dialog.
+    const confirmationId = sent("showConfirmation")[0].confirmationId as string;
+    await host.handleWebviewMessage({
+      command: "confirmationResponse",
+      confirmationId,
+      approved: true,
+    });
+
+    expect(notificationFor().close).toHaveBeenCalledTimes(1);
+  });
+
+  it("carries the first question, flattened and truncated, for an AskUserQuestion", async () => {
+    const { store, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    setFocused(false);
+    agent1.callbacks.onPermissionRequest("req-1", {
+      toolName: "AskUserQuestion",
+      toolInput: {
+        questions: [
+          {
+            question: "  用哪种方案？\n  顺便跑测试吗？  ",
+            header: "方案",
+            options: [],
+          },
+          { question: "第二个问题不该出现", header: "其他", options: [] },
+        ],
+      },
+    });
+    expect(notificationFor().options.body).toBe(
+      "问题待回答：用哪种方案？ 顺便跑测试吗？",
+    );
+
+    agent1.callbacks.onPermissionResolved("req-1");
+    agent1.callbacks.onPermissionRequest("req-2", {
+      toolName: "AskUserQuestion",
+      toolInput: {
+        questions: [{ question: "x".repeat(200), header: "方案", options: [] }],
+      },
+    });
+    expect(notifications()[1].options.body).toBe(
+      "问题待回答：" + "x".repeat(120) + "…",
+    );
+  });
+
+  it("clicking the notification reveals the window and re-opens the pane-less session's dialog (scenario 3)", async () => {
+    const { host, store, sent, setFocused, win } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    await sendToBackground(host);
+    setFocused(false);
+    agent1.callbacks.onPermissionRequest("req-1", {
+      toolName: "Bash",
+      toolInput: { command: "pnpm test" },
+    });
+    // Pane-less: the request stays pending — no dialog anywhere yet, and
+    // nothing has woken the window.
+    expect(sent("showConfirmation")).toHaveLength(0);
+    expect(win.show).not.toHaveBeenCalled();
+    expect(win.focus).not.toHaveBeenCalled();
+
+    notificationFor().__click();
+
+    // The window is brought to the front (show + focus; the minimized →
+    // restore branch is the service's own test).
+    expect(win.show).toHaveBeenCalledTimes(1);
+    expect(win.focus).toHaveBeenCalledTimes(1);
+    // The click retires the notification it came from.
+    expect(notificationFor().close).toHaveBeenCalledTimes(1);
+    // Located by (host, sessionId): the pane-less session is activated into
+    // the focused pane and its pending dialog re-pops there — the same chain
+    // as the toast's 查看.
+    await vi.waitFor(() => {
+      expect(sent("showConfirmation")).toHaveLength(1);
+    });
+    expect(sent("showConfirmation").at(-1)?.paneId).toBe("pane-2");
+  });
+
+  it("replaces the notification instead of stacking a second one for the same session (scenario 5)", async () => {
+    const { host, store, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    await sendToBackground(host);
+    setFocused(false);
+    agent1.callbacks.onPermissionRequest("req-1", {
+      toolName: "Bash",
+      toolInput: { command: "pnpm test" },
+    });
+    const first = notificationFor();
+    expect(first.show).toHaveBeenCalledTimes(1);
+
+    agent1.callbacks.onPermissionRequest("req-2", {
+      toolName: "Edit",
+      toolInput: { file_path: "/work/a/x.ts" },
+    });
+
+    // Still one on screen: the first is retracted, the second carries the
+    // later request's content.
+    expect(notifications()).toHaveLength(2);
+    expect(first.close).toHaveBeenCalledTimes(1);
+    expect(notifications()[1].show).toHaveBeenCalledTimes(1);
+    expect(notifications()[1].close).not.toHaveBeenCalled();
+    expect(notifications()[1].options.body).toBe(
+      "代码修改待确认：/work/a/x.ts",
+    );
+  });
+
+  it("keeps the notification until the session's last pending request is answered (scenario 4/5)", async () => {
+    const { host, store, sent, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    // The dialogs pop in pane-1 while the window is unfocused → notification.
+    setFocused(false);
+    agent1.callbacks.onPermissionRequest("req-1", {
+      toolName: "Bash",
+      toolInput: { command: "pnpm test" },
+    });
+    agent1.callbacks.onPermissionRequest("req-2", {
+      toolName: "Edit",
+      toolInput: { file_path: "/work/a/x.ts" },
+    });
+    // Two requests → the second replaced the first on screen; the one to
+    // watch from here on is the latest instance.
+    const latest = notifications().at(-1)!;
+    expect(notifications()[0].close).toHaveBeenCalledTimes(1);
+
+    // One of two answered in-app: the other is still waiting → keep it.
+    await host.handleWebviewMessage({
+      command: "confirmationResponse",
+      confirmationId: sent("showConfirmation")[0].confirmationId as string,
+      approved: true,
+    });
+    expect(latest.close).not.toHaveBeenCalled();
+
+    // The last one answered elsewhere (remote-control page) → retract.
+    agent1.callbacks.onPermissionResolved("req-2");
+    expect(latest.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("retracts the notification when its session is deleted (scenario 7, after it was posted)", async () => {
+    const { host, store, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    await sendToBackground(host);
+    setFocused(false);
+    agent1.callbacks.onPermissionRequest("req-1", {
+      toolName: "Bash",
+      toolInput: { command: "pnpm test" },
+    });
+    expect(notificationFor().close).not.toHaveBeenCalled();
+
+    await host.handleWebviewMessage({
+      command: "desktopDeleteSession",
+      sessionId: "sess-1",
+    });
+
+    expect(notificationFor().close).toHaveBeenCalledTimes(1);
+  });
+
+  it("creates no notification for a session that is in neither the agent pool nor the index (scenario 7)", async () => {
+    const { host, store, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    await sendToBackground(host);
+    setFocused(false);
+    // Deleted: gone from the pool and the index, but the (mock) process is
+    // still around to deliver one more request.
+    await host.handleWebviewMessage({
+      command: "desktopDeleteSession",
+      sessionId: "sess-1",
+    });
+    await vi.waitFor(() => {
+      expect(
+        store.getSessionIndex().some((e) => e.sessionId === "sess-1"),
+      ).toBe(false);
+    });
+
+    agent1.callbacks.onPermissionRequest("req-1", {
+      toolName: "Bash",
+      toolInput: { command: "pnpm test" },
+    });
+
+    expect(notifications()).toHaveLength(0);
+  });
+
+  it("posts no notification for a request that arrives after dispose", async () => {
+    const { host, store, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    setFocused(false);
+    // closeAll() has run and the agents are still being destroyed — a request
+    // landing in that window must not light a notification nobody retracts.
+    await host.dispose();
+
+    agent1.callbacks.onPermissionRequest("req-1", {
+      toolName: "Bash",
+      toolInput: { command: "pnpm test" },
+    });
+
+    expect(notifications()).toHaveLength(0);
+  });
+
+  it("titles the notification with the project name until the session has a title (scenario 1)", async () => {
+    const { store, setFocused } = await readyHost();
+    // First registration writes title || "" — the model has not titled the
+    // session yet; only its workdir (the sidebar group key) is known.
+    const agent1 = seedSession(store, "sess-1", "", "/tmp/some-repo");
+    setFocused(false);
+    agent1.callbacks.onPermissionRequest("req-1", {
+      toolName: "Bash",
+      toolInput: { command: "pnpm test" },
+    });
+    expect(notificationFor().options.title).toBe("some-repo");
+
+    // Once a title exists it wins.
+    agent1.callbacks.onPermissionResolved("req-1");
+    store.upsertSession({
+      ...store.getSessionIndex().find((e) => e.sessionId === "sess-1")!,
+      title: "任务A",
+    });
+    agent1.callbacks.onPermissionRequest("req-2", {
+      toolName: "Bash",
+      toolInput: { command: "pnpm lint" },
+    });
+    expect(notifications()[1].options.title).toBe("任务A");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// system notifications (desktop-notifications.md story 2)
+//
+// A turn that finished on its own while the window is not in front of the user.
+// Every case here is about the wiring in onLoadingChange(false) / onNoticeAdded
+// — the trigger is the same finished-turn boundary as the sidebar green dot
+// (loading:true observed, not an abort, not a restore-replayed snapshot). The
+// service's own rules (window probes, merge, rank below a confirmation) live
+// in notificationService.test.ts.
+// ---------------------------------------------------------------------------
+
+describe("system notifications (desktop-notifications.md story 2)", () => {
+  const notifications = () => notificationMock.__instances();
+  const notificationFor = (index = 0) => notifications()[index];
+
+  /** A registered session the host can title and locate (agent pool + index). */
+  function seedSession(
+    store: ReturnType<typeof createHost>["store"],
+    sessionId: string,
+    title: string,
+  ) {
+    const agent = lastAgent();
+    seedConversation(agent, sessionId);
+    store.upsertSession({
+      sessionId,
+      title,
+      host: "local",
+      workdir: "/work/a",
+      cwd: "/work/a",
+      createdAt: Date.now(),
+      lastActiveAt: Date.now(),
+    });
+    return agent;
+  }
+
+  /** Detach the seeded agent from every pane: open pane-2, then close pane-1. */
+  async function sendToBackground(host: ReturnType<typeof createHost>["host"]) {
+    const before = h.agentInstances.length;
+    await host.handleWebviewMessage({
+      command: "desktopOpenPane",
+      workdir: "/work/a",
+      sessionId: "sess-2",
+    });
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(before + 1);
+    });
+    await host.handleWebviewMessage({
+      command: "desktopClosePane",
+      paneId: "pane-1",
+    });
+  }
+
+  const newCompletedFor = (
+    sent: ReturnType<typeof createHost>["sent"],
+    sessionId: string,
+  ): boolean => {
+    const tree = sent("desktopSessionTree").at(-1) as
+      | {
+          groups?: Array<{
+            sessions: Array<{ sessionId: string; newCompleted?: boolean }>;
+          }>;
+        }
+      | undefined;
+    return (
+      (tree?.groups ?? [])
+        .flatMap((g) => g.sessions)
+        .find((s) => s.sessionId === sessionId)?.newCompleted ?? false
+    );
+  };
+
+  it("posts a system notification when a background session's turn finishes while the window is unfocused", async () => {
+    const { host, store, sent, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    await sendToBackground(host);
+    setFocused(false);
+
+    agent1.callbacks.onLoadingChange(true);
+    agent1.callbacks.onLoadingChange(false);
+
+    expect(notifications()).toHaveLength(1);
+    expect(notificationFor().options).toMatchObject({
+      title: "任务A",
+      body: "已完成",
+    });
+    expect(notificationFor().show).toHaveBeenCalledTimes(1);
+    // The green dot is untouched: the two channels are independent.
+    expect(newCompletedFor(sent, "sess-1")).toBe(true);
+  });
+
+  it("posts it for a session displayed in a pane too — what matters is the window, not the pane", async () => {
+    // Unlike the green dot (pane-less sessions only), a session in a split is
+    // equally invisible once the user has switched to another app.
+    const { store, sent, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    setFocused(false);
+
+    agent1.callbacks.onLoadingChange(true);
+    agent1.callbacks.onLoadingChange(false);
+
+    expect(notifications()).toHaveLength(1);
+    expect(notificationFor().options.body).toBe("已完成");
+    // Existing green-dot rule is unchanged: a session shown in a pane never
+    // lights it.
+    expect(newCompletedFor(sent, "sess-1")).toBe(false);
+  });
+
+  it("posts none while the window is in front (scenario 4)", async () => {
+    const { host, store, sent } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    await sendToBackground(host);
+
+    agent1.callbacks.onLoadingChange(true);
+    agent1.callbacks.onLoadingChange(false);
+
+    expect(notifications()).toHaveLength(0);
+    // The green dot still carries it.
+    expect(newCompletedFor(sent, "sess-1")).toBe(true);
+  });
+
+  it("posts none for a turn the user stopped (scenario 2)", async () => {
+    const { host, store, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    agent1.callbacks.onLoadingChange(true);
+    setFocused(false);
+
+    // The stop button, on the pane still showing the session (pane-1) — the
+    // userAbortedAgents path the green dot excludes too.
+    await host.handleWebviewMessage({
+      command: "abortMessage",
+      paneId: "pane-1",
+    });
+    expect(agent1.abortMessage).toHaveBeenCalledTimes(1);
+    agent1.callbacks.onLoadingChange(false);
+
+    expect(notifications()).toHaveLength(0);
+
+    // A new turn clears the abort marker — its finish notifies normally.
+    agent1.callbacks.onLoadingChange(true);
+    agent1.callbacks.onLoadingChange(false);
+    expect(notifications()).toHaveLength(1);
+    expect(notificationFor().options.body).toBe("已完成");
+  });
+
+  it("a non-blocking error — a hook that failed while the model ran on — still says 已完成 (scenario 3)", async () => {
+    const { host, store, sent, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    await sendToBackground(host);
+    setFocused(false);
+
+    // The real sequence of a hook crash: the error notice lands with no scope
+    // (event-level), the model keeps going and answers, the turn ends normally.
+    agent1.callbacks.onLoadingChange(true);
+    agent1.callbacks.onNoticeAdded({ level: "error", content: "插件执行失败" });
+    agent1.callbacks.onAssistantMessageAdded({
+      id: "a1",
+      role: "assistant",
+      blocks: [],
+    });
+    agent1.callbacks.onLoadingChange(false);
+
+    expect(notifications()).toHaveLength(1);
+    expect(notificationFor().options.body).toBe("已完成");
+    expect(newCompletedFor(sent, "sess-1")).toBe(true);
+  });
+
+  it("says the task errored when the error notice is scoped to the turn (scenario 3)", async () => {
+    const { host, store, sent, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    await sendToBackground(host);
+    setFocused(false);
+
+    agent1.callbacks.onLoadingChange(true);
+    agent1.callbacks.onNoticeAdded({ level: "info", content: "hook 叙述" });
+    agent1.callbacks.onNoticeAdded({
+      level: "error",
+      content: "API Error: 500",
+      scope: "turn",
+    });
+    agent1.callbacks.onLoadingChange(false);
+
+    expect(notifications()).toHaveLength(1);
+    expect(notificationFor().options.body).toContain("出错");
+    expect(notificationFor().options.body).not.toBe("已完成");
+    // An errored turn is still a finished turn for the green dot.
+    expect(newCompletedFor(sent, "sess-1")).toBe(true);
+  });
+
+  it('scope: "event" is the same as no scope — a non-blocking error does not mark the turn as errored', async () => {
+    const { host, store, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    await sendToBackground(host);
+    setFocused(false);
+
+    agent1.callbacks.onLoadingChange(true);
+    agent1.callbacks.onNoticeAdded({
+      level: "error",
+      content: "Failed to compact conversation history",
+      scope: "event",
+    });
+    agent1.callbacks.onLoadingChange(false);
+
+    expect(notifications()).toHaveLength(1);
+    expect(notificationFor().options.body).toBe("已完成");
+  });
+
+  it("forgets the previous turn's error once a new turn starts", async () => {
+    const { host, store, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    await sendToBackground(host);
+    setFocused(false);
+
+    agent1.callbacks.onLoadingChange(true);
+    agent1.callbacks.onNoticeAdded({
+      level: "error",
+      content: "上一轮的错误",
+      scope: "turn",
+    });
+    agent1.callbacks.onLoadingChange(false);
+    expect(notificationFor().options.body).toContain("出错");
+
+    // Next turn runs clean → 已完成, not a stale "errored".
+    agent1.callbacks.onLoadingChange(true);
+    agent1.callbacks.onLoadingChange(false);
+    expect(notifications()).toHaveLength(2);
+    expect(notifications()[1].options.body).toBe("已完成");
+  });
+
+  it("yields to the session's waiting confirmation (scenario 5)", async () => {
+    const { host, store, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    await sendToBackground(host);
+    setFocused(false);
+    agent1.callbacks.onLoadingChange(true);
+
+    // The model asks for a command approval — its notification is on screen…
+    agent1.callbacks.onPermissionRequest("req-1", {
+      toolName: "Bash",
+      toolInput: { command: "pnpm test" },
+    });
+    expect(notifications()).toHaveLength(1);
+    const confirmation = notificationFor();
+
+    // …and then the turn ends while it is still pending. The confirmation
+    // must stay on top — nothing new is built, the old one is not retracted.
+    agent1.callbacks.onLoadingChange(false);
+
+    expect(notifications()).toHaveLength(1);
+    expect(confirmation.close).not.toHaveBeenCalled();
+    expect(confirmation.options.body).toBe("命令执行待确认：pnpm test");
+  });
+
+  it("posts nothing for a turn that ends while the model is still waiting — even with no confirmation notification on screen (scenario 5)", async () => {
+    // The request arrived while the user was in front of the window (so no
+    // confirmation notification was posted), then the user switched away and
+    // the turn ended. 「已完成」would be a lie: the session is still waiting.
+    // Only the host's pendingConfirmations guard can catch this — there is
+    // nothing on screen for the service to yield to.
+    const { host, store, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    await sendToBackground(host);
+    agent1.callbacks.onLoadingChange(true);
+    agent1.callbacks.onPermissionRequest("req-1", {
+      toolName: "Bash",
+      toolInput: { command: "pnpm test" },
+    });
+    expect(notifications()).toHaveLength(0);
+
+    setFocused(false);
+    agent1.callbacks.onLoadingChange(false);
+
+    expect(notifications()).toHaveLength(0);
+  });
+
+  it("notifies once the confirmation is answered and a later turn ends", async () => {
+    const { host, store, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    await sendToBackground(host);
+    setFocused(false);
+    agent1.callbacks.onLoadingChange(true);
+    agent1.callbacks.onPermissionRequest("req-1", {
+      toolName: "Bash",
+      toolInput: { command: "pnpm test" },
+    });
+    agent1.callbacks.onPermissionResolved("req-1");
+    agent1.callbacks.onLoadingChange(false);
+
+    expect(notifications()).toHaveLength(2);
+    expect(notifications()[1].options.body).toBe("已完成");
+  });
+
+  it("posts none from a loading snapshot replayed mid-restore (not a finished turn)", async () => {
+    const { host, store, setFocused } = await readyHost();
+    setFocused(false);
+    // A real, indexed historical session — live as far as the service can
+    // tell, so only the finished-turn guard can keep this silent.
+    store.upsertSession({
+      sessionId: "sess-x",
+      title: "历史会话",
+      host: "local",
+      workdir: "/work/a",
+      cwd: "/work/a",
+      createdAt: Date.now(),
+      lastActiveAt: Date.now(),
+    });
+    let release: () => void;
+    h.initializeGate = new Promise<void>((resolve) => (release = resolve));
+    const before = h.agentInstances.length;
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectSession",
+      workdir: "/work/a",
+      sessionId: "sess-x",
+    });
+    await vi.waitFor(() => {
+      expect(h.agentInstances.length).toBe(before + 1);
+    });
+    const restoring = lastAgent();
+    restoring.sessionId = "sess-x";
+    // agentBridge.restoreSession's re-attach branch replays the settled
+    // loading state — loading:false without a preceding loading:true.
+    restoring.callbacks.onLoadingChange(false);
+
+    expect(notifications()).toHaveLength(0);
+    release!();
+  });
+
+  it("posts none for a turn that ends after dispose", async () => {
+    const { host, store, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    setFocused(false);
+    agent1.callbacks.onLoadingChange(true);
+    await host.dispose();
+
+    agent1.callbacks.onLoadingChange(false);
+
+    expect(notifications()).toHaveLength(0);
+  });
+
+  it("clicking the notification reveals the window and opens the session (scenario 6)", async () => {
+    const { host, store, sent, setFocused, win } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    await sendToBackground(host);
+    setFocused(false);
+    agent1.callbacks.onLoadingChange(true);
+    agent1.callbacks.onLoadingChange(false);
+    expect(
+      sent("desktopPanes")
+        .at(-1)!
+        .panes?.some((p) => p.sessionId === "sess-1"),
+    ).toBe(false);
+    // Precondition for the assertion at the end: the background finish lit
+    // the green dot, so the click below has something to clear.
+    expect(newCompletedFor(sent, "sess-1")).toBe(true);
+
+    notificationFor().__click();
+
+    expect(win.show).toHaveBeenCalledTimes(1);
+    expect(win.focus).toHaveBeenCalledTimes(1);
+    expect(notificationFor().close).toHaveBeenCalledTimes(1);
+    // Located by (host, sessionId): the pane-less session is activated into
+    // the focused pane — the same chain as the confirmation notification.
+    await vi.waitFor(() => {
+      expect(
+        sent("desktopPanes")
+          .at(-1)!
+          .panes?.some((p) => p.sessionId === "sess-1"),
+      ).toBe(true);
+    });
+    // Revealed in a pane → no longer "completed & unviewed": the green dot
+    // goes with it.
+    await vi.waitFor(() => {
+      expect(newCompletedFor(sent, "sess-1")).toBe(false);
+    });
+  });
+
+  it("stopping the turn while a confirmation is pending drops it — and the next turn's finish notifies again", async () => {
+    const { host, store, sent, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    setFocused(false);
+    const waitingConfirmationFor = (sessionId: string) =>
+      treeSessions(sent("desktopSessionTree").at(-1)).find(
+        (s) => s.sessionId === sessionId,
+      )?.waitingConfirmation;
+    agent1.callbacks.onLoadingChange(true);
+
+    // The model asks for a command approval — the dialog pops in pane-1 and,
+    // the window being unfocused, its system notification goes up.
+    agent1.callbacks.onPermissionRequest("req-1", {
+      toolName: "Bash",
+      toolInput: { command: "pnpm test" },
+    });
+    expect(notifications()).toHaveLength(1);
+    const confirmation = notificationFor();
+    expect(sent("showConfirmation")).toHaveLength(1);
+    expect(sent("showConfirmation")[0].paneId).toBe("pane-1");
+    expect(waitingConfirmationFor("sess-1")).toBe(true);
+
+    // The user hits the stop button instead of answering. The SDK will not
+    // send permissionResolved for an aborted turn — only the host can drop it.
+    await host.handleWebviewMessage({
+      command: "abortMessage",
+      paneId: "pane-1",
+    });
+    expect(agent1.abortMessage).toHaveBeenCalledTimes(1);
+
+    // The pending record is gone (sidebar flag off), the card is retracted
+    // in its pane, the notification is closed, nothing re-pops.
+    expect(waitingConfirmationFor("sess-1")).toBe(false);
+    expect(sent("hideConfirmation")).toEqual([
+      expect.objectContaining({
+        paneId: "pane-1",
+        confirmationId: sent("showConfirmation")[0].confirmationId,
+      }),
+    ]);
+    expect(sent("showConfirmation")).toHaveLength(1);
+    expect(confirmation.close).toHaveBeenCalledTimes(1);
+    // 本端不再回包：回合都没了，没有答复可发。
+    expect(agent1.sendPermissionResponse).not.toHaveBeenCalled();
+
+    // The aborted turn ends — no 已完成 (scenario 2, unchanged).
+    agent1.callbacks.onLoadingChange(false);
+    expect(notifications()).toHaveLength(1);
+
+    // The next turn finishes on its own — its notification must go through.
+    // The stale record used to hold it back for every later turn of the session.
+    agent1.callbacks.onLoadingChange(true);
+    agent1.callbacks.onLoadingChange(false);
+    expect(notifications()).toHaveLength(2);
+    expect(notifications()[1].options.body).toBe("已完成");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// system notifications (desktop-notifications.md story 3)
+//
+// 等级与提示音可调：webview setNotificationSettings → configStore（桌面端本地
+// 偏好，与主题 / 更新通道同档）→ 全量广播 desktopNotificationSettings。service
+// 每次发通知现读 getLevel / getSound，所以「即时生效」不需要 host 再做什么 ——
+// 这里钉的是命令边界（守卫 / 合并 / 广播形状）、落点（wave-desktop.json 而非
+// settings.json）以及它确实接到了发通知的那条路上。
+// ---------------------------------------------------------------------------
+
+describe("system notifications (desktop-notifications.md story 3)", () => {
+  const notifications = () => notificationMock.__instances();
+  const settingsSent = (rawSent: ReturnType<typeof createHost>["rawSent"]) =>
+    rawSent("desktopNotificationSettings");
+  const ALL_BANNER = {
+    permission: "banner",
+    question: "banner",
+    idle: "banner",
+  };
+
+  /** A registered session the host can title and locate (agent pool + index). */
+  function seedSession(
+    store: ReturnType<typeof createHost>["store"],
+    sessionId: string,
+    title: string,
+  ) {
+    const agent = lastAgent();
+    seedConversation(agent, sessionId);
+    store.upsertSession({
+      sessionId,
+      title,
+      host: "local",
+      workdir: "/work/a",
+      cwd: "/work/a",
+      createdAt: Date.now(),
+      lastActiveAt: Date.now(),
+    });
+    return agent;
+  }
+
+  /** Detach the seeded agent from every pane: open pane-2, then close pane-1. */
+  async function sendToBackground(host: ReturnType<typeof createHost>["host"]) {
+    const before = h.agentInstances.length;
+    await host.handleWebviewMessage({
+      command: "desktopOpenPane",
+      workdir: "/work/a",
+      sessionId: "sess-2",
+    });
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(before + 1);
+    });
+    await host.handleWebviewMessage({
+      command: "desktopClosePane",
+      paneId: "pane-1",
+    });
+  }
+
+  const setSettings = (
+    host: ReturnType<typeof createHost>["host"],
+    msg: Record<string, unknown>,
+  ) =>
+    host.handleWebviewMessage({ command: "setNotificationSettings", ...msg });
+
+  it("setNotificationSettings merges the patch, persists it and broadcasts the full state window-level", async () => {
+    const { host, store, rawSent } = await readyHost();
+
+    await setSettings(host, { levels: { idle: "off" } });
+
+    expect(store.getNotificationLevels()).toEqual({
+      ...ALL_BANNER,
+      idle: "off",
+    });
+    // sound was not in the patch → untouched.
+    expect(store.getNotificationSound()).toBe(true);
+    const broadcasts = settingsSent(rawSent);
+    expect(broadcasts.at(-1)).toEqual({
+      command: "desktopNotificationSettings",
+      levels: { ...ALL_BANNER, idle: "off" },
+      sound: true,
+    });
+    // Window-level like desktopUpdateChannel: the settings page's root instance
+    // does not consume pane-tagged messages.
+    expect(broadcasts.at(-1)).not.toHaveProperty("paneId");
+  });
+
+  it("takes effect on the next notification without a restart (scenario 6)", async () => {
+    const { host, store, sent, rawSent, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    await sendToBackground(host);
+    setFocused(false);
+
+    await setSettings(host, { levels: { idle: "off" } });
+    agent1.callbacks.onLoadingChange(true);
+    agent1.callbacks.onLoadingChange(false);
+    expect(notifications()).toHaveLength(0);
+    // In-app channels are untouched: the sidebar green dot still lights (scenario 4).
+    const tree = sent("desktopSessionTree").at(-1) as
+      | {
+          groups?: Array<{
+            sessions: Array<{ sessionId: string; newCompleted?: boolean }>;
+          }>;
+        }
+      | undefined;
+    expect(
+      (tree?.groups ?? [])
+        .flatMap((g) => g.sessions)
+        .find((s) => s.sessionId === "sess-1")?.newCompleted,
+    ).toBe(true);
+
+    await setSettings(host, { levels: { idle: "banner" } });
+    agent1.callbacks.onLoadingChange(true);
+    agent1.callbacks.onLoadingChange(false);
+    expect(notifications()).toHaveLength(1);
+    expect(notifications()[0].options.body).toBe("已完成");
+    // Exactly one broadcast per set, both carrying the full state.
+    expect(settingsSent(rawSent).map((m) => m.levels)).toEqual([
+      ALL_BANNER,
+      { ...ALL_BANNER, idle: "off" },
+      { ...ALL_BANNER, idle: "banner" },
+    ]);
+  });
+
+  it("a channel turned off still gets its in-app confirmation dialog (scenario 4)", async () => {
+    const { host, store, sent, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    setFocused(false);
+
+    await setSettings(host, { levels: { permission: "off" } });
+    agent1.callbacks.onPermissionRequest("req-1", {
+      toolName: "Bash",
+      toolInput: { command: "pnpm test" },
+    });
+    expect(notifications()).toHaveLength(0);
+    expect(sent("showConfirmation")).toHaveLength(1);
+    // The question channel is a separate switch: still banner.
+    agent1.callbacks.onPermissionRequest("req-2", {
+      toolName: "AskUserQuestion",
+      toolInput: {},
+    });
+    expect(notifications()).toHaveLength(1);
+  });
+
+  it("sound: false mutes the notifications that follow (scenario 5)", async () => {
+    const { host, store, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    setFocused(false);
+
+    await setSettings(host, { sound: false });
+    agent1.callbacks.onLoadingChange(true);
+    agent1.callbacks.onLoadingChange(false);
+    expect(notifications()).toHaveLength(1);
+    expect(notifications()[0].options.silent).toBe(true);
+    // levels were not in the patch → untouched.
+    expect(store.getNotificationLevels()).toEqual(ALL_BANNER);
+  });
+
+  it("ignores malformed items wholesale and still broadcasts the (unchanged) full state", async () => {
+    const { host, store, rawSent } = await readyHost();
+    await setSettings(host, { levels: { idle: "off" }, sound: false });
+    const before = settingsSent(rawSent).length;
+
+    await expect(
+      setSettings(host, {
+        levels: { idle: "loud", permission: "banner" },
+        sound: "no",
+      }),
+    ).resolves.toBeUndefined();
+
+    // One bad level voids the whole levels item — the valid permission entry in
+    // the same object does not sneak in either.
+    expect(store.getNotificationLevels()).toEqual({
+      ...ALL_BANNER,
+      idle: "off",
+    });
+    expect(store.getNotificationSound()).toBe(false);
+    const broadcasts = settingsSent(rawSent);
+    expect(broadcasts).toHaveLength(before + 1);
+    expect(broadcasts.at(-1)).toMatchObject({
+      levels: { ...ALL_BANNER, idle: "off" },
+      sound: false,
+    });
+  });
+
+  it("webviewReady pushes the initial state: all banner, sound on, persisted values win", async () => {
+    const defaults = await readyHost();
+    const pushes = settingsSent(defaults.rawSent);
+    expect(pushes.length).toBeGreaterThan(0);
+    expect(pushes.at(-1)).toEqual({
+      command: "desktopNotificationSettings",
+      levels: ALL_BANNER,
+      sound: true,
+    });
+
+    // 重启后保持（场景 5 / 场景 6）：磁盘上的偏好随启动下发一起推给设置页。
+    new ConfigStore(STORE_PATH).setNotificationLevels({ question: "mark" });
+    new ConfigStore(STORE_PATH).setNotificationSound(false);
+    const restored = await readyHost();
+    expect(settingsSent(restored.rawSent).at(-1)).toMatchObject({
+      levels: { ...ALL_BANNER, question: "mark" },
+      sound: false,
+    });
+  });
+
+  it("setNotificationSettings never touches settings.json (scenario 6)", async () => {
+    const { host, store } = await readyHost();
+
+    await setSettings(host, { levels: { idle: "off" }, sound: false });
+
+    // settings.json is written only through updateUserSettings in the session
+    // process (the user-preference path); the notification settings are a
+    // desktop-local preference and must not ride along.
+    expect(
+      h.clientRequests.filter((r) => r.method === "updateUserSettings"),
+    ).toEqual([]);
+    expect(store.getConfiguration()).toEqual({});
+    // They land in wave-desktop.json instead, next to theme / updateChannel.
+    const onDisk = JSON.parse(h.files.get(STORE_PATH)?.toString() ?? "{}");
+    expect(onDisk.notificationLevels).toEqual({ ...ALL_BANNER, idle: "off" });
+    expect(onDisk.notificationSound).toBe(false);
+    expect(onDisk).not.toHaveProperty("configuration.notificationLevels");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// system notifications (desktop-notifications.md story 4)
+//
+// 任务栏闪烁 / Dock 弹跳与角标 —— 宿主接线那一段：窗口失焦时来了确认请求 →
+// app.setBadgeCount(1) + 主窗口 flashFrame(true) + app.dock.bounce；窗口 focus
+// 事件（setMainWindow 挂的）→ flashFrame(false) + cancelBounce(id)，角标留着；
+// 答掉 → setBadgeCount(0)。按会话去重、mark 也计数、场景 6 的 try/catch 这些
+// service 自己的判定在 notificationService.test.ts「attention」里钉；这里钉的
+// 是宿主那一侧：哪些 Electron 调用真的发出、focus 挂在哪、没有 dock 走可选链、
+// 等级降级把屏上那条撤掉、会话消失角标跟着走。
+// ---------------------------------------------------------------------------
+
+describe("system notifications (desktop-notifications.md story 4)", () => {
+  const notifications = () => notificationMock.__instances();
+  /** Every count the OS badge was handed, in order (what the icon went through). */
+  const badgeCalls = () => appMock.setBadgeCount.mock.calls.map(([n]) => n);
+  const flashCalls = (win: BrowserWindow) =>
+    vi.mocked(win.flashFrame).mock.calls;
+  const ALL_BANNER = {
+    permission: "banner",
+    question: "banner",
+    idle: "banner",
+  };
+
+  /** A registered session the host can title and locate (agent pool + index). */
+  function seedSession(
+    store: ReturnType<typeof createHost>["store"],
+    sessionId: string,
+    title: string,
+  ) {
+    const agent = lastAgent();
+    seedConversation(agent, sessionId);
+    store.upsertSession({
+      sessionId,
+      title,
+      host: "local",
+      workdir: "/work/a",
+      cwd: "/work/a",
+      createdAt: Date.now(),
+      lastActiveAt: Date.now(),
+    });
+    return agent;
+  }
+
+  const setSettings = (
+    host: ReturnType<typeof createHost>["host"],
+    msg: Record<string, unknown>,
+  ) =>
+    host.handleWebviewMessage({ command: "setNotificationSettings", ...msg });
+
+  const permissionRequest = (
+    agent: ReturnType<typeof lastAgent>,
+    requestId: string,
+  ) =>
+    agent.callbacks.onPermissionRequest(requestId, {
+      toolName: "Bash",
+      toolInput: { command: "pnpm test" },
+    });
+
+  it("a confirmation arriving unfocused badges 1 and flashes; focus stops the flash; answering clears the badge", async () => {
+    const { host, store, sent, win, setFocused, fire } = await readyHost();
+    const agent = seedSession(store, "sess-1", "任务A");
+    setFocused(false);
+
+    permissionRequest(agent, "req-1");
+
+    expect(notifications()).toHaveLength(1);
+    expect(badgeCalls()).toEqual([1]);
+    expect(flashCalls(win)).toEqual([[true]]);
+    expect(appMock.dock?.bounce).toHaveBeenCalledWith("informational");
+
+    // 用户回到前台：setMainWindow 挂的 focus 监听停闪、停跳；角标不动（场景 3）。
+    setFocused(true);
+    fire("focus");
+    expect(flashCalls(win)).toEqual([[true], [false]]);
+    expect(appMock.dock?.cancelBounce).toHaveBeenCalledWith(7);
+    expect(badgeCalls()).toEqual([1]);
+
+    // 答掉最后一条：通知撤掉、角标清零（场景 1 / 4）。
+    await host.handleWebviewMessage({
+      command: "confirmationResponse",
+      confirmationId: sent("showConfirmation")[0].confirmationId as string,
+      approved: true,
+    });
+    expect(notifications()[0].close).toHaveBeenCalledTimes(1);
+    expect(badgeCalls()).toEqual([1, 0]);
+  });
+
+  it("two waiting sessions badge 2; one resolved drops it to 1 and keeps the flash (scenario 1 / 4)", async () => {
+    const { host, store, win, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    // A second session in a second pane: the host spawns a second agent.
+    const before = h.agentInstances.length;
+    await host.handleWebviewMessage({
+      command: "desktopOpenPane",
+      workdir: "/work/a",
+      sessionId: "sess-2",
+    });
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(before + 1);
+    });
+    const agent2 = seedSession(store, "sess-2", "任务B");
+    setFocused(false);
+
+    permissionRequest(agent1, "req-1");
+    permissionRequest(agent2, "req-2");
+
+    expect(badgeCalls()).toEqual([1, 2]);
+    expect(flashCalls(win)).toEqual([[true]]);
+
+    // Answered elsewhere (remote-control page): one still waiting → badge 1,
+    // flash keeps going.
+    agent1.callbacks.onPermissionResolved("req-1");
+    expect(badgeCalls()).toEqual([1, 2, 1]);
+    expect(flashCalls(win)).toEqual([[true]]);
+
+    agent2.callbacks.onPermissionResolved("req-2");
+    expect(badgeCalls()).toEqual([1, 2, 1, 0]);
+    expect(flashCalls(win)).toEqual([[true], [false]]);
+  });
+
+  it("「仅标记」: no banner, but the badge and the flash still go out (story 3 scenario 3)", async () => {
+    const { host, store, win, setFocused } = await readyHost();
+    const agent = seedSession(store, "sess-1", "任务A");
+    setFocused(false);
+    await setSettings(host, { levels: { permission: "mark" } });
+
+    permissionRequest(agent, "req-1");
+
+    expect(notifications()).toHaveLength(0);
+    expect(badgeCalls()).toEqual([1]);
+    expect(flashCalls(win)).toEqual([[true]]);
+  });
+
+  it("turning a channel down from banner retracts its on-screen notification (story 3 scenario 6)", async () => {
+    const { host, store, setFocused } = await readyHost();
+    const agent = seedSession(store, "sess-1", "任务A");
+    setFocused(false);
+    agent.callbacks.onLoadingChange(true);
+    agent.callbacks.onLoadingChange(false);
+    const [idle] = notifications();
+    expect(notifications()).toHaveLength(1);
+
+    await setSettings(host, { levels: { idle: "off" } });
+
+    expect(idle.close).toHaveBeenCalledTimes(1);
+    // And the next turn end of that channel is silent.
+    agent.callbacks.onLoadingChange(true);
+    agent.callbacks.onLoadingChange(false);
+    expect(notifications()).toHaveLength(1);
+    // Other channels untouched: a permission request still banners.
+    permissionRequest(agent, "req-1");
+    expect(notifications()).toHaveLength(2);
+    expect(notifications()[1].options.body).toBe("命令执行待确认：pnpm test");
+  });
+
+  it("a downgrade to mark retracts the banner but keeps the badge it counted", async () => {
+    const { host, store, setFocused } = await readyHost();
+    const agent = seedSession(store, "sess-1", "任务A");
+    setFocused(false);
+    permissionRequest(agent, "req-1");
+    expect(badgeCalls()).toEqual([1]);
+
+    await setSettings(host, { levels: { permission: "mark" } });
+
+    expect(notifications()[0].close).toHaveBeenCalledTimes(1);
+    expect(badgeCalls()).toEqual([1]);
+  });
+
+  it("a channel that stays at banner, or goes back up, retracts nothing", async () => {
+    const { host, store, setFocused } = await readyHost();
+    const agent = seedSession(store, "sess-1", "任务A");
+    setFocused(false);
+    permissionRequest(agent, "req-1");
+
+    await setSettings(host, {
+      levels: { permission: "banner", question: "off" },
+    });
+    expect(notifications()[0].close).not.toHaveBeenCalled();
+
+    await setSettings(host, { sound: false });
+    expect(notifications()[0].close).not.toHaveBeenCalled();
+  });
+
+  it("a platform without a Dock (Linux) neither throws nor loses the badge or the banner (scenario 6)", async () => {
+    const dock = appMock.dock;
+    appMock.__setDock(undefined);
+    try {
+      const { store, setFocused } = await readyHost();
+      const agent = seedSession(store, "sess-1", "任务A");
+      setFocused(false);
+
+      permissionRequest(agent, "req-1");
+
+      expect(notifications()).toHaveLength(1);
+      expect(badgeCalls()).toEqual([1]);
+      expect(dock?.bounce).not.toHaveBeenCalled();
+    } finally {
+      appMock.__setDock(dock);
+    }
+  });
+
+  it("a session deleted from elsewhere drops its notification and its badge too", async () => {
+    const { host, store, setFocused } = await readyHost();
+    const agent1 = seedSession(store, "sess-1", "任务A");
+    setFocused(false);
+    permissionRequest(agent1, "req-1");
+    expect(badgeCalls()).toEqual([1]);
+    // 远控页删掉了这条会话：pool 里的 agent 成了僵尸，任何读都回 Session not
+    // found —— 桌面端是在「从侧边栏点它、活 agent 分支拉首屏消息」时发现的。
+    await host.handleWebviewMessage({ command: "newSession" });
+    seedConversation(lastAgent(), "sess-2");
+    agent1.getMessages.mockRejectedValue(
+      new Error("Session not found: sess-1"),
+    );
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectSession",
+      workdir: "/work/a",
+      sessionId: "sess-1",
+    });
+
+    expect(store.getSessionIndex().some((e) => e.sessionId === "sess-1")).toBe(
+      false,
+    );
+    expect(notifications()[0].close).toHaveBeenCalledTimes(1);
+    expect(badgeCalls()).toEqual([1, 0]);
+  });
+
+  it("a confirmation that arrived while the window was focused loses its badge when its host is dropped", async () => {
+    // 用户在场时远端会话来确认：角标 +1、无横幅、不闪（service 的在场分支）。
+    // 此时 `active` 里没有它 —— SSH 断连 → dropHostAgents → closeHost 只能靠
+    // service 自己扫 pending 计数，不然角标卡在 1 直到重启。
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    h.existingPaths.add("/remote/repo");
+    const { host, win } = await readyHost(); // focused by default
+    await host.handleWebviewMessage({
+      command: "desktopSelectRemotePath",
+      host: "prod",
+      path: "/remote/repo",
+    });
+    await vi.waitFor(() => expect(h.closedHandlers).toHaveLength(1));
+    const remoteAgent = lastAgent();
+    registerAgentInIndex(remoteAgent);
+
+    permissionRequest(remoteAgent, "req-1");
+
+    expect(badgeCalls()).toEqual([1]);
+    expect(notifications()).toHaveLength(0);
+    expect(flashCalls(win)).toEqual([]);
+
+    h.closedHandlers[0]();
+
+    expect(badgeCalls()).toEqual([1, 0]);
+  });
+
+  it("setNotificationSettings still broadcasts the full state after a downgrade", async () => {
+    const { host, rawSent } = await readyHost();
+
+    await setSettings(host, { levels: { idle: "mark" } });
+
+    expect(rawSent("desktopNotificationSettings").at(-1)).toEqual({
+      command: "desktopNotificationSettings",
+      levels: { ...ALL_BANNER, idle: "mark" },
+      sound: true,
+    });
   });
 });
 

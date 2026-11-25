@@ -226,6 +226,15 @@ export function createRealHost(): RealHost {
     },
     isDestroyed: () => false,
     getContentSize: () => [1440, 900],
+    // Presence probes the system-notification service reads (spec
+    // desktop-notifications.md story 1). There is no display here: report the
+    // "user is in front of the window" baseline so nothing is posted.
+    isFocused: () => true,
+    isVisible: () => true,
+    isMinimized: () => false,
+    show: () => {},
+    focus: () => {},
+    restore: () => {},
   } as unknown as BrowserWindow;
   host.setMainWindow(win);
 

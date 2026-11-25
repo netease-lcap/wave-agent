@@ -255,6 +255,16 @@ if (!gotLock) {
   });
 
   void app.whenReady().then(() => {
+    // Windows toast 的硬前提：Electron 在 Windows 上靠 AUMID 把通知归属到开始
+    // 菜单里的这个应用，不设（或与安装器写进快捷方式的不一致）toast 直接发
+    // 不出来 —— Electron 文档「Notifications (Windows)」的要求，得在第一条
+    // 通知之前就位，所以放在 ready 之后的一次性初始化里。值 = package.json
+    // 里 electron-builder 的 appId，安装器用
+    // 同一个值注册快捷方式；开发模式没有那个快捷方式，Windows 上照样发不出，
+    // 要在正式安装包上验（spec desktop-notifications.md「边界情况」）。
+    // macOS / Linux 上是 no-op，不用分平台。
+    app.setAppUserModelId("com.netease.wave-desktop");
+
     // Login-shell environment probe (spec `core/bash-tools.md`「登录 shell 环境
     // 注入」): fired here, fire-and-forget, so it overlaps with the CLI binary
     // sync instead of blocking launch — no window, frame or session waits for

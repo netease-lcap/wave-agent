@@ -607,6 +607,22 @@ export type ThemeSource = "system" | "light" | "dark";
  *  desktop 有 UI)。stable = codechat 正式下载 feed，beta = desktop-beta feed。 */
 export type UpdateChannel = "stable" | "beta";
 
+/** 系统通知的类别（设置页「桌面端设置」「系统通知」分组的三行，仅 desktop 有 UI）：
+ *  permission = 权限审批请求（Bash / Edit 等工具需要批准），question = AskUserQuestion
+ *  向用户提问，idle = 回合完成。镜像自 `packages/desktop/src/main/notificationService.ts`
+ *  （webview 不能 import desktop 包——浏览器 bundle），改一处要改两处。见 spec
+ *  desktop/desktop-notifications.md「通知等级与声音可调」。 */
+export type NotificationChannel = "permission" | "question" | "idle";
+
+/** 某类通知的提醒等级：banner = 弹系统通知，mark = 仅标记（不弹窗；角标 / 闪烁由
+ *  host 侧 `notificationService.ts` 的注意力信号层实现，spec 故事 4），off = 完全
+ *  不提醒。镜像同上。 */
+export type NotificationLevel = "banner" | "mark" | "off";
+
+/** 三类通知各自的等级。host 下发的是全量快照（`desktopNotificationSettings` 广播），
+ *  webview 上送的是局部补丁（`setNotificationSettings.levels`）。 */
+export type NotificationLevels = Record<NotificationChannel, NotificationLevel>;
+
 /** Action a toast's button triggers when clicked (host-side semantics). Only
  *  一种语义：「聚焦后台会话」（后台会话确认 toast 的「查看」按钮）。更新下载/重启
  *  早已由账户卡片 S0–S3 按钮状态机接管，未登录 GitHub 下载页的 toast 也随

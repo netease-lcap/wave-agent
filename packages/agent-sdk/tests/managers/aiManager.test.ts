@@ -753,10 +753,12 @@ describe("AIManager", () => {
       // Verify that saveSession was called for user and both initial and recursive calls
       expect(mockMessageManager.saveSession).toHaveBeenCalledTimes(3);
 
-      // Verify that error was handled in the recursive call
+      // Verify that error was handled in the recursive call — and that it is
+      // scoped to the turn (it is what ended the turn).
       expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
         "AI service error",
         "error",
+        "turn",
       );
     });
 
@@ -773,6 +775,7 @@ describe("AIManager", () => {
       expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
         "Request was aborted",
         "error",
+        "turn",
       );
     });
 
@@ -830,6 +833,7 @@ describe("AIManager", () => {
         expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
           "Request was aborted",
           "error",
+          "turn",
         );
       });
 

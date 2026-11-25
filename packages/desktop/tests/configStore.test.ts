@@ -610,4 +610,130 @@ describe("ConfigStore", () => {
     const store = new ConfigStore(STORE_PATH);
     expect(store.getUpdateChannel()).toBe("stable");
   });
+
+  // ── Notification settings (desktop-notifications.md 故事 3) ─────
+  //
+  // 等级与提示音是桌面端本地偏好：落 wave-desktop.json（与主题 / 更新通道同档），
+  // 不进 DesktopConfigData —— 那是 settings.json 的用户偏好载荷（场景 6）。
+
+  const ALL_BANNER = {
+    permission: "banner",
+    question: "banner",
+    idle: "banner",
+  };
+
+  it("defaults every channel to banner and the sound to on", () => {
+    const store = new ConfigStore(STORE_PATH);
+    expect(store.getNotificationLevels()).toEqual(ALL_BANNER);
+    expect(store.getNotificationSound()).toBe(true);
+  });
+
+  it("loads levels and sound from disk", () => {
+    h.files.set(
+      STORE_PATH,
+      JSON.stringify({
+        notificationLevels: {
+          permission: "banner",
+          question: "mark",
+          idle: "off",
+        },
+        notificationSound: false,
+      }),
+    );
+    const store = new ConfigStore(STORE_PATH);
+    expect(store.getNotificationLevels()).toEqual({
+      permission: "banner",
+      question: "mark",
+      idle: "off",
+    });
+    expect(store.getNotificationSound()).toBe(false);
+  });
+
+  it("fills a channel missing on disk with its default and drops unknown keys", () => {
+    h.files.set(
+      STORE_PATH,
+      JSON.stringify({ notificationLevels: { idle: "off", foo: "banner" } }),
+    );
+    const store = new ConfigStore(STORE_PATH);
+    expect(store.getNotificationLevels()).toEqual({
+      ...ALL_BANNER,
+      idle: "off",
+    });
+  });
+
+  it("a bad level resets only its own channel; the good ones keep theirs (per-key fallback)", () => {
+    // 故事 3 评审 N1：整表回缺省会把同表里合法的 permission: "off" 一起抹回
+    // banner —— 那正是把用户想关的通知弹出来。坏的那一类回缺省，好的不动。
+    h.files.set(
+      STORE_PATH,
+      JSON.stringify({
+        notificationLevels: {
+          permission: "off",
+          question: "loud",
+          idle: "mark",
+        },
+      }),
+    );
+    expect(new ConfigStore(STORE_PATH).getNotificationLevels()).toEqual({
+      permission: "off",
+      question: "banner",
+      idle: "mark",
+    });
+  });
+
+  it.each([
+    { name: "a non-object", raw: "off" },
+    { name: "an array", raw: ["off"] },
+  ])("falls back to all-banner for $name on disk", ({ raw }) => {
+    h.files.set(STORE_PATH, JSON.stringify({ notificationLevels: raw }));
+    expect(new ConfigStore(STORE_PATH).getNotificationLevels()).toEqual(
+      ALL_BANNER,
+    );
+  });
+
+  it.each([
+    { name: "a non-boolean", raw: "no", expected: true },
+    { name: "false", raw: false, expected: false },
+  ])("reads the sound as $expected for $name on disk", ({ raw, expected }) => {
+    h.files.set(STORE_PATH, JSON.stringify({ notificationSound: raw }));
+    expect(new ConfigStore(STORE_PATH).getNotificationSound()).toBe(expected);
+  });
+
+  it("setNotificationLevels merges: untouched channels keep their value", () => {
+    const store = new ConfigStore(STORE_PATH);
+    store.setNotificationLevels({ idle: "off" });
+    store.setNotificationLevels({ permission: "mark" });
+    expect(store.getNotificationLevels()).toEqual({
+      permission: "mark",
+      question: "banner",
+      idle: "off",
+    });
+  });
+
+  it("persists levels and sound across instances into the local store only", () => {
+    const store = new ConfigStore(STORE_PATH);
+    store.setNotificationLevels({ question: "off" });
+    store.setNotificationSound(false);
+    const reloaded = new ConfigStore(STORE_PATH);
+    expect(reloaded.getNotificationLevels()).toEqual({
+      ...ALL_BANNER,
+      question: "off",
+    });
+    expect(reloaded.getNotificationSound()).toBe(false);
+    // 落点是 wave-desktop.json 顶层键，与 updateChannel 同档……
+    const onDisk = JSON.parse(h.files.get(STORE_PATH) ?? "{}");
+    expect(onDisk.notificationLevels).toEqual({
+      ...ALL_BANNER,
+      question: "off",
+    });
+    expect(onDisk.notificationSound).toBe(false);
+    // ……而不是 DesktopConfigData（settings.json 的用户偏好载荷，场景 6）。
+    expect(reloaded.getConfiguration()).toEqual({});
+  });
+
+  it("returns a copy: mutating the result does not change the store", () => {
+    const store = new ConfigStore(STORE_PATH);
+    store.getNotificationLevels().idle = "off";
+    expect(store.getNotificationLevels()).toEqual(ALL_BANNER);
+  });
 });

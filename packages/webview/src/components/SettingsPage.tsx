@@ -32,6 +32,9 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ConfigurationData,
+  NotificationChannel,
+  NotificationLevel,
+  NotificationLevels,
   ThemeSource,
   UpdateChannel,
   UserPreferenceKey,
@@ -89,6 +92,18 @@ export interface SettingsPageProps {
   updateChannel?: UpdateChannel;
   /** 用户切换更新通道（"stable" | "beta"），host 持久化并立即按新 feed 重查。 */
   onUpdateChannelChange?: (channel: UpdateChannel) => void;
+  /** 系统通知三类的等级（仅桌面端传入；未传入 = 插件端或尚未收到 host 推送，
+   *  不渲染「桌面端设置」区块的「系统通知」分组，spec desktop-notifications.md
+   *  故事 3 场景 7）。值是 host `desktopNotificationSettings` 广播的全量快照 +
+   *  本实例的乐观改动；选择即时生效（onNotificationLevelsChange 触发 host
+   *  setNotificationSettings），不依赖保存按钮。 */
+  notificationLevels?: NotificationLevels;
+  /** 提示音开关（仅桌面端传入，与 notificationLevels 同来同去；默认开）。 */
+  notificationSound?: boolean;
+  /** 用户改了某一类的等级，载荷只带**本次改动的类别**（host 侧合并）。 */
+  onNotificationLevelsChange?: (patch: Partial<NotificationLevels>) => void;
+  /** 用户切换提示音，host 持久化并静音/恢复后续系统通知。 */
+  onNotificationSoundChange?: (on: boolean) => void;
   /** 关闭设置页（desktop 返回会话视图 / 标签页关闭） */
   onClose: () => void;
   /** 写盘失败回执（宿主 `configurationError`）。设置页据此把乐观改动**回滚**到
@@ -255,6 +270,33 @@ const THEME_OPTIONS = [
   { value: "light", label: "浅色" },
   { value: "dark", label: "深色" },
 ];
+/** 系统通知等级下拉的选项（值与 host 侧 configStore 的 NotificationLevel 同串，
+ *  spec desktop-notifications.md 故事 3 场景 1）。「仅标记」只写「不弹窗」——
+ *  角标 / 闪烁由 host 侧 `notificationService.ts` 的注意力信号层实现（spec 故事 4），
+ *  标签不展开平台细节（没有 Dock / 任务栏的平台上它就只剩「不弹窗」）。 */
+const NOTIFICATION_LEVEL_OPTIONS = [
+  { value: "banner", label: "弹窗提醒" },
+  { value: "mark", label: "仅标记（不弹窗）" },
+  { value: "off", label: "关闭" },
+];
+/** 「系统通知」分组的三行（顺序固定：权限请求 / 回答提问 / 回合完成）。 */
+const NOTIFICATION_ROWS: Array<{
+  channel: NotificationChannel;
+  title: string;
+  description: string;
+}> = [
+  {
+    channel: "permission",
+    title: "权限请求",
+    description: "Bash / Edit 等工具需要你批准时",
+  },
+  { channel: "question", title: "回答提问", description: "模型向你提问时" },
+  {
+    channel: "idle",
+    title: "回合完成",
+    description: "一轮对话结束、窗口不在前台时",
+  },
+];
 export const CONTEXT_LENGTH_PLACEHOLDER = "跟随模型配置（默认 200K）";
 export const AUTO_MEMORY_FREQUENCY_PLACEHOLDER = "默认 1 轮";
 /** 生效值来自机器环境变量时的行内说明（可编辑，保存后写入用户级 settings.json）。 */
@@ -340,6 +382,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   onThemeChange,
   updateChannel,
   onUpdateChannelChange,
+  notificationLevels,
+  notificationSound,
+  onNotificationLevelsChange,
+  onNotificationSoundChange,
   onClose,
   configurationError,
   userAgentsContent,
@@ -1213,8 +1259,13 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                   场景 3）：主题与「接收 Beta 版更新」为桌面端独有的本地偏好——经
                   host 直连通道（setThemeSource / setUpdateChannel）持久化于桌面
                   configStore，不走 stdio updateConfiguration/共享 settings.json，
-                  选择即时生效、无「保存」按钮。2026-09-08 拍板从「基础设置」拆出。 */}
-              {(themeSource !== undefined || updateChannel !== undefined) && (
+                  选择即时生效、无「保存」按钮。2026-09-08 拍板从「基础设置」拆出。
+                  「系统通知」分组（spec desktop-notifications.md 故事 3）同属此档：
+                  经 setNotificationSettings 持久化于同一 configStore，三类等级 +
+                  提示音；插件端收不到 desktopNotificationSettings 广播，不渲染。 */}
+              {(themeSource !== undefined ||
+                updateChannel !== undefined ||
+                notificationLevels !== undefined) && (
                 <section className="settings-section">
                   <div className="settings-section-heading">
                     <h2>桌面端设置</h2>
@@ -1272,6 +1323,50 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                           <span className="settings-switch-slider"></span>
                         </label>
                       </div>
+                    )}
+                    {notificationLevels !== undefined && (
+                      <>
+                        <div className="settings-row-group-title">系统通知</div>
+                        {NOTIFICATION_ROWS.map((row) => (
+                          <div className="settings-row" key={row.channel}>
+                            <div className="settings-row-copy">
+                              <h3>{row.title}</h3>
+                              <p>{row.description}</p>
+                            </div>
+                            <div className="settings-control">
+                              <SettingsSelect
+                                testId={`settings-select-notification-${row.channel}`}
+                                label={`${row.title}提醒`}
+                                value={notificationLevels[row.channel]}
+                                options={NOTIFICATION_LEVEL_OPTIONS}
+                                onChange={(next) =>
+                                  onNotificationLevelsChange?.({
+                                    [row.channel]: next as NotificationLevel,
+                                  })
+                                }
+                              />
+                            </div>
+                          </div>
+                        ))}
+                        <div className="settings-row">
+                          <div className="settings-row-copy">
+                            <h3>提示音</h3>
+                            <p>系统通知弹出时播放提示音</p>
+                          </div>
+                          <label className="settings-switch">
+                            <input
+                              type="checkbox"
+                              aria-label="提示音"
+                              data-testid="settings-switch-notification-sound"
+                              checked={notificationSound ?? true}
+                              onChange={(e) =>
+                                onNotificationSoundChange?.(e.target.checked)
+                              }
+                            />
+                            <span className="settings-switch-slider"></span>
+                          </label>
+                        </div>
+                      </>
                     )}
                   </div>
                 </section>

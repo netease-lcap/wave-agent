@@ -1,5 +1,7 @@
 import { vi } from "vitest";
 
+const dockMock = { bounce: vi.fn(() => 7), cancelBounce: vi.fn() };
+
 export const app = {
   isPackaged: false,
   getPath: vi.fn(() => "/tmp/wave-desktop-test-userData"),
@@ -15,6 +17,21 @@ export const app = {
   exit: vi.fn(),
   /** Renderer memory curve source; tests seed Tab/Browser entries. */
   getAppMetrics: vi.fn((): Electron.ProcessMetric[] => []),
+  /**
+   * Icon badge (desktop-notifications.md story 4). The real one returns false
+   * without throwing on a Windows install that never registered a toast.
+   */
+  setBadgeCount: vi.fn<(count: number) => boolean>(() => true),
+  /**
+   * macOS Dock bounce (story 4). The real `app.dock` is undefined on Linux /
+   * Windows; the mock hands back an object so a case can assert on the calls,
+   * and `__setDock(undefined)` makes one case walk the no-dock branch.
+   */
+  dock: dockMock as typeof dockMock | undefined,
+  /** Test helper: swap / remove the Dock stand-in. */
+  __setDock(dock: typeof dockMock | undefined): void {
+    app.dock = dock;
+  },
 };
 
 export const crashReporter = {
@@ -85,6 +102,48 @@ export class Tray {
   destroy = vi.fn();
 }
 
+/**
+ * Notification: same story as Tray — the real one needs a desktop session, so
+ * `notificationService.ts` takes it through an injectable factory in its own
+ * tests. This stub exists so `desktopHost.ts`'s `import { Notification } from
+ * "electron"` resolves, and it records every instance so the host's wiring can
+ * be asserted (what was created / shown / closed, and what a click fires).
+ */
+type NotificationClickListener = () => void;
+const notificationInstances: Notification[] = [];
+
+export class Notification {
+  readonly options: Record<string, unknown>;
+  show = vi.fn();
+  close = vi.fn();
+  private readonly clickListeners: NotificationClickListener[] = [];
+  on = vi.fn((event: string, listener: NotificationClickListener) => {
+    if (event === "click") this.clickListeners.push(listener);
+  });
+  static readonly isSupported = vi.fn(() => true);
+
+  constructor(options: Record<string, unknown>) {
+    this.options = options;
+    notificationInstances.push(this);
+  }
+
+  /** Test helper: fire the `click` listeners the service registered. */
+  __click(): void {
+    for (const listener of [...this.clickListeners]) listener();
+  }
+
+  /** Every instance built since the last `__reset`, oldest first. */
+  static __instances(): readonly Notification[] {
+    return notificationInstances;
+  }
+
+  static __reset(): void {
+    notificationInstances.length = 0;
+    this.isSupported.mockReset();
+    this.isSupported.mockReturnValue(true);
+  }
+}
+
 export const contextBridge = {
   exposeInMainWorld: vi.fn(),
 };
@@ -92,13 +151,26 @@ export const contextBridge = {
 export class BrowserWindow {
   webContents = { send: vi.fn() };
   loadFile = vi.fn(async () => undefined);
-  on = vi.fn();
+  private readonly listeners = new Map<string, Set<() => void>>();
+  /** Stores every listener so `__emit` can replay a window event (story 4's `focus`). */
+  on = vi.fn((event: string, cb: () => void) => {
+    const set = this.listeners.get(event) ?? new Set();
+    set.add(cb);
+    this.listeners.set(event, set);
+  });
+  /** Taskbar flash / urgency hint (story 4); `false` stops it. */
+  flashFrame = vi.fn();
   isDestroyed = vi.fn(() => false);
   isMinimized = vi.fn(() => false);
   isFocused = vi.fn(() => true);
+  isVisible = vi.fn(() => true);
   restore = vi.fn();
   focus = vi.fn();
   static getAllWindows = vi.fn(() => [] as unknown[]);
+  /** Test helper: fire the listeners registered for `event`. */
+  __emit(event: string): void {
+    for (const cb of [...(this.listeners.get(event) ?? [])]) cb();
+  }
 }
 
 /**
