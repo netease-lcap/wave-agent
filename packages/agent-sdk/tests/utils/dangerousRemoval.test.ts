@@ -14,6 +14,16 @@ vi.mock("node:fs");
 const WORKDIR = path.resolve(path.sep, "fake", "worktree", "repo", "sub");
 const PROTECTED = [WORKDIR];
 
+/**
+ * Spell a path the way a POSIX shell will hand it back. A literal `D:\x` in a
+ * command line loses its backslashes to the parser (each one escapes the next
+ * character), so the only faithful way to say "this very directory" is the
+ * forward-slash spelling.
+ */
+function commandPath(p: string): string {
+  return p.split(path.sep).join("/");
+}
+
 function judge(command: string): DangerousRemoval | null {
   return findDangerousRemoval({
     command,
@@ -29,14 +39,18 @@ function ruleOf(command: string): string | null {
 beforeEach(() => {
   vi.clearAllMocks();
   // Every path is its own real path unless a test says otherwise.
-  vi.mocked(fs.realpathSync).mockImplementation((target) => target.toString());
+  vi.mocked(fs.realpathSync.native).mockImplementation((target) =>
+    target.toString(),
+  );
 });
 
 describe("findDangerousRemoval — targets that end the session", () => {
   it("refuses the working directory itself", () => {
     expect(ruleOf("rm -rf .")).toBe("working_directory");
-    expect(ruleOf(`rm -rf ${WORKDIR}`)).toBe("working_directory");
-    expect(ruleOf(`rm -rf '${WORKDIR}'`)).toBe("working_directory");
+    expect(ruleOf(`rm -rf ${commandPath(WORKDIR)}`)).toBe("working_directory");
+    expect(ruleOf(`rm -rf '${commandPath(WORKDIR)}'`)).toBe(
+      "working_directory",
+    );
   });
 
   it("refuses every ancestor of the working directory", () => {
@@ -45,9 +59,11 @@ describe("findDangerousRemoval — targets that end the session", () => {
 
     expect(judge("rm -rf ..")?.resolved).toBe(worktree);
     expect(judge("rm -rf ../..")?.resolved).toBe(repo);
-    expect(judge(`rm -rf ${repo}`)?.resolved).toBe(repo);
+    expect(judge(`rm -rf ${commandPath(repo)}`)?.resolved).toBe(repo);
     expect(ruleOf("rm -rf ../../..")).toBe("working_directory");
-    expect(ruleOf(`rm -rf ${path.dirname(repo)}`)).toBe("working_directory");
+    expect(ruleOf(`rm -rf ${commandPath(path.dirname(repo))}`)).toBe(
+      "working_directory",
+    );
   });
 
   it("refuses a target that reaches the working directory through ..", () => {
@@ -80,11 +96,13 @@ describe("findDangerousRemoval — targets that end the session", () => {
 
   it("refuses a symlink that resolves to the working directory", () => {
     const link = path.resolve(path.sep, "fake", "link-to-repo");
-    vi.mocked(fs.realpathSync).mockImplementation((target) =>
+    vi.mocked(fs.realpathSync.native).mockImplementation((target) =>
       path.resolve(target.toString()) === link ? WORKDIR : target.toString(),
     );
 
-    expect(judge(`rm -rf ${link}`)?.rule).toBe("working_directory");
+    expect(judge(`rm -rf ${commandPath(link)}`)?.rule).toBe(
+      "working_directory",
+    );
   });
 
   it("refuses a target that cannot be resolved before it runs", () => {
@@ -137,7 +155,9 @@ describe("findDangerousRemoval — shapes that hide the command", () => {
     expect(ruleOf("sh -lc 'rm -rf ../..'")).toBe("working_directory");
     const elsewhere = path.resolve(path.sep, "fake", "elsewhere");
     expect(
-      ruleOf(`sudo bash -c 'cd ${elsewhere} && rm -rf ${elsewhere}'`),
+      ruleOf(
+        `sudo bash -c 'cd ${commandPath(elsewhere)} && rm -rf ${commandPath(elsewhere)}'`,
+      ),
     ).toBe("working_directory");
   });
 

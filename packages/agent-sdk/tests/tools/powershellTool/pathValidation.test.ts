@@ -13,7 +13,7 @@ vi.mock("node:fs");
 beforeEach(() => {
   // Symlink resolution is a filesystem call; without a stand-in every path
   // comparison would fail closed and prove nothing.
-  vi.mocked(fs.realpathSync).mockImplementation((p) => p.toString());
+  vi.mocked(fs.realpathSync.native).mockImplementation((p) => p.toString());
 });
 
 const ROOT = path.parse(process.cwd()).root;
@@ -131,7 +131,7 @@ describe("the session's own directories", () => {
   it("should refuse a symlink that points at the working directory", () => {
     // Symlinks are resolved by `isPathAtOrAbove`, so the spelling does not
     // matter; the mock below stands in for the filesystem.
-    vi.mocked(fs.realpathSync).mockImplementation((p) => {
+    vi.mocked(fs.realpathSync.native).mockImplementation((p) => {
       const text = p.toString();
       return text === path.resolve(SUB, "link") ? SUB : text;
     });
