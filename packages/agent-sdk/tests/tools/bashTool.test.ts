@@ -1325,9 +1325,9 @@ EOF
       platformSpy = vi
         .spyOn(process, "platform", "get")
         .mockReturnValue("win32" as NodeJS.Platform);
-      // resolveWindowsShell() returns WAVE_GIT_BASH_PATH as-is without checking
-      // existence; on a Linux CI runner there is no real Git Bash, so without
-      // this stub execute() would fail with "Git Bash not found".
+      // resolveWindowsShell() honours WAVE_GIT_BASH_PATH only when it names an
+      // existing bash/sh binary (#3108), so /bin/bash is accepted on the POSIX
+      // runners; the alternative is auto-detection, which finds no Git Bash.
       vi.stubEnv("WAVE_GIT_BASH_PATH", "/bin/bash");
     });
 

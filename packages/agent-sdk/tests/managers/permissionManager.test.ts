@@ -1790,7 +1790,7 @@ describe("PermissionManager", () => {
         // /home/user on Linux and D:\home\user on Windows. Compare the realpathSync
         // arg against path.resolve(workdir, "..") so the mock distinguishes the
         // parent (out-of-bounds) from the workdir on both platforms.
-        vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+        vi.spyOn(fs.realpathSync, "native").mockImplementation((p) => {
           const resolved = path.resolve(p.toString());
           const parent = path.resolve(workdir, "..");
           if (resolved === parent) return parent;
@@ -1811,7 +1811,7 @@ describe("PermissionManager", () => {
       });
 
       it("should set hidePersistentOption for out-of-bounds ls", () => {
-        vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+        vi.spyOn(fs.realpathSync, "native").mockImplementation((p) => {
           const resolved = path.resolve(p.toString());
           const workdirResolved = path.resolve(workdir);
           if (path.relative(workdirResolved, resolved).startsWith("..")) {
@@ -1834,7 +1834,7 @@ describe("PermissionManager", () => {
       });
 
       it("should NOT set hidePersistentOption for safe commands", () => {
-        vi.spyOn(fs, "realpathSync").mockImplementation(
+        vi.spyOn(fs.realpathSync, "native").mockImplementation(
           () => "/home/user/project/src",
         );
 
@@ -2263,7 +2263,7 @@ describe("PermissionManager", () => {
     beforeEach(() => {
       // Simulate real paths: relative args live inside the Safe Zone workdir,
       // absolute paths (/etc/...) resolve to themselves (outside the zone).
-      vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+      vi.spyOn(fs.realpathSync, "native").mockImplementation((p) => {
         const s = String(p);
         return path.isAbsolute(s)
           ? path.normalize(s)
@@ -2359,7 +2359,7 @@ describe("PermissionManager", () => {
 
     it("should allow 'cd src' if src is inside workdir", async () => {
       // Mock fs.realpathSync to return paths that are inside workdir
-      vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+      vi.spyOn(fs.realpathSync, "native").mockImplementation((p) => {
         if (p.toString().includes("src")) return "/home/user/project/src";
         return "/home/user/project";
       });
@@ -2378,7 +2378,7 @@ describe("PermissionManager", () => {
       // Source resolves "cd .." via path.resolve(workdir, ".."). Mirror that
       // so the mock distinguishes the parent (out-of-bounds) from the workdir
       // on both Linux (/home/user) and Windows (D:\home\user).
-      vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+      vi.spyOn(fs.realpathSync, "native").mockImplementation((p) => {
         const resolved = path.resolve(p.toString());
         const parent = path.resolve(workdir, "..");
         if (resolved === parent) return parent;
@@ -2396,7 +2396,7 @@ describe("PermissionManager", () => {
     });
 
     it("should NOT allow 'ls /etc' when it is outside workdir", async () => {
-      vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+      vi.spyOn(fs.realpathSync, "native").mockImplementation((p) => {
         const resolved = path.resolve(p.toString());
         const workdirResolved = path.resolve(workdir);
         if (path.relative(workdirResolved, resolved).startsWith("..")) {
@@ -2416,7 +2416,7 @@ describe("PermissionManager", () => {
     });
 
     it("should allow 'ls src' when inside workdir", async () => {
-      vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+      vi.spyOn(fs.realpathSync, "native").mockImplementation((p) => {
         const resolved = path.resolve(p.toString());
         const workdirResolved = path.resolve(workdir);
         if (path.relative(workdirResolved, resolved).startsWith("..")) {
@@ -2436,7 +2436,7 @@ describe("PermissionManager", () => {
     });
 
     it("should allow 'ls -l src' with flags when inside workdir", async () => {
-      vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+      vi.spyOn(fs.realpathSync, "native").mockImplementation((p) => {
         const resolved = path.resolve(p.toString());
         const workdirResolved = path.resolve(workdir);
         if (path.relative(workdirResolved, resolved).startsWith("..")) {
@@ -2456,7 +2456,7 @@ describe("PermissionManager", () => {
     });
 
     it("should NOT allow 'cat /etc/passwd' when outside workdir", async () => {
-      vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+      vi.spyOn(fs.realpathSync, "native").mockImplementation((p) => {
         const resolved = path.resolve(p.toString());
         const workdirResolved = path.resolve(workdir);
         if (path.relative(workdirResolved, resolved).startsWith("..")) {
@@ -2476,7 +2476,7 @@ describe("PermissionManager", () => {
     });
 
     it("should NOT allow 'grep root /etc/passwd' when outside workdir", async () => {
-      vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+      vi.spyOn(fs.realpathSync, "native").mockImplementation((p) => {
         const resolved = path.resolve(p.toString());
         const workdirResolved = path.resolve(workdir);
         if (path.relative(workdirResolved, resolved).startsWith("..")) {
@@ -2496,7 +2496,7 @@ describe("PermissionManager", () => {
     });
 
     it("should NOT allow 'cat ../secret.txt' when escaping workdir", async () => {
-      vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+      vi.spyOn(fs.realpathSync, "native").mockImplementation((p) => {
         const resolved = path.resolve(p.toString());
         const workdirResolved = path.resolve(workdir);
         if (path.relative(workdirResolved, resolved).startsWith("..")) {
@@ -2520,7 +2520,7 @@ describe("PermissionManager", () => {
       const manager = new PermissionManager(container, {
         additionalDirectories: ["/data/exports"],
       });
-      vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+      vi.spyOn(fs.realpathSync, "native").mockImplementation((p) => {
         const pathStr = p.toString();
         if (pathStr.includes("exports")) return pathStr;
         return path.resolve(workdir);
@@ -2549,7 +2549,7 @@ describe("PermissionManager", () => {
     });
 
     it("should allow 'cd src && ls' if both are safe", async () => {
-      vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+      vi.spyOn(fs.realpathSync, "native").mockImplementation((p) => {
         if (p.toString().includes("src")) return "/home/user/project/src";
         return "/home/user/project";
       });
@@ -2565,7 +2565,7 @@ describe("PermissionManager", () => {
     });
 
     it("should deny 'cd src && rm -rf /' because rm is not safe", async () => {
-      vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+      vi.spyOn(fs.realpathSync, "native").mockImplementation((p) => {
         if (p.toString().includes("src")) return "/home/user/project/src";
         return "/home/user/project";
       });
@@ -2695,7 +2695,7 @@ describe("PermissionManager", () => {
     const workdir = "/home/user/project";
 
     beforeEach(() => {
-      vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+      vi.spyOn(fs.realpathSync, "native").mockImplementation((p) => {
         const resolved = path.resolve(p.toString());
         if (resolved.includes("src")) return path.resolve(workdir, "src");
         if (resolved === path.resolve(workdir, "..")) return resolved;

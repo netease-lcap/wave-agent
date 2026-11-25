@@ -8,7 +8,7 @@ import { homedir } from "node:os";
  */
 function getSafeRealPath(p: string): string {
   try {
-    return fs.realpathSync(p);
+    return fs.realpathSync.native(p);
   } catch {
     const parent = path.dirname(p);
     if (parent === p) return p; // Root reached
