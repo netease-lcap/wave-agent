@@ -282,7 +282,7 @@ order: 90
 
 **为什么是这个优先级**：worktree 隔离是防数据破坏的安全机制（防止误写主仓库），与权限模式无关。同类先例是 `USER_INTERACTION_REQUIRED_TOOLS`——`AskUserQuestion` / `ExitPlanMode` 在 bypassPermissions 下同样必须到达用户。bypassPermissions 的语义是"跳过权限确认"，不是"跳过安全校验"。
 
-**独立测试**：在 worktree 会话中通过 webview 或 CLI 将权限模式切换为 bypassPermissions，要求 AI 用 Write/Edit 修改主仓库（worktree 外）文件，验证操作被拒绝且出现 worktree 安全错误消息；再要求修改 worktree 内文件，验证正常写入。
+**独立测试**：在 worktree 会话中通过 webview 或 CLI 将权限模式切换为 bypassPermissions，要求 AI 用 Write/Edit 修改主仓库（worktree 外）文件，验证操作被拒绝且出现 worktree 安全错误消息；再要求修改 worktree 内文件，验证正常写入。再在 daemon / stdio 宿主里跑一遍：`wave daemon create --worktree <name>` 或恢复一个已有 worktree 会话（这两个入口不带 worktree 名，会话只有工作目录），要求 AI 用 Write/Edit 修改主仓库文件，验证同样被拒绝。
 
 **验收场景**：
 
@@ -290,6 +290,7 @@ order: 90
 2. **假设**我处于 bypassPermissions 模式且在 worktree 会话中，**当** AI 调用 Write/Edit 修改 worktree 内的文件时，**则**操作正常执行，无需任何权限确认（bypass 语义不变）。
 3. **假设**我处于 bypassPermissions 模式但不在任何 worktree 会话中，**当** AI 调用 Write/Edit 修改任意文件时，**则**操作正常执行，无需权限确认（非 worktree 场景行为完全不变）。
 4. **假设**我处于 acceptEdits 或 default 模式且在 worktree 会话中，**当** AI 调用 Write/Edit 修改主仓库文件时，**则**行为与现状一致，仍被 worktree 安全拦截。
+5. **假设**会话由 stdio 宿主创建或恢复、工作目录在 worktree 内，但创建方没有声明 worktree 名（`wave daemon create --worktree`、daemon 重启后从磁盘恢复的会话、宿主重新打开的 worktree 会话），**当** AI 调用 Write/Edit 修改主仓库（worktree 外）的文件时，**则**操作同样被拒绝——写入范围由"会话工作目录本身是不是一个 linked git worktree"决定（读该目录 `.git` 文件里的 `gitdir` / `commondir`），与哪个入口创建、是否声明无关。
 
 ---
 

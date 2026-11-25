@@ -90,6 +90,55 @@ export function getGitMainRepoRoot(cwd: string): string {
 }
 
 /**
+ * The linked git worktree `dir` **is**, plus the repository it belongs to.
+ *
+ * `git worktree add` leaves a `.git` *file* (`gitdir: <main>/.git/worktrees/<name>`)
+ * in the worktree, and that git dir's `commondir` points back at the main
+ * repository's `.git` — so "is this a worktree, and of which repo" is a pair of
+ * file reads, no process. Callers need it on every session start, which rules
+ * out `git worktree list` (one spawn per agent).
+ *
+ * Only the worktree's own root qualifies. A subdirectory of a worktree is not a
+ * worktree root here: the answer decides which directory a session may write
+ * in, and a subdirectory would narrow that to itself.
+ *
+ * @returns `name` (the directory's own name, what a session shows as its
+ * worktree) and `repoRoot` (the main repository's working tree), or undefined
+ * when `dir` is not a linked worktree root.
+ */
+export function readLinkedWorktree(
+  dir: string,
+): { name: string; repoRoot: string } | undefined {
+  try {
+    const worktreePath = path.resolve(dir);
+    const gitEntry = path.join(worktreePath, ".git");
+    if (!fsSync.statSync(gitEntry).isFile()) return undefined;
+
+    const prefix = "gitdir: ";
+    const content = fsSync.readFileSync(gitEntry, "utf8").trim();
+    if (!content.startsWith(prefix)) return undefined;
+    const gitDir = path.resolve(
+      worktreePath,
+      content.substring(prefix.length).trim(),
+    );
+
+    // `commondir` is relative to the worktree's own git dir and is normally
+    // `../..` (= the main repo's `.git`). A repo with a separate git dir keeps
+    // pointing at it the same way, so only a trailing `.git` is stripped.
+    const commonDir = path.resolve(
+      gitDir,
+      fsSync.readFileSync(path.join(gitDir, "commondir"), "utf8").trim(),
+    );
+    const repoRoot =
+      path.basename(commonDir) === ".git" ? path.dirname(commonDir) : commonDir;
+
+    return { name: path.basename(worktreePath), repoRoot };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Resolve the git directory for a repository by walking up from `cwd`.
  * Handles both normal repos (.git is a directory) and worktrees
  * (.git is a file pointing to the main repo's worktree git dir).
