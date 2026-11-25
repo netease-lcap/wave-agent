@@ -39,6 +39,14 @@ function exitCodeOf(result: { data?: unknown }): number | undefined {
   return (result.data as { exitCode?: number } | undefined)?.exitCode;
 }
 
+// How a non-zero exit reads. Since #3087 `success` only answers "did the
+// command run at all", so this — not `error` — is where a failed command shows
+// up (spec `core/powershell-tool.md`「退出码不是工具成败」).
+function interpretationOf(result: { data?: unknown }): string | undefined {
+  return (result.data as { returnCodeInterpretation?: string } | undefined)
+    ?.returnCodeInterpretation;
+}
+
 describe.skipIf(!isWindows)("PowerShell tool with real shell spawn", () => {
   let workdir: string;
 
@@ -57,8 +65,13 @@ describe.skipIf(!isWindows)("PowerShell tool with real shell spawn", () => {
     );
 
     expect(exitCodeOf(result)).toBe(42);
-    expect(result.success).toBe(false);
-    expect(result.error).toBe("Command failed with exit code: 42");
+    // The command ran, so its exit code is the answer rather than a failed
+    // call: `cmd` is not in the family table, so the reading is the fallback
+    // sentence and `error` stays empty (`success: false` would mean the command
+    // never started).
+    expect(result.success).toBe(true);
+    expect(result.error).toBeUndefined();
+    expect(interpretationOf(result)).toBe("Command failed with exit code: 42");
   });
 
   it("reports 0 when the command succeeded", async () => {
@@ -79,7 +92,11 @@ describe.skipIf(!isWindows)("PowerShell tool with real shell spawn", () => {
     );
 
     expect(exitCodeOf(result)).toBe(1);
-    expect(result.success).toBe(false);
+    // Same rule as above: `Get-Item` is not in the family table either, so the
+    // exit 1 reads as a failure of the *command*, not of the tool call.
+    expect(result.success).toBe(true);
+    expect(result.error).toBeUndefined();
+    expect(interpretationOf(result)).toBe("Command failed with exit code: 1");
   });
 
   it("runs a background command as a real, attached PowerShell process", async () => {
