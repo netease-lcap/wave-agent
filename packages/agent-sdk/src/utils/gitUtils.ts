@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import * as fsSync from "node:fs";
 import { execFileSyncHidden } from "./execFileHidden.js";
+import { resolveWorktreeGitDirs } from "./worktreePaths.js";
 
 /**
  * Check if a directory is a git repository
@@ -90,52 +91,94 @@ export function getGitMainRepoRoot(cwd: string): string {
 }
 
 /**
- * The linked git worktree `dir` **is**, plus the repository it belongs to.
+ * The linked git worktree `dir` **is**, plus the checkout it belongs to.
  *
- * `git worktree add` leaves a `.git` *file* (`gitdir: <main>/.git/worktrees/<name>`)
- * in the worktree, and that git dir's `commondir` points back at the main
- * repository's `.git` — so "is this a worktree, and of which repo" is a pair of
- * file reads, no process. Callers need it on every session start, which rules
- * out `git worktree list` (one spawn per agent).
+ * The structural half — is this a linked worktree at all, and which git dirs is
+ * it wired to — is `resolveWorktreeGitDirs`, the same hardened parser the
+ * memory-rule path mapping uses (#2851: two parsers answering differently for
+ * one directory is how a worktree ends up judged twice). Its checks are what
+ * stop a cloned repo from pointing `commondir` at a directory the user can read
+ * and having this answer describe someone else's tree.
  *
  * Only the worktree's own root qualifies. A subdirectory of a worktree is not a
- * worktree root here: the answer decides which directory a session may write
- * in, and a subdirectory would narrow that to itself.
+ * worktree root here: the answer decides which directory a session may write in,
+ * and a subdirectory would narrow that to itself.
+ *
+ * Callers pass the session's opening directory (`SessionWorkdir`), not the
+ * moving `CurrentWorkdir`: a `cd` inside the session must not decide who owns
+ * the write scope.
  *
  * @returns `name` (the directory's own name, what a session shows as its
- * worktree) and `repoRoot` (the main repository's working tree), or undefined
- * when `dir` is not a linked worktree root.
+ * worktree) and `repoRoot` (the checkout's working tree), or undefined when
+ * `dir` is not a linked worktree root or its checkout cannot be established.
  */
 export function readLinkedWorktree(
   dir: string,
 ): { name: string; repoRoot: string } | undefined {
+  const resolved = resolveWorktreeGitDirs(dir);
+  if (!resolved) return undefined;
+  const repoRoot = checkoutOfCommonDir(resolved.commonDir);
+  if (!repoRoot) return undefined;
+  return { name: path.basename(resolved.worktreeRoot), repoRoot };
+}
+
+/**
+ * The working tree a shared git dir belongs to.
+ *
+ * `<checkout>/.git` answers `<checkout>` on the spot — the shape every plain
+ * repository and every worktree of one produces. Any other common dir is a
+ * submodule's `.git/modules/<name>`, a bare repository, or a
+ * `--separate-git-dir` repository, and those have no path-shaped answer: git
+ * records the checkout as `core.worktree` in that git dir's config when it has
+ * one, and `git worktree list` does **not** know better (measured 2026-11-25:
+ * for both a submodule worktree and a `--separate-git-dir` worktree, porcelain
+ * reports the *git dir* as the main worktree). Bare and `--separate-git-dir`
+ * repositories never set it — there is no main working tree to protect — so
+ * both answer undefined rather than pointing the guard at a git dir.
+ */
+function checkoutOfCommonDir(commonDir: string): string | undefined {
+  if (path.basename(commonDir) === ".git") return path.dirname(commonDir);
   try {
-    const worktreePath = path.resolve(dir);
-    const gitEntry = path.join(worktreePath, ".git");
-    if (!fsSync.statSync(gitEntry).isFile()) return undefined;
-
-    const prefix = "gitdir: ";
-    const content = fsSync.readFileSync(gitEntry, "utf8").trim();
-    if (!content.startsWith(prefix)) return undefined;
-    const gitDir = path.resolve(
-      worktreePath,
-      content.substring(prefix.length).trim(),
-    );
-
-    // `commondir` is relative to the worktree's own git dir and is normally
-    // `../..` (= the main repo's `.git`). A repo with a separate git dir keeps
-    // pointing at it the same way, so only a trailing `.git` is stripped.
-    const commonDir = path.resolve(
-      gitDir,
-      fsSync.readFileSync(path.join(gitDir, "commondir"), "utf8").trim(),
-    );
-    const repoRoot =
-      path.basename(commonDir) === ".git" ? path.dirname(commonDir) : commonDir;
-
-    return { name: path.basename(worktreePath), repoRoot };
+    const configFile = path.join(commonDir, "config");
+    if (!fsSync.lstatSync(configFile).isFile()) return undefined;
+    const worktree = coreWorktreeOf(fsSync.readFileSync(configFile, "utf8"));
+    if (!worktree) return undefined;
+    const checkout = path.resolve(commonDir, worktree);
+    // A config we cannot turn into a directory that is actually there (an
+    // unexpanded `~`, a stale absolute path) is no protection at all.
+    return fsSync.existsSync(checkout) ? checkout : undefined;
   } catch {
     return undefined;
   }
+}
+
+/**
+ * `core.worktree` of a git config file, or undefined. Just enough config
+ * parsing for that one key: sections are `[core]`, the value may be quoted, and
+ * everything else is skipped.
+ */
+function coreWorktreeOf(config: string): string | undefined {
+  let inCore = false;
+  for (const rawLine of config.split("\n")) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#") || line.startsWith(";")) continue;
+    const section = /^\[([^\]]+)\]$/.exec(line);
+    if (section) {
+      inCore = section[1].trim().toLowerCase() === "core";
+      continue;
+    }
+    if (!inCore) continue;
+    const separator = line.indexOf("=");
+    if (separator === -1) continue;
+    if (line.slice(0, separator).trim().toLowerCase() !== "worktree") continue;
+    const value = line.slice(separator + 1).trim();
+    const unquoted =
+      value.startsWith('"') && value.endsWith('"') && value.length > 1
+        ? value.slice(1, -1)
+        : value;
+    return unquoted || undefined;
+  }
+  return undefined;
 }
 
 /**

@@ -123,23 +123,35 @@ function relativeResolved(target: string, parent: string): string {
   );
 }
 
+/** The git dirs a linked worktree is wired to (see {@link resolveWorktreeGitDirs}). */
+export interface WorktreeGitDirs {
+  /** Root of the linked worktree itself */
+  worktreeRoot: string;
+  /** This worktree's private git dir (`<commonDir>/worktrees/<name>`) */
+  gitDir: string;
+  /** The git dir shared with the repository (`<checkout>/.git`, or a bare/module git dir) */
+  commonDir: string;
+}
+
 /**
  * Read `<dir>/.git` as a gitfile (`gitdir: <checkout>/.git/worktrees/<name>`)
- * and return the checkout root. A normal repository (`.git` is a directory) and
- * anything unreadable return null.
+ * and return this worktree's own git dir plus the common dir it shares with its
+ * repository. A normal repository (`.git` is a directory) and anything
+ * unreadable return null.
  *
  * The three structure checks mirror Claude Code's `resolveCanonicalRoot`
  * (`utils/git.ts`): both files the chain reads are written by a cloned repo and
  * therefore attacker-controlled, and this mapping decides which `AGENTS.md`
- * gets pulled into the model's context. Without the checks a repo could point
+ * gets pulled into the model's context — and, since #3091, which checkout the
+ * worktree write guard marks off-limits. Without the checks a repo could point
  * `commondir`/`gitdir` at any directory the user can read and have that
- * directory's memory file injected.
+ * directory's memory file injected (or its paths declared writable).
  *
  * A structural mismatch returns null rather than "the input root" (what Claude
  * Code returns): the caller here is asking "is this a linked worktree, and of
  * which checkout", and a `null` lets the walk fall back to the plain path.
  */
-function checkoutOfWorktreeRoot(dir: string): string | null {
+export function resolveWorktreeGitDirs(dir: string): WorktreeGitDirs | null {
   const dotGit = path.join(dir, ".git");
   try {
     if (!fs.statSync(dotGit).isFile()) return null;
@@ -197,13 +209,28 @@ function checkoutOfWorktreeRoot(dir: string): string | null {
     ) {
       return null;
     }
-    // (3) A bare-repo worktree has no working directory to map paths into, and
-    // this mapping exists purely to translate paths between two working trees.
-    if (path.basename(commonDir) !== ".git") return null;
-    return path.dirname(commonDir);
+    return { worktreeRoot: dir, gitDir: worktreeGitDir, commonDir };
   } catch {
     return null;
   }
+}
+
+/**
+ * The checkout `dir`'s worktree belongs to, or null when the pair cannot be
+ * mapped between two working trees.
+ *
+ * (3) The mapping above exists purely to translate paths between two working
+ * trees, so a common dir that is not a checkout's `.git` — a bare repository,
+ * a submodule's `.git/modules/<name>` — has nothing to map into and returns
+ * null. Callers that only need "is this a linked worktree, and where does its
+ * repository live" use {@link resolveWorktreeGitDirs} instead, which keeps the
+ * same structural checks without this path-mapping restriction.
+ */
+function checkoutOfWorktreeRoot(dir: string): string | null {
+  const dirs = resolveWorktreeGitDirs(dir);
+  if (!dirs) return null;
+  if (path.basename(dirs.commonDir) !== ".git") return null;
+  return path.dirname(dirs.commonDir);
 }
 
 /** A regular file, not a symlink/special file and not something unprobeable. */
