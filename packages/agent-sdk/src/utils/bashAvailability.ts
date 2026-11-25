@@ -13,10 +13,10 @@ import { resolveShellPath } from "./shellResolver.js";
 /**
  * true when a bash binary this session could actually spawn was found.
  *
- * A resolved path is not a usable one: the `WAVE_GIT_BASH_PATH` override is
- * returned verbatim, so a stale value answers "resolved" for a binary that is
- * not on disk. Everything downstream spawns that path, so existence is the
- * honest test.
+ * A resolved path is not a usable one: Windows resolution only asks
+ * `existsSync` (the `WAVE_GIT_BASH_PATH` override is validated, but not for
+ * executability). Everything downstream spawns that path, so `accessSync` is
+ * the honest test.
  *
  * Memoized for the lifetime of the process
  * ---------------------------------------
@@ -26,7 +26,7 @@ import { resolveShellPath } from "./shellResolver.js";
  * memo, each *model request* paid for a fresh probe, because the system prompt
  * names the shell that runs the session (`getShellInfoLine`). On a machine
  * whose Git lives outside `C:\Program Files\Git`, `inferGitBashFromGit()`
- * falls back to spawning `where.exe` — measured 170 ms per call on Windows,
+ * walks cwd and every `PATH` directory — several `existsSync` per directory,
  * synchronous on the event loop, and a session with 20 tool rounds pays it 20
  * times. Caching the answer turns "one probe per request" into "one probe per
  * process".
