@@ -235,6 +235,9 @@ export function createRealHost(): RealHost {
     show: () => {},
     focus: () => {},
     restore: () => {},
+    // `setMainWindow` registers the focus listener that stops the attention
+    // signals (story 4); no display here, so nothing to deliver.
+    on: () => {},
   } as unknown as BrowserWindow;
   host.setMainWindow(win);
 
