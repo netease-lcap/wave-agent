@@ -145,11 +145,7 @@ describe("main", () => {
       argv: ["--print", "Hello World"],
       flags: { message: "Hello World" },
     },
-    {
-      name: "-p <message> --show-stats",
-      argv: ["-p", "Stats", "--show-stats"],
-      flags: { message: "Stats", showStats: true },
-    },
+
     {
       name: "-p <message> --output-format stream-json",
       argv: ["-p", "Review", "--output-format", "stream-json"],
@@ -162,7 +158,6 @@ describe("main", () => {
       expect.objectContaining({
         ...COMMON_OPTIONS,
         outputFormat: "text",
-        showStats: undefined,
         ...flags,
       }),
     );

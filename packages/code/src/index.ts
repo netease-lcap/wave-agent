@@ -86,11 +86,7 @@ export async function main() {
         type: "string",
         global: false,
       })
-      .option("show-stats", {
-        description: "Show timing and usage statistics in print mode",
-        type: "boolean",
-        global: false,
-      })
+
       .option("output-format", {
         description:
           'Print-mode output format: "text" (default), "json" (a single result object), or "stream-json" (one JSON event per line)',
@@ -676,10 +672,7 @@ export async function main() {
       .example("$0 --restore session_123", "Restore specific session")
       .example("$0 --continue", "Continue from last session")
       .example("$0 --print 'Hello'", "Send message in print mode")
-      .example(
-        "$0 -p 'Hello' --show-stats",
-        "Send message in print mode with statistics",
-      )
+
       .help("h")
       .recommendCommands()
       .strict()
@@ -867,7 +860,6 @@ export async function main() {
         restoreSessionId: argv.restore as string | undefined,
         continueLastSession: argv.continue as boolean | undefined,
         message: argv.print,
-        showStats: argv.showStats as boolean | undefined,
         outputFormat: argv.outputFormat as "text" | "json" | "stream-json",
         bypassPermissions: argv.dangerouslySkipPermissions as
           | boolean

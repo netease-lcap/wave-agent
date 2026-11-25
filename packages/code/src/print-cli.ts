@@ -9,7 +9,6 @@ import {
   type Usage,
   type WorktreeSession,
 } from "wave-agent-sdk";
-import { displayUsageSummary } from "./utils/usageSummary.js";
 import { describeWorktreeSurvival, removeWorktree } from "./utils/worktree.js";
 import {
   drainStdout,
@@ -25,7 +24,6 @@ export interface PrintCliOptions extends BaseAppProps {
   restoreSessionId?: string;
   continueLastSession?: boolean;
   message?: string;
-  showStats?: boolean;
   /** MCP server config parsed from --mcp-config CLI argument */
   mcpServers?: Record<string, import("wave-agent-sdk").McpServerConfig>;
   /** --output-format: "text" (default), "json", or "stream-json" */
@@ -34,24 +32,6 @@ export interface PrintCliOptions extends BaseAppProps {
 
 /** A diagnostics writer: always stderr — stdout carries the answer alone. */
 type Writer = (text: string) => void;
-
-function displayTimingInfo(
-  startTime: Date,
-  showStats: boolean,
-  write: Writer,
-): void {
-  // Skip timing info in test environment or if stats are disabled
-  if (process.env.NODE_ENV === "test" || process.env.VITEST || !showStats) {
-    return;
-  }
-
-  const endTime = new Date();
-  const duration = endTime.getTime() - startTime.getTime();
-
-  write(`\n\n📅 Start time: ${startTime.toISOString()}\n`);
-  write(`📅 End time: ${endTime.toISOString()}\n`);
-  write(`⏱️  Duration: ${duration}ms\n`);
-}
 
 export async function startPrintCli(options: PrintCliOptions): Promise<void> {
   // stdout carries the printed result here; console telemetry exporters would
@@ -62,7 +42,6 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     restoreSessionId,
     continueLastSession,
     message: promptArg,
-    showStats = false,
     bypassPermissions,
     permissionMode,
     pluginDirs,
@@ -108,10 +87,6 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
   // Claude Code's print-mode contract. Only diagnostics (error blocks, worktree
   // notes, usage/timing summary) go to stderr.
   const diag: Writer = (text) => output.diag(text);
-  const usageWriter = toLineWriter(process.stderr.write.bind(process.stderr));
-  const showUsage = (usages: Usage[], sessionFilePath: string): void => {
-    displayUsageSummary(usages, sessionFilePath, usageWriter);
-  };
 
   let agent: Agent;
 
@@ -230,25 +205,13 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     // is torn down before the worktree bookkeeping below. A getter that throws
     // must never turn a completed run into a failure, so it degrades to no
     // usage rather than raising.
-    const usageSnapshot = readUsageSnapshot(agent);
+    const usages = readUsages(agent);
     let sessionId = "";
     try {
       sessionId = agent.sessionId;
     } catch {
-      // Same rule as the usage snapshot: identity loss is not a run failure
+      // Same rule as the usage table: identity loss is not a run failure
     }
-
-    // Display usage summary before exit
-    if (showStats && usageSnapshot) {
-      try {
-        showUsage(usageSnapshot.usages, usageSnapshot.sessionFilePath);
-      } catch {
-        // Silently ignore usage summary errors
-      }
-    }
-
-    // Display timing information
-    displayTimingInfo(startTime, showStats, diag);
 
     // Decide whether the worktree is clean enough to remove
     let cleanWorktree = false;
@@ -308,7 +271,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     const envelope = output.result({
       sessionId,
       durationMs: Date.now() - startTime.getTime(),
-      usages: usageSnapshot?.usages ?? [],
+      usages: usages ?? [],
     });
     await exitWithFlushedStdout(envelope.is_error ? 1 : 0);
   } catch (error) {
@@ -329,24 +292,13 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     let sessionId = "";
 
     if (agent!) {
-      // Display usage summary even on error
+      // A failed run still reports what it spent — the envelope's usage.
       try {
         usages = agent.usages;
         sessionId = agent.sessionId;
-        const sessionFilePath = agent.sessionFilePath;
-        if (showStats) {
-          try {
-            showUsage(usages, sessionFilePath);
-          } catch {
-            // Silently ignore usage summary errors
-          }
-        }
       } catch {
         // Silently ignore usage access errors
       }
-
-      // Display timing information even on error
-      displayTimingInfo(startTime, showStats, diag);
 
       // Decide whether the worktree is clean enough to remove
       let cleanWorktree = false;
@@ -408,14 +360,12 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
 }
 
 /**
- * The agent's usage table plus the transcript path, or `undefined` when either
- * getter throws — the summary is a convenience, not part of the run's contract.
+ * The agent's usage table, or `undefined` when the getter throws — usage is a
+ * reporting detail, never a reason to turn a finished run into a failure.
  */
-function readUsageSnapshot(
-  agent: Agent,
-): { usages: Usage[]; sessionFilePath: string } | undefined {
+function readUsages(agent: Agent): Usage[] | undefined {
   try {
-    return { usages: agent.usages, sessionFilePath: agent.sessionFilePath };
+    return agent.usages;
   } catch {
     return undefined;
   }
@@ -431,11 +381,4 @@ async function exitWithFlushedStdout(code: number): Promise<void> {
   uninstallStdoutGuard();
   await drainStdout();
   process.exit(code);
-}
-
-/** Adapt a stream write to the line-writer shape `displayUsageSummary` takes. */
-function toLineWriter(
-  write: (chunk: string) => unknown,
-): (line?: string) => void {
-  return (line) => void write((line ?? "") + "\n");
 }

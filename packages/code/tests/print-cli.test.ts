@@ -5,14 +5,6 @@ import {
   describeWorktreeRemovalOutcome,
 } from "wave-agent-sdk";
 
-// Mock displayUsageSummary only — the structured output reads the real
-// aggregation helpers (sumUsage / calculateTokenSummary) from the same module.
-vi.mock("../src/utils/usageSummary.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../src/utils/usageSummary.js")>();
-  return { ...actual, displayUsageSummary: vi.fn() };
-});
-
 // Mock the Agent SDK
 vi.mock("wave-agent-sdk");
 
@@ -78,7 +70,6 @@ const stdoutWriteSpy = vi.spyOn(process.stdout, "write").mockImplementation(((
 }) as unknown as typeof process.stdout.write);
 
 import { startPrintCli } from "../src/print-cli.js";
-import { displayUsageSummary } from "../src/utils/usageSummary.js";
 import {
   hasUncommittedChanges,
   hasNewCommits,
@@ -170,7 +161,7 @@ test("startPrintCli sends message and exits after completion", async () => {
 
   const testMessage = "Hello, how are you?";
 
-  await startPrintCli({ message: testMessage, showStats: true });
+  await startPrintCli({ message: testMessage });
 
   // Verify that the Agent was created
   expect(vi.mocked(Agent.create)).toHaveBeenCalledWith({
@@ -182,14 +173,6 @@ test("startPrintCli sends message and exits after completion", async () => {
 
   // Verify that sendMessage was called with the correct message
   expect(mockAgent.sendMessage).toHaveBeenCalledWith(testMessage);
-
-  // Verify displayUsageSummary was called with usages and sessionFilePath
-  // Show-stats output goes to stderr in every format, so the summary takes a writer.
-  expect(vi.mocked(displayUsageSummary)).toHaveBeenCalledWith(
-    mockUsages,
-    mockSessionFilePath,
-    expect.any(Function),
-  );
 
   // Verify agent was destroyed and process.exit was called
   expect(mockAgent.destroy).toHaveBeenCalled();
@@ -242,7 +225,7 @@ test("startPrintCli works with continue session", async () => {
   vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
 
   try {
-    await startPrintCli({ continueLastSession: true, showStats: true });
+    await startPrintCli({ continueLastSession: true });
   } catch (error) {
     // Expected when process.exit is called
     expect(String(error)).toContain("process.exit called");
@@ -258,13 +241,6 @@ test("startPrintCli works with continue session", async () => {
 
   // Verify that sendMessage was NOT called (no message provided)
   expect(mockAgent.sendMessage).not.toHaveBeenCalled();
-
-  // Verify displayUsageSummary was called
-  expect(vi.mocked(displayUsageSummary)).toHaveBeenCalledWith(
-    [],
-    "/mock/continued-session.json",
-    expect.any(Function),
-  );
 
   // Verify agent was destroyed and process.exit was called
   expect(mockAgent.destroy).toHaveBeenCalled();
@@ -288,9 +264,6 @@ test("startPrintCli handles usage summary errors gracefully", async () => {
   vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
 
   await startPrintCli({ message: "test message" });
-
-  // Verify that displayUsageSummary was NOT called due to error
-  expect(vi.mocked(displayUsageSummary)).not.toHaveBeenCalled();
 
   // Verify agent was still destroyed and process.exit was called
   expect(mockAgent.destroy).toHaveBeenCalled();
@@ -324,19 +297,12 @@ test("startPrintCli handles sendMessage errors and displays usage summary", asyn
     .spyOn(console, "error")
     .mockImplementation(() => {});
 
-  await startPrintCli({ message: "test message", showStats: true });
+  await startPrintCli({ message: "test message" });
 
   // Verify error was logged
   expect(consoleErrorSpy).toHaveBeenCalledWith(
     "Failed to send message:",
     expect.any(Error),
-  );
-
-  // Verify displayUsageSummary was called even on error
-  expect(vi.mocked(displayUsageSummary)).toHaveBeenCalledWith(
-    mockUsages,
-    mockSessionFilePath,
-    expect.any(Function),
   );
 
   // Verify agent was destroyed and process.exit was called with error code
@@ -523,59 +489,6 @@ test("工具调用与推理都不打印：只记进 tool_calls / 事件", async 
   // 过程信息一个字都不打印，与 Claude Code 的 print 模式一致
   expect(stdout.chunks).toEqual([]);
   expect(stderrWriteSpy).not.toHaveBeenCalled();
-});
-
-test("startPrintCli does not display stats by default", async () => {
-  const mockUsages = [
-    {
-      prompt_tokens: 100,
-      completion_tokens: 50,
-      total_tokens: 150,
-      model: "gpt-4",
-      operation_type: "agent",
-    },
-  ];
-  const mockSessionFilePath = "/path/to/session.json";
-
-  const mockAgent = {
-    sendMessage: vi.fn(),
-    destroy: vi.fn(),
-    drainAutoMemory: vi.fn(),
-    abortMessage: vi.fn(),
-    usages: mockUsages,
-    sessionFilePath: mockSessionFilePath,
-  };
-
-  vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
-
-  const testMessage = "Hello, how are you?";
-
-  // Suppress stderr output for this specific test
-  const originalStderr = process.stderr.write;
-  process.stderr.write = vi.fn().mockReturnValue(true);
-
-  await startPrintCli({ message: testMessage }); // No showStats parameter
-
-  // Restore stderr
-  process.stderr.write = originalStderr;
-
-  // Verify that the Agent was created
-  expect(vi.mocked(Agent.create)).toHaveBeenCalledWith({
-    callbacks: expect.any(Object),
-    restoreSessionId: undefined,
-    continueLastSession: undefined,
-    entrypoint: "cli",
-  });
-
-  // Verify that sendMessage was called with the correct message
-  expect(mockAgent.sendMessage).toHaveBeenCalledWith(testMessage);
-
-  // Verify displayUsageSummary was NOT called when showStats is not provided
-  expect(vi.mocked(displayUsageSummary)).not.toHaveBeenCalled();
-
-  // Verify agent was destroyed and process.exit was called
-  expect(mockAgent.destroy).toHaveBeenCalled();
-  expect(mockExit).toHaveBeenCalledWith(0);
 });
 
 test("startPrintCli handles non-string message gracefully", async () => {
@@ -1121,31 +1034,6 @@ test("--output-format json 运行失败时仍输出 envelope 并退出 1", async
   expect(envelope.result).toBeUndefined();
   expect(envelope.errors).toEqual(["Send message failed"]);
   expect(mockExit).toHaveBeenCalledWith(1);
-});
-
-test("--output-format json 搭配 --show-stats 时用量汇总走 stderr", async () => {
-  const agent = structuredAgent();
-  vi.mocked(Agent.create).mockResolvedValue(agent as unknown as Agent);
-  const stdout = captureStdout();
-
-  try {
-    await startPrintCli({
-      message: "test",
-      outputFormat: "json",
-      showStats: true,
-    });
-  } finally {
-    stdout.restore();
-  }
-
-  // 汇总交给 stderr（这次断言的是「被调用」，容器由 displayUsageSummary 自己决定）
-  expect(vi.mocked(displayUsageSummary)).toHaveBeenCalledWith(
-    expect.any(Array),
-    "/mock/session.json",
-    expect.any(Function),
-  );
-  const lines = stdout.chunks.join("").split("\n").filter(Boolean);
-  expect(lines).toHaveLength(1);
 });
 
 test("模型请求失败（只落错误块、不抛错）按运行失败收尾", async () => {
