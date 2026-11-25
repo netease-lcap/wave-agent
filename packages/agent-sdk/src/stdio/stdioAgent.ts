@@ -22,6 +22,7 @@
 import type {
   Message,
   NoticeLevel,
+  NoticeScope,
   Task,
   BackgroundTaskSummary,
   SerializableWorkflowRun,
@@ -187,10 +188,25 @@ export interface StdioAgentCallbacks {
   }) => void;
   onToolBlockUpdated?: (params: ToolBlockUpdateCallbackParams) => void;
   /**
-   * A line for the human, never for the model — an error that ended the turn
-   * (`level: "error"`) or a hook's status narration (`level: "info"`).
+   * A line for the human, never for the model — an error (`level: "error"`)
+   * or a hook's status narration (`level: "info"`). `scope` tells the two
+   * kinds of error apart: `"turn"` = the error that ended the turn; absent or
+   * `"event"` = a non-blocking error the turn continued past (a hook that
+   * failed, a compaction that failed). Absent when the CLI sent none.
+   *
+   * Two things `scope: "turn"` does not promise. (a) It is set when the error
+   * terminated the AI inner loop — a Stop hook's block may ask the loop to
+   * continue, so the turn might not be over yet, and if the continuation
+   * succeeds the host still receives this turn-scoped error notice (the
+   * conservative direction, on purpose). (b) A user abort (AbortError) also
+   * ends the turn, so its notice carries `"turn"` too; to tell an abort from
+   * a failure read your own abort signal, not `scope`.
    */
-  onNoticeAdded?: (notice: { level: NoticeLevel; content: string }) => void;
+  onNoticeAdded?: (notice: {
+    level: NoticeLevel;
+    content: string;
+    scope?: NoticeScope;
+  }) => void;
   /**
    * `message` is the compact message the CLI appended to its display stream;
    * hosts append it incrementally instead of pulling the full list. Absent
@@ -1235,8 +1251,16 @@ export class StdioAgent {
         );
         break;
       case "noticeAdded": {
-        const p = params as { level: NoticeLevel; content: string };
-        this.callbacks.onNoticeAdded?.({ level: p.level, content: p.content });
+        const p = params as {
+          level: NoticeLevel;
+          content: string;
+          scope?: NoticeScope;
+        };
+        this.callbacks.onNoticeAdded?.({
+          level: p.level,
+          content: p.content,
+          ...(p.scope === undefined ? {} : { scope: p.scope }),
+        });
         break;
       }
       case "compactBlockAdded": {

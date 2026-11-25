@@ -6,7 +6,7 @@ order: 10
 
 # 功能规格说明：桌面端窗口与外观
 
-> 本规格描述应用这个窗口本身：打开看到的第一屏、应用菜单栏与右键菜单、登录入口、外观配色与系统通知。安装包、内置 CLI 的交付与远端同步、自动更新通道见 [desktop-distribution.md](./desktop-distribution.md)。
+> 本规格描述应用这个窗口本身：打开看到的第一屏、应用菜单栏与右键菜单、登录入口、外观配色与无干扰通知。桌面端的操作系统级通知（macOS 通知中心 / Windows 操作中心）见 [desktop-notifications.md](./desktop-notifications.md)。安装包、内置 CLI 的交付与远端同步、自动更新通道见 [desktop-distribution.md](./desktop-distribution.md)。
 
 ## 用户场景与测试
 
@@ -71,6 +71,8 @@ order: 10
 作为用户，我希望版本更新提示和默认的 plan/通知提醒以非模态的方式出现在消息流中，以便我不会被系统弹窗打断。
 
 **为什么是这个优先级**：desktop 无编辑器状态栏/状态对话框，需要替代通知通道。
+
+> 本故事的「不弹窗」只管版本更新与 plan 提示这类非阻塞信息；需要用户介入的三类事件（权限请求、回答提问、回合完成）在窗口不可见或失焦时的操作系统级通知，见 [desktop-notifications.md](./desktop-notifications.md)。
 
 **独立测试**：在会话中触发一个通知，验证它作为系统消息插入消息列表而非弹窗。
 

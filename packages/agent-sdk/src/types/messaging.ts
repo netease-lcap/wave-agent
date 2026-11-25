@@ -63,6 +63,21 @@ export interface NoticeBlock {
   content: string;
 }
 
+/**
+ * Who a {@link NoticeBlock} concerns: `"turn"` = the error that ended this
+ * turn; `"event"` (or absent) = a non-blocking error the turn continued past.
+ *
+ * Two things `"turn"` does not promise:
+ * - It is set when the error terminated the AI inner loop. A Stop hook's block
+ *   may ask the loop to continue, so the turn might not be over yet — and if
+ *   the continuation succeeds the host still receives this turn-scoped error
+ *   notice. That is the conservative direction and is left as is on purpose.
+ * - A user abort (AbortError) also ends the turn, so its notice carries
+ *   `"turn"` too. A host that needs to tell an abort from a failure reads
+ *   its own abort signal, not `scope`.
+ */
+export type NoticeScope = "turn" | "event";
+
 export interface TextBlock {
   type: "text";
   content: string;

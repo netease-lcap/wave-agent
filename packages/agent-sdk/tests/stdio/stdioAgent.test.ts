@@ -1187,6 +1187,42 @@ describe("StdioAgent", () => {
     });
   });
 
+  it("noticeAdded forwards scope to the callback when the wire carries it", () => {
+    const onNoticeAdded = vi.fn();
+    const { agent } = createAgent({ onNoticeAdded });
+
+    agent.handleNotification("noticeAdded", {
+      level: "error",
+      content: "Stopped",
+      scope: "turn",
+    });
+
+    expect(onNoticeAdded).toHaveBeenCalledTimes(1);
+    expect(onNoticeAdded.mock.calls[0][0]).toStrictEqual({
+      level: "error",
+      content: "Stopped",
+      scope: "turn",
+    });
+  });
+
+  it("noticeAdded adds no scope key when the wire carries none", () => {
+    const onNoticeAdded = vi.fn();
+    const { agent } = createAgent({ onNoticeAdded });
+
+    agent.handleNotification("noticeAdded", {
+      level: "error",
+      content: "Something went wrong",
+    });
+
+    expect(onNoticeAdded).toHaveBeenCalledTimes(1);
+    const notice = onNoticeAdded.mock.calls[0][0];
+    expect(notice).toStrictEqual({
+      level: "error",
+      content: "Something went wrong",
+    });
+    expect("scope" in notice).toBe(false);
+  });
+
   it("compactBlockAdded forwards content and message to callback", () => {
     const onCompactBlockAdded = vi.fn();
     const { agent } = createAgent({ onCompactBlockAdded });

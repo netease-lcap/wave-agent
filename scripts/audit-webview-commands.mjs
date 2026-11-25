@@ -124,6 +124,7 @@ const DESKTOP_GATED_NON_PREFIX = new Set([
   "newSession", // ChatApp.handleDesktopNewSession（插件端头部的「新对话」= clearChat）
   "setThemeSource", // 设置页主题行仅 desktop 有 UI
   "setUpdateChannel", // 设置页更新通道行仅 desktop 有 UI（#2107；插件端无 updateChannel 字段恒 stable 不渲染）
+  "setNotificationSettings", // 设置页「桌面端设置」系统通知分组（等级/提示音）仅 desktop 有 UI（desktop-notifications.md 故事 3）
   "toastAction", // UpdateToast 仅 desktop 推送
 ]);
 

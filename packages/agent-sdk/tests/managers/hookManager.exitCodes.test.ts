@@ -96,9 +96,13 @@ describe("HookManager exit-code semantics", () => {
       );
       expect(res.shouldBlock).toBe(true);
       expect(res.errorMessage).toBe("Blocked");
+      // `"turn"`: the prompt is erased and never reaches the model — the
+      // caller releases the loading state it reserved, so the host saw a
+      // whole turn end in this error.
       expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
         "Blocked",
         "error",
+        "turn",
       );
       expect(mockMessageManager.removeLastUserMessage).toHaveBeenCalled();
     });

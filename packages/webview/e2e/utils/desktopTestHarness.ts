@@ -226,7 +226,8 @@ const mockDesktopApiJs = `
         'configurationResponse',
         'desktopThemeSource',
         'desktopThemeChange',
-        'desktopUpdateChannel'
+        'desktopUpdateChannel',
+        'desktopNotificationSettings'
     ];
 
     const deliver = (message) => {

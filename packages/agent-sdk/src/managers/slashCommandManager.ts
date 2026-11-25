@@ -468,15 +468,18 @@ export class SlashCommandManager {
               allowedRules: result.allowedTools,
             });
           } catch (error) {
-            this.aiManager.setIsLoading(false);
-
             logger?.error(error);
+            // `"turn"` and *before* `setIsLoading(false)`: hosts learn that
+            // a turn ended from loading:false (the desktop reads its
+            // turn-error marker there), so the error notice has to land first.
             this.messageManager.addNoticeBlock(
               `Failed to execute skill command '${skill.name}': ${
                 error instanceof Error ? error.message : String(error)
               }`,
               "error",
+              "turn",
             );
+            this.aiManager.setIsLoading(false);
           }
         },
       });
@@ -1031,20 +1034,22 @@ export class SlashCommandManager {
         allowedRules: config?.allowedTools,
       });
     } catch (error) {
-      this.aiManager.setIsLoading(false);
-
       logger?.error(
         `Failed to execute custom command '${commandName}':`,
         error,
       );
 
-      // Add error to message manager
+      // Add error to message manager. `"turn"` and before
+      // `setIsLoading(false)`, for the same reason as the skill handler's
+      // catch: the notice must reach the host ahead of loading:false.
       this.messageManager.addNoticeBlock(
         `Failed to execute custom command '${commandName}': ${
           error instanceof Error ? error.message : String(error)
         }`,
         "error",
+        "turn",
       );
+      this.aiManager.setIsLoading(false);
     }
   }
 

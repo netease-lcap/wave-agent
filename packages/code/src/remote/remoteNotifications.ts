@@ -24,6 +24,7 @@ import type {
   BackgroundTask,
   BackgroundTaskSummary,
   NoticeLevel,
+  NoticeScope,
   PermissionMode,
   ToolBlockUpdateCallbackParams,
   ToolPermissionContext,
@@ -105,7 +106,11 @@ export const remoteWire = {
     return rest;
   },
 
-  noticeAdded: (notice: { level: NoticeLevel; content: string }) => notice,
+  noticeAdded: (notice: {
+    level: NoticeLevel;
+    content: string;
+    scope?: NoticeScope;
+  }) => notice,
 
   loadingChange: (loading: boolean, latestTotalTokens?: number) => ({
     loading,

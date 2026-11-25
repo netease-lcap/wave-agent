@@ -411,7 +411,11 @@ describe("ChatProvider", () => {
       parametersChunk: '{"a"',
       parameters: '{"a":1}',
     });
-    callbacks.onNoticeAdded!({ level: "error", content: "API Error: 500" });
+    callbacks.onNoticeAdded!({
+      level: "error",
+      content: "API Error: 500",
+      scope: "turn",
+    });
 
     // The daemon puts these on the wire from its bridge; this host has to emit the
     // same ones or the phone differs depending on which process serves it — the
@@ -439,7 +443,9 @@ describe("ChatProvider", () => {
       },
       {
         method: "noticeAdded",
-        params: { level: "error", content: "API Error: 500" },
+        // `scope` rides along: the relay-facing copy must keep the
+        // turn/event distinction, not just level + content.
+        params: { level: "error", content: "API Error: 500", scope: "turn" },
       },
     ]);
   });

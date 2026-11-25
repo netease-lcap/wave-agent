@@ -790,6 +790,47 @@ test("onNoticeAdded emits noticeAdded notification", async () => {
   });
 });
 
+test("onNoticeAdded carries scope on the wire, and adds no key when there is none", async () => {
+  // The desktop host tells "the error that ended the turn" (`scope: "turn"`)
+  // from a non-blocking one by this key alone (desktop-notifications.md 故事 2
+  // 场景 3), so the wire must neither drop it nor add it as `undefined`.
+  const { bridge, notifications } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  await bridge.handleRequest("initialize", {});
+  const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
+    .callbacks as AgentCallbacks;
+
+  callbacks.onNoticeAdded!({
+    level: "error",
+    content: "stopped",
+    scope: "turn",
+  });
+  callbacks.onNoticeAdded!({
+    level: "error",
+    content: "hook failed",
+    scope: "event",
+  });
+  callbacks.onNoticeAdded!({ level: "error", content: "no scope" });
+
+  expect(notifications).toContainEqual({
+    method: "noticeAdded",
+    params: { level: "error", content: "stopped", scope: "turn" },
+    sessionId: "test-session-id",
+  });
+  expect(notifications).toContainEqual({
+    method: "noticeAdded",
+    params: { level: "error", content: "hook failed", scope: "event" },
+    sessionId: "test-session-id",
+  });
+  const plain = notifications.find(
+    (n) =>
+      n.method === "noticeAdded" &&
+      (n.params as { content: string }).content === "no scope",
+  )!;
+  expect("scope" in (plain.params as object)).toBe(false);
+});
+
 test("onPermissionModeChange emits permissionModeChange notification", async () => {
   const { bridge, notifications } = createBridge();
   vi.mocked(Agent.create).mockResolvedValue(createMockAgent());

@@ -3577,6 +3577,7 @@ ${question}`;
                   this.messageManager.addNoticeBlock(
                     `Response exceeded the output token limit ${MAX_OUTPUT_TOKENS_RECOVERY_LIMIT + 1} consecutive times without producing output or tool calls. Stopped to avoid an infinite loop. Break the remaining work into smaller pieces and try again.`,
                     "error",
+                    "turn",
                   );
                   break inner;
                 }
@@ -3675,6 +3676,7 @@ ${question}`;
           this.messageManager.addNoticeBlock(
             error instanceof Error ? error.message : "Unknown error occurred",
             "error",
+            "turn",
           );
 
           // Exit inner loop on error
