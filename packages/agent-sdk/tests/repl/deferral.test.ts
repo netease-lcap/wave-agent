@@ -166,3 +166,46 @@ describe("core-tool pooling", () => {
     expect(isCorePoolTool("WebFetch", true)).toBe(false);
   });
 });
+
+describe("folded search tools", () => {
+  // core/repl-tool.md「搜索折叠态下的 Grep / Glob 只在脚本里可达」: the pair is in
+  // the pool while the search fold is on, announced by name, whatever the core
+  // switch says. The fold is an input of the judgment like the switch is.
+  const folded = new Set(["Grep", "Glob"]);
+
+  it("is off by default", () => {
+    expect(isDeferredTool({ name: "Grep" }, none)).toBe(false);
+    expect(toolTier("Grep", true)).toBe("core");
+  });
+
+  it("pools the pair with the core switch off, and leaves every other answer alone", () => {
+    expect(isDeferredTool({ name: "Grep" }, none, false, folded)).toBe(true);
+    expect(isDeferredTool({ name: "Glob" }, none, false, folded)).toBe(true);
+    expect(isDeferredTool({ name: "Read" }, none, false, folded)).toBe(false);
+    expect(
+      isDeferredTool({ name: "WebFetch", defer: true }, none, false, folded),
+    ).toBe(true);
+    expect(isDeferredTool({ name: "WebFetch" }, none, false, folded)).toBe(
+      false,
+    );
+  });
+
+  it("is a name in the announcement even with the core switch on", () => {
+    expect(toolTier("Grep", true, folded)).toBe("named");
+    expect(toolTier("Glob", true, folded)).toBe("named");
+    expect(toolTier("Read", true, folded)).toBe("core");
+    // Not a change to the core-pool list: `isCorePoolTool` keeps reading the switch.
+    expect(isCorePoolTool("Grep", true)).toBe(true);
+  });
+
+  it("still loses to both escape hatches", () => {
+    // The order is the contract: `alwaysLoad` → non-deferrable → core pool → the
+    // fold. An operator can keep `Grep` flat without opening the fold.
+    expect(
+      isDeferredTool({ name: "Grep", alwaysLoad: true }, none, false, folded),
+    ).toBe(false);
+    expect(
+      isDeferredTool({ name: "Grep" }, new Set(["Grep"]), true, folded),
+    ).toBe(false);
+  });
+});

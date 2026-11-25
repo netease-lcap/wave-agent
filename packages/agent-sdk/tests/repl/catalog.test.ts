@@ -213,6 +213,31 @@ describe("buildReplPool", () => {
     );
     expect(read.inputSchema).toEqual(readSchema);
   });
+
+  it("pools the folded search pair by name, whatever the core switch says", () => {
+    // core/repl-tool.md「搜索折叠态下的 Grep / Glob 只在脚本里可达」: the fold is
+    // an input of its own, not a core-pool membership. With the switch on `Read`
+    // gets the signature tier and the pair stays a name — a signature would be
+    // advertising the way round the fold. With it off the pair is still pooled,
+    // while `WebFetch` (which only claimed defer) and `Read` keep their answers.
+    const folded = new Set(["Grep", "Glob"]);
+    const candidates = [
+      { name: "Read" },
+      { name: "Grep" },
+      { name: "Glob" },
+      { name: "WebFetch" },
+    ];
+
+    const on = buildReplPool(candidates, none, true, undefined, folded);
+    expect(on.map((pooled) => pooled.name)).toEqual(["Read", "Grep", "Glob"]);
+    expect(on.find((pooled) => pooled.name === "Read")?.tier).toBe("core");
+    expect(on.find((pooled) => pooled.name === "Grep")?.tier).toBeUndefined();
+    expect(on.find((pooled) => pooled.name === "Glob")?.tier).toBeUndefined();
+
+    const off = buildReplPool(candidates, none, false, undefined, folded);
+    expect(off.map((pooled) => pooled.name)).toEqual(["Grep", "Glob"]);
+    for (const pooled of off) expect(pooled.tier).toBeUndefined();
+  });
 });
 
 describe("renderToolSignature", () => {

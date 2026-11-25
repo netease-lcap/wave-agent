@@ -21,6 +21,13 @@ vi.mock("../../src/services/replAvailability.js", () => ({
   getNonDeferrableBuiltins: () => gate.nonDeferrable,
 }));
 
+// `Grep` / `Glob` follow the search fold (core/fs-tools.md), which is on when a
+// bash is available: stated here rather than read from the machine, so the pair
+// is in the pool in every case below whatever the core switch says.
+vi.mock("../../src/utils/bashAvailability.js", () => ({
+  isBashAvailable: () => true,
+}));
+
 // The four task-list tools are off by default (WAVE_ENABLE_TASK_TOOLS). These
 // tests are about the deferral shape — the task tools are part of Claude Code's
 // deferred list — so pin them on rather than depend on the code default.
@@ -41,8 +48,15 @@ vi.mock("../../src/services/webSearchAvailability.js", () => ({
 }));
 
 /**
+ * The search pair while folded: in the pool, announced by name, never flat —
+ * whatever `enableReplCoreTools` says (core/repl-tool.md「搜索折叠态下的 Grep / Glob
+ * 只在脚本里可达」).
+ */
+const FOLDED_SEARCH = ["Glob", "Grep"];
+
+/**
  * The deferred built-ins, i.e. everything the pool holds with no MCP server
- * connected. Chosen by frequency rather than by size: the ones that come up once
+ * connected, the folded search pair aside. Chosen by frequency rather than by size: the ones that come up once
  * in a while and can be discovered by name.
  *
  * This is Claude Code's list, not a wave-specific one: every tool here carries
@@ -377,14 +391,49 @@ describe("getReplPool", () => {
  */
 describe("core tools pooled by enableReplCoreTools", () => {
   /**
-   * The core tools this session actually registered: `Glob` / `Grep` are opt-in and
-   * `PowerShell` only exists on a session whose shell it is, so the fixed seven are
-   * not the set any single machine holds.
+   * The core tools this session actually registered, the folded search pair
+   * aside: `Grep` / `Glob` follow the fold rather than the switch (see
+   * `folds the search pair whatever the switch says`), and `PowerShell` only
+   * exists on a session whose shell it is, so the fixed seven are not the set any
+   * single machine holds.
    */
   function registeredCoreTools(toolManager: ToolManager): string[] {
     const registered = toolManager.getTools().map((tool) => tool.name);
-    return CORE_POOL_TOOLS.filter((name) => registered.includes(name)).sort();
+    return CORE_POOL_TOOLS.filter(
+      (name) => registered.includes(name) && !FOLDED_SEARCH.includes(name),
+    ).sort();
   }
+
+  /** Where the folded pair sits: pool names, their tiers, and the flat list. */
+  function searchPair(toolManager: ToolManager) {
+    const pool = toolManager.getReplPool();
+    return {
+      pooled: pool.filter((entry) => FOLDED_SEARCH.includes(entry.name)),
+      flat: names(toolManager).filter((name) => FOLDED_SEARCH.includes(name)),
+    };
+  }
+
+  it("folds the search pair whatever the switch says", () => {
+    for (const coreToolsEnabled of [false, true]) {
+      gate.coreToolsEnabled = coreToolsEnabled;
+      const { toolManager } = build();
+      const { pooled, flat } = searchPair(toolManager);
+
+      // In the pool both ways, and flat neither way: the fold refuses the flat
+      // call, not the script entrance.
+      expect(pooled.map((entry) => entry.name).sort()).toEqual(FOLDED_SEARCH);
+      expect(flat).toEqual([]);
+      // Name-only both ways: with the switch on `Read` has a signature and the
+      // pair still does not — a signature would advertise the way round the fold.
+      for (const entry of pooled) expect(entry.tier).toBeUndefined();
+      if (coreToolsEnabled) {
+        expect(
+          toolManager.getReplPool().find((entry) => entry.name === "Read")
+            ?.tier,
+        ).toBe("core");
+      }
+    }
+  });
 
   it("pools the core tools and takes them out of the flat declarations", () => {
     gate.coreToolsEnabled = true;
@@ -395,6 +444,10 @@ describe("core tools pooled by enableReplCoreTools", () => {
     expect(core).toEqual(
       expect.arrayContaining(["Bash", "Edit", "Read", "Write"]),
     );
+    // `Grep` / `Glob` are not in it: the fold, not the switch, is what pools
+    // them — see `folds the search pair whatever the switch says`.
+    expect(core).not.toContain("Grep");
+    expect(core).not.toContain("Glob");
 
     const pooled = toolManager.getReplPool();
     expect(

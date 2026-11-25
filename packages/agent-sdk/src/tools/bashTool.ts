@@ -63,8 +63,12 @@ const DISALLOWED_AUTO_BACKGROUND_COMMANDS = ["sleep"];
  * model to call tools that are not there — or to keep hand-rolling `ls` when
  * `grep` in Bash is already .gitignore-aware.
  *
- * An absent `availableTools` is read as "no dedicated search tools": that is
- * the default and the shape every current caller has.
+ * `availableTools` is what the request declares *flat*, not what the registry
+ * holds: `Grep` / `Glob` stay registered while folded (they are reachable from a
+ * REPL script, see core/repl-tool.md), and a description that followed the
+ * registry would send the model after a name it cannot call this turn. An absent
+ * list is read as "no dedicated search tools": that is the default and the shape
+ * every current caller has.
  */
 function searchPromptLines(args?: ToolPromptArgs): {
   /** The two "how to search" bullets, each ending in a newline. */

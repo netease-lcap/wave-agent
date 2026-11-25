@@ -120,6 +120,7 @@ export function buildReplPool(
   nonDeferrable: ReadonlySet<string>,
   coreToolsEnabled = false,
   placement?: (name: string) => boolean | undefined,
+  foldedSearch?: ReadonlySet<string>,
 ): ReplPoolEntry[] {
   const pool: ReplPoolEntry[] = [];
   for (const candidate of candidates) {
@@ -127,7 +128,7 @@ export function buildReplPool(
     // 「给工具、技能、命令写描述」); `undefined` means it had no opinion.
     const deferred =
       placement?.(candidate.name) ??
-      isDeferredTool(candidate, nonDeferrable, coreToolsEnabled);
+      isDeferredTool(candidate, nonDeferrable, coreToolsEnabled, foldedSearch);
     if (!deferred) continue;
     if (candidate.name === REPL_SEARCH_NAME) {
       throw new Error(
@@ -139,7 +140,9 @@ export function buildReplPool(
     // the pool: `enableReplCoreTools` is the switch the announcement's signature
     // tier hangs on, and both sides get it from `toolTier`. `"named"` is what an
     // absent `tier` already means, so it is left out rather than written down.
-    const tier = candidate.tier ?? toolTier(candidate.name, coreToolsEnabled);
+    const tier =
+      candidate.tier ??
+      toolTier(candidate.name, coreToolsEnabled, foldedSearch);
     // A pooled shell tool loses `run_in_background`: inside a script the async
     // lane is what backgrounds work, so the parameter would be an argument the
     // runtime ignores. Applied here, on the entry, so the announcement's inline
