@@ -103,12 +103,29 @@ describe("formatSkillsWithinBudget", () => {
     expect(body).toContain(`- zulu: ${long}`);
   });
 
-  it("shortens non-builtin descriptions first, leaving builtin ones intact", () => {
+  it("caps every description at 250 chars, builtin included", () => {
+    const long = "x".repeat(5_000);
+    const { body } = formatSkillsWithinBudget([
+      skill("alpha", long, "builtin"),
+    ]);
+
+    // The listing is for discovery; the body loads on invoke. A description
+    // longer than this is paid for on every cache_creation and buys nothing.
+    expect(body).toContain(`- alpha: ${"x".repeat(249)}…`);
+  });
+
+  it("shares the leftover budget between non-builtin skills instead of cutting each to a fixed length", () => {
+    // Two 200-char non-builtin descriptions plus one builtin. One character
+    // short of the full rendering, the builtin keeps its text and every other
+    // skill gets what is *left over*, divided evenly — close to 200 here. The
+    // fixed 80-char cut this replaced left 81% of the budget unused.
     const long = "x".repeat(200);
-    const skills = [skill("alpha", long), skill("zulu", long, "builtin")];
+    const skills = [
+      skill("alpha", long),
+      skill("bravo", long),
+      skill("zulu", long, "builtin"),
+    ];
     const fullBody = formatSkillsWithinBudget(skills, 10_000).body;
-    // One character short of the full rendering: the first level cannot fit, the
-    // compact one can (400 description chars collapse to 280).
     const { body, omitted } = formatSkillsWithinBudget(
       skills,
       fullBody.length - 1,
@@ -117,19 +134,25 @@ describe("formatSkillsWithinBudget", () => {
     // A builtin is what the model is expected to recognise unaided, so it keeps
     // its description for as long as anything keeps one.
     expect(body).toContain(`- zulu: ${long}`);
-    expect(body).not.toContain(`- alpha: ${long}`);
-    expect(body).toContain(`- alpha: ${"x".repeat(79)}…`);
+    for (const name of ["alpha", "bravo"]) {
+      const line = body
+        .split("\n")
+        .find((candidate) => candidate.startsWith(`- ${name}: `));
+      const description = line!.slice(`- ${name}: `.length);
+      expect(description.length).toBeGreaterThan(180);
+      expect(description.endsWith("…")).toBe(true);
+    }
+    expect(body.length).toBeLessThanOrEqual(fullBody.length - 1);
     expect(omitted).toBe(0);
   });
 
   it("drops every description before it drops a name", () => {
     const long = "x".repeat(200);
     const skills = [skill("alpha", long), skill("zulu", long, "builtin")];
-    const compactBody = formatSkillsWithinBudget(
-      skills,
-      formatSkillsWithinBudget(skills, 10_000).body.length - 1,
-    ).body;
-    const { body } = formatSkillsWithinBudget(skills, compactBody.length - 1);
+    // Room for both names and nothing else: the even share falls under the
+    // 20-char shred threshold, so descriptions go rather than shrink.
+    const namesOnly = formatSkillsWithinBudget(skills, 100).body;
+    const { body } = formatSkillsWithinBudget(skills, namesOnly.length);
 
     // A skill whose name the model never sees cannot be invoked at all; a missing
     // description only makes selection worse.

@@ -51,11 +51,20 @@ const EMPTY_NOTE =
   "No skills are currently available. The skill list an earlier message showed is no longer current.";
 
 /**
- * How much of a non-builtin description survives when the list does not fit.
- * Skills that ship with the product keep their full description: they are the
- * ones the model is expected to recognise without further hints.
+ * Hard cap on one entry's description, in every tier and for every source —
+ * builtin included. The listing is for discovery only: the `Skill` tool loads
+ * the full body on invoke, so a verbose description buys nothing at selection
+ * time and is re-billed on every cache_creation. Claude Code uses the same
+ * number (`MAX_LISTING_DESC_CHARS`), and applies it to bundled skills too.
  */
-const MIN_DESCRIPTION_CHARS = 80;
+export const MAX_LISTING_DESC_CHARS = 250;
+
+/**
+ * Below this per-entry allowance the compact tier stops trying and drops
+ * descriptions instead: `- name: xxx…` tells the model almost nothing while
+ * still costing a line. Claude Code's `MIN_DESC_LENGTH` is the same 20.
+ */
+const MIN_DESCRIPTION_CHARS = 20;
 
 /**
  * Character budget used when the caller has no context window to scale from.
@@ -91,20 +100,38 @@ function renderLine(
   maxDescription: number | null,
 ): string {
   if (maxDescription === null) return `- ${skill.name}`;
-  const description = formatDescription(skill.description, maxDescription);
+  const description = formatDescription(
+    skill.description,
+    Math.min(maxDescription, MAX_LISTING_DESC_CHARS),
+  );
   return description ? `- ${skill.name}: ${description}` : `- ${skill.name}`;
+}
+
+/** Width of one entry's line before its description: `- name: `. */
+function prefixLength(skill: SkillMetadata): number {
+  return `- ${skill.name}: `.length;
 }
 
 /**
  * Render the listing body, trimming descriptions until it fits `budgetChars`.
  *
- * Order of sacrifice, cheapest first: full descriptions → non-builtin
- * descriptions shortened → descriptions dropped entirely (names only) → the
- * tail of the name list dropped with an explicit count. Names survive longer
- * than descriptions on purpose: a skill whose name the model never sees cannot
- * be invoked at all, while a missing description only makes selection worse.
- * The count is appended rather than left implicit, because "the list happened to
- * be shorter" and "there are more skills" must not look the same.
+ * Order of sacrifice, cheapest first: descriptions trimmed to the 250-char cap
+ * → non-builtin descriptions allowed an equal share of what is left over →
+ * descriptions dropped entirely (names only) → the tail of the name list
+ * dropped with an explicit count. Names survive longer than descriptions on
+ * purpose: a skill whose name the model never sees cannot be invoked at all,
+ * while a missing description only makes selection worse. The count is appended
+ * rather than left implicit, because "the list happened to be shorter" and
+ * "there are more skills" must not look the same.
+ *
+ * The share is what makes the middle tier worth having. A fixed per-entry cap
+ * (it used to be 80) turned the budget into a cliff: the first character over
+ * the line collapsed every user description to the same 80 characters, so a
+ * listing of 32 skills with 500-character descriptions came out at 3.0K of a
+ * 16K budget — 81% of the room unused — while one character under the line kept
+ * every description whole. Claude Code allocates the same way
+ * (formatCommandsWithinBudget in SkillTool/prompt.ts): bundled entries keep
+ * their description, the rest split the remainder.
  *
  * Sorted by name so the body — and therefore the hash — is a function of the
  * skill *set*, not of discovery order.
@@ -119,25 +146,41 @@ export function formatSkillsWithinBudget(
     return [LISTING_HEADER, ...lines, ...tail].join("\n");
   };
 
-  const full = sorted.map((skill) =>
-    renderLine(skill, Number.MAX_SAFE_INTEGER),
-  );
+  const full = sorted.map((skill) => renderLine(skill, MAX_LISTING_DESC_CHARS));
   const fullBody = assemble(full);
   if (fullBody.length <= budgetChars) return { body: fullBody, omitted: 0 };
 
-  // Compact: non-builtin descriptions collapse to the short form, builtin keep
-  // theirs — they are the ones the model is expected to recognise unaided.
-  const compact = sorted.map((skill) =>
-    renderLine(
-      skill,
-      skill.type === "builtin"
-        ? Number.MAX_SAFE_INTEGER
-        : MIN_DESCRIPTION_CHARS,
-    ),
+  // Overflow: builtin skills keep the description they already have (capped at
+  // 250 like everything else), the rest share evenly what is left over.
+  const isBuiltin = (skill: SkillMetadata) => skill.type === "builtin";
+  const builtins = sorted.filter(isBuiltin);
+  const rest = sorted.filter((skill) => !isBuiltin(skill));
+
+  let reserved = LISTING_HEADER.length;
+  for (const skill of builtins) {
+    // +1 for the newline every line costs, including the last one.
+    reserved += 1 + renderLine(skill, MAX_LISTING_DESC_CHARS).length;
+  }
+  const restOverhead = rest.reduce(
+    (sum, skill) => sum + 1 + prefixLength(skill),
+    0,
   );
-  const compactBody = assemble(compact);
-  if (compactBody.length <= budgetChars)
-    return { body: compactBody, omitted: 0 };
+  const maxDescChars =
+    rest.length === 0
+      ? 0
+      : Math.floor((budgetChars - reserved - restOverhead) / rest.length);
+
+  if (maxDescChars >= MIN_DESCRIPTION_CHARS) {
+    const shared = sorted.map((skill) =>
+      renderLine(
+        skill,
+        isBuiltin(skill) ? MAX_LISTING_DESC_CHARS : maxDescChars,
+      ),
+    );
+    const sharedBody = assemble(shared);
+    if (sharedBody.length <= budgetChars)
+      return { body: sharedBody, omitted: 0 };
+  }
 
   // Names only, then drop the tail if even that does not fit.
   const names = sorted.map((skill) => renderLine(skill, null));

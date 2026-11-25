@@ -50,11 +50,17 @@ const EMPTY_NOTE =
   "No subagents are currently available. The subagent list an earlier message showed is no longer current.";
 
 /**
- * How much of a non-builtin description survives when the list does not fit.
- * Builtin subagents keep their full description: they ship with the product and
- * the model is expected to recognise them without further hints.
+ * Hard cap on one entry's description, in every tier and for every source.
+ * Same number as the skill listing (Claude Code's `MAX_LISTING_DESC_CHARS`):
+ * the list is for discovery, the agent's own prompt is loaded on dispatch.
  */
-const MIN_DESCRIPTION_CHARS = 80;
+export const MAX_LISTING_DESC_CHARS = 250;
+
+/**
+ * Below this per-entry allowance the compact tier drops descriptions instead of
+ * keeping a shred of one. Same 20 as the skill listing.
+ */
+const MIN_DESCRIPTION_CHARS = 20;
 
 /**
  * Character budget used when the caller has no context window to scale from.
@@ -106,19 +112,28 @@ function renderLine(
 ): string {
   const suffix = toolsSuffix(config);
   if (maxDescription === null) return `- ${config.name}${suffix}`;
-  const description = formatDescription(config.description, maxDescription);
+  const description = formatDescription(
+    config.description,
+    Math.min(maxDescription, MAX_LISTING_DESC_CHARS),
+  );
   return description
     ? `- ${config.name}: ${description}${suffix}`
     : `- ${config.name}${suffix}`;
 }
 
+/** Width of one entry's line before its description: `- name: ` plus the tools suffix. */
+function prefixLength(config: SubagentConfiguration): number {
+  return `- ${config.name}: `.length + toolsSuffix(config).length;
+}
+
 /**
  * Render the listing body, trimming descriptions until it fits `budgetChars`.
  *
- * Order of sacrifice matches the skill listing: full descriptions → non-builtin
- * descriptions shortened → descriptions dropped (names + tool pools only) → the
- * tail of the list dropped with an explicit count. Names and tool pools survive
- * longest: a subagent the model never sees cannot be dispatched at all.
+ * Order of sacrifice matches the skill listing: descriptions trimmed to the
+ * 250-char cap → non-builtin descriptions allowed an equal share of the
+ * remainder → descriptions dropped (names + tool pools only) → the tail of the
+ * list dropped with an explicit count. Names and tool pools survive longest: a
+ * subagent the model never sees cannot be dispatched at all.
  *
  * Sorted by name so the body — and therefore the hash — is a function of the
  * subagent *set*, not of discovery order.
@@ -135,22 +150,43 @@ export function formatAgentsWithinBudget(
   };
 
   const full = sorted.map((config) =>
-    renderLine(config, Number.MAX_SAFE_INTEGER),
+    renderLine(config, MAX_LISTING_DESC_CHARS),
   );
   const fullBody = assemble(full);
   if (fullBody.length <= budgetChars) return { body: fullBody, omitted: 0 };
 
-  const compact = sorted.map((config) =>
-    renderLine(
-      config,
-      config.scope === "builtin"
-        ? Number.MAX_SAFE_INTEGER
-        : MIN_DESCRIPTION_CHARS,
-    ),
+  // Same allocation as the skill listing: builtin subagents keep their
+  // description, the rest split what is left over evenly instead of taking a
+  // fixed cut each — a fixed one makes the budget a cliff (see skillListing.ts).
+  const isBuiltin = (config: SubagentConfiguration) =>
+    config.scope === "builtin";
+  const builtins = sorted.filter(isBuiltin);
+  const rest = sorted.filter((config) => !isBuiltin(config));
+
+  let reserved = LISTING_HEADER.length;
+  for (const config of builtins) {
+    reserved += 1 + renderLine(config, MAX_LISTING_DESC_CHARS).length;
+  }
+  const restOverhead = rest.reduce(
+    (sum, config) => sum + 1 + prefixLength(config),
+    0,
   );
-  const compactBody = assemble(compact);
-  if (compactBody.length <= budgetChars)
-    return { body: compactBody, omitted: 0 };
+  const maxDescChars =
+    rest.length === 0
+      ? 0
+      : Math.floor((budgetChars - reserved - restOverhead) / rest.length);
+
+  if (maxDescChars >= MIN_DESCRIPTION_CHARS) {
+    const shared = sorted.map((config) =>
+      renderLine(
+        config,
+        isBuiltin(config) ? MAX_LISTING_DESC_CHARS : maxDescChars,
+      ),
+    );
+    const sharedBody = assemble(shared);
+    if (sharedBody.length <= budgetChars)
+      return { body: sharedBody, omitted: 0 };
+  }
 
   const names = sorted.map((config) => renderLine(config, null));
   const nameBody = assemble(names);

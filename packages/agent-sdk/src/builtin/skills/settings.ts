@@ -1462,7 +1462,7 @@ A command shipped by a plugin is namespaced (\`/my-plugin:review\`). \`\${WAVE_P
 `,
   "skills/settings/SKILL.md": `---
 name: settings
-description: Manage Wave settings and get guidance on settings.json, hooks, environment variables, permissions, MCP servers, memory, skills, subagents, custom slash commands, plugins, plugin marketplaces, the Bash sandbox, telemetry, and model / completion / knowledge-base toggles. Use this when the user wants to view, update, or learn how to configure Wave.
+description: Use this when the user wants to view, update, or learn how to configure Wave — settings.json, hooks, env vars, permissions, MCP servers, memory, skills, subagents, slash commands, plugins, marketplaces, sandbox, telemetry, model / completion toggles.
 ---
 
 # Wave Settings Skill
