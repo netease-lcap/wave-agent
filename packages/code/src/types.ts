@@ -1,5 +1,5 @@
 import { WorktreeSession } from "./utils/worktree.js";
-import { PermissionMode, McpServerConfig } from "wave-agent-sdk";
+import { PermissionMode, McpServerConfig, SkillSource } from "wave-agent-sdk";
 
 export interface BaseAppProps {
   bypassPermissions?: boolean;
@@ -7,6 +7,12 @@ export interface BaseAppProps {
   pluginDirs?: string[];
   /** Additional directories to add to the session Safe Zone (from --add-dir). */
   additionalDirectories?: string[];
+  /**
+   * 本次会话要加载的技能来源（--skills-sources）。值域只有 user / project 两档：
+   * builtin 恒加载，plugin 由 --plugin-dir 控制（与 Claude Code 的边界一致）。
+   * undefined = 全部来源；`[]` = 两档都关。
+   */
+  skillsSources?: SkillSource[];
   tools?: string[];
   allowedTools?: string[];
   disallowedTools?: string[];

@@ -6,6 +6,7 @@ import {
   generateRandomName,
   loadMergedWaveConfig,
   type PermissionMode,
+  type SkillSource,
 } from "wave-agent-sdk";
 import { createWorktree, type WorktreeSession } from "./utils/worktree.js";
 import path from "path";
@@ -19,6 +20,28 @@ import { ensurePlainNodeArgv } from "./utils/argvCompat.js";
 ensurePlainNodeArgv();
 
 const version = readNearestPackageJson().version;
+
+/**
+ * 解析 --skills-sources。口径照 Claude Code 的 parseSettingSourcesFlag：
+ * 未给出 ⇒ undefined（不传，行为完全不变）；空串 ⇒ `[]`（用户级与项目级两档都关）；
+ * 逗号分隔、逐项 trim。遇到不认识的值直接抛错，不静默忽略 —— 静默忽略会让
+ * 「本次只加载指定技能」的评测隔离悄悄失效。空项不做特例（`"user,"` 的尾项
+ * 按空串判非法，与未知值同一条报错）。
+ */
+export function parseSkillSourcesFlag(
+  flag: string | undefined,
+): SkillSource[] | undefined {
+  if (flag === undefined) return undefined;
+  if (flag === "") return [];
+
+  return flag.split(",").map((raw) => {
+    const name = raw.trim();
+    if (name === "user" || name === "project") return name;
+    throw new Error(
+      `Invalid skill source: ${name}. Valid options are: user, project`,
+    );
+  });
+}
 
 // Export main function for external use
 export async function main() {
@@ -100,9 +123,16 @@ export async function main() {
         global: false,
       })
       .option("add-dir", {
-        description: "Add a directory to the session Safe Zone (repeatable)",
+        description:
+          "Add a directory to the session Safe Zone (repeatable). Skills under its .wave/.claude/.agents skills directories load as project skills.",
         type: "array",
         string: true,
+        global: false,
+      })
+      .option("skills-sources", {
+        description:
+          "Comma-separated skill sources to load (e.g. 'user,project'). Use \"\" to load neither. Builtin and plugin skills are always loaded.",
+        type: "string",
         global: false,
       })
       .option("tools", {
@@ -711,6 +741,16 @@ export async function main() {
       (dir) => path.resolve(originalCwd, dir),
     );
 
+    let skillsSources: SkillSource[] | undefined;
+    try {
+      skillsSources = parseSkillSourcesFlag(argv.skillsSources);
+    } catch (error) {
+      // 与 Claude Code 的 `Invalid setting source: … Valid options are: …` 同口径：
+      // 不认识的来源直接报错退出，不静默降级成「全加载」。
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+
     let worktreeSession: WorktreeSession | undefined;
     if (
       argv.worktree !== undefined ||
@@ -772,6 +812,7 @@ export async function main() {
         permissionMode: argv.permissionMode as PermissionMode | undefined,
         pluginDirs,
         additionalDirectories,
+        skillsSources,
         tools,
         allowedTools,
         disallowedTools,
@@ -833,6 +874,7 @@ export async function main() {
         permissionMode: argv.permissionMode as PermissionMode | undefined,
         pluginDirs,
         additionalDirectories,
+        skillsSources,
         tools,
         allowedTools,
         disallowedTools,
@@ -864,6 +906,7 @@ export async function main() {
       permissionMode: argv.permissionMode as PermissionMode | undefined,
       pluginDirs,
       additionalDirectories,
+      skillsSources,
       tools,
       allowedTools,
       disallowedTools,

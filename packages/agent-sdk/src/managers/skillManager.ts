@@ -14,6 +14,7 @@ import type {
   Skill,
   SkillCollection,
   SkillDiscoveryResult,
+  SkillSource,
   SkillToolArgs,
   SkillInvocationContext,
 } from "../types/index.js";
@@ -87,6 +88,10 @@ export class SkillManager extends EventEmitter {
   private personalAgentsSkillsPath: string;
   private scanTimeout: number;
   private workdir: string;
+  /** 允许加载的来源；undefined = 全开，[] = user 与 project 都关。 */
+  private skillsSources: SkillSource[] | undefined;
+  /** `--add-dir` 的额外目录，project 档开启时一并扫描。 */
+  private additionalDirectories: string[];
 
   private skillMetadata = new Map<string, SkillMetadata>();
   private skillContent = new Map<string, Skill>();
@@ -129,6 +134,20 @@ export class SkillManager extends EventEmitter {
     this.scanTimeout = options.scanTimeout || 5000;
     this.workdir = options.workdir || process.cwd();
     this.watchEnabled = options.watch ?? false;
+    this.skillsSources = options.skillsSources;
+    this.additionalDirectories = options.additionalDirectories || [];
+  }
+
+  /**
+   * 某个来源这一趟是否参与发现（也决定它要不要被监视）。
+   *
+   * 未指定 `skillsSources` 时两档都开；指定了就是白名单，因此 `[]` 表示两档
+   * 都关。被关掉的来源直接不参与发现，也就不参与同名覆盖。
+   */
+  private isSourceEnabled(source: SkillSource): boolean {
+    return (
+      this.skillsSources === undefined || this.skillsSources.includes(source)
+    );
   }
 
   /**
@@ -285,15 +304,28 @@ export class SkillManager extends EventEmitter {
 
     this.fileWatcher = new FileWatcherService(logger, skillWatcherOptions());
 
-    const pathsToWatch = [
-      this.personalSkillsPath,
-      this.personalClaudeSkillsPath,
-      this.personalAgentsSkillsPath,
-      join(this.workdir, ".wave", "skills"),
-      join(this.workdir, ".claude", "skills"),
-      join(this.workdir, ".agents", "skills"),
-      ...Array.from(this.nestedSkillRoots),
-    ];
+    // 关掉的来源不监视：那是「这一趟看不到的技能」，新装进来也不该触发重扫。
+    const pathsToWatch: string[] = [];
+
+    if (this.isSourceEnabled("user")) {
+      pathsToWatch.push(
+        this.personalSkillsPath,
+        this.personalClaudeSkillsPath,
+        this.personalAgentsSkillsPath,
+      );
+    }
+
+    if (this.isSourceEnabled("project")) {
+      for (const basePath of [this.workdir, ...this.additionalDirectories]) {
+        pathsToWatch.push(
+          join(basePath, ".wave", "skills"),
+          join(basePath, ".claude", "skills"),
+          join(basePath, ".agents", "skills"),
+        );
+      }
+    }
+
+    pathsToWatch.push(...Array.from(this.nestedSkillRoots));
 
     logger?.debug(`Setting up skill watcher for: ${pathsToWatch.join(", ")}`);
 
@@ -360,6 +392,9 @@ export class SkillManager extends EventEmitter {
    */
   public async discoverNestedSkills(filePaths: string[]): Promise<boolean> {
     if (!this.initialized || filePaths.length === 0) return false;
+    // 子目录技能属项目级：project 档关掉时连探测都不做，否则「关掉项目级」
+    // 会在模型读过某个子目录后悄悄漏进一批技能。
+    if (!this.isSourceEnabled("project")) return false;
     const run = this.refreshChain.then(() =>
       this.performNestedDiscovery(filePaths),
     );
@@ -512,30 +547,53 @@ export class SkillManager extends EventEmitter {
    * Discover skills in builtin, personal and project directories
    */
   private async discoverSkills(): Promise<SkillDiscoveryResult> {
+    // 内置技能不受 `skillsSources` 控制：Claude Code 那边 bundled 技能也是单独
+    // 注册的，这个开关照同一个边界收口。
     const builtinCollection = await this.discoverSkillCollection(
       getBuiltinSkillsDir(),
       "builtin",
     );
 
-    const personalAgentsCollection = await this.discoverSkillCollection(
+    const personalAgentsCollection = await this.discoverSkillCollectionIf(
+      this.isSourceEnabled("user"),
       this.personalAgentsSkillsPath,
       "personal",
     );
 
-    const personalClaudeCollection = await this.discoverSkillCollection(
+    const personalClaudeCollection = await this.discoverSkillCollectionIf(
+      this.isSourceEnabled("user"),
       this.personalClaudeSkillsPath,
       "personal",
     );
 
-    const personalCollection = await this.discoverSkillCollection(
+    const personalCollection = await this.discoverSkillCollectionIf(
+      this.isSourceEnabled("user"),
       this.personalSkillsPath,
       "personal",
     );
 
-    const projectCollection = await this.discoverSkillCollection(
-      this.workdir,
-      "project",
-    );
+    // 项目档：先扫 `--add-dir` 的目录，最后扫 `workdir`——合并时后 set 的覆盖
+    // 先 set 的，于是同名技能始终是项目自己的那份胜出，与 Claude Code 的
+    // project > additional 去重顺序一致。这些技能按项目级归类，所以 project
+    // 档关掉时它们也不加载。
+    const projectCollections: SkillCollection[] = [];
+    if (this.isSourceEnabled("project")) {
+      for (const basePath of this.additionalDirectories) {
+        projectCollections.push(
+          await this.discoverSkillCollection(basePath, "project"),
+        );
+      }
+      projectCollections.push(
+        await this.discoverSkillCollection(this.workdir, "project"),
+      );
+    }
+
+    const projectSkills = new Map<string, SkillMetadata>();
+    for (const collection of projectCollections) {
+      collection.skills.forEach((skill, name) =>
+        projectSkills.set(name, skill),
+      );
+    }
 
     return {
       builtinSkills: builtinCollection.skills,
@@ -544,15 +602,30 @@ export class SkillManager extends EventEmitter {
         ...personalClaudeCollection.skills, // overrides .agents
         ...personalCollection.skills, // .wave overrides .claude
       ]),
-      projectSkills: projectCollection.skills,
+      projectSkills,
       errors: [
         ...builtinCollection.errors,
         ...personalAgentsCollection.errors,
         ...personalClaudeCollection.errors,
         ...personalCollection.errors,
-        ...projectCollection.errors,
+        ...projectCollections.flatMap((collection) => collection.errors),
       ],
     };
+  }
+
+  /**
+   * 来源被关掉时返回空集合：返回结构不变（调用方照旧合并），但既不扫盘，
+   * 也不贡献技能，于是也不占同名的位置。
+   */
+  private async discoverSkillCollectionIf(
+    enabled: boolean,
+    basePath: string,
+    type: "personal" | "project" | "builtin",
+  ): Promise<SkillCollection> {
+    if (!enabled) {
+      return { type, basePath, skills: new Map(), errors: [] };
+    }
+    return this.discoverSkillCollection(basePath, type);
   }
 
   /**

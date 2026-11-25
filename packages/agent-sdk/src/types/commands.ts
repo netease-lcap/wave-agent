@@ -3,9 +3,13 @@
  * Dependencies: None
  */
 
-/** UI-facing source of a skill-derived slash command. "user" covers personal
- *  (~/.wave、~/.claude、~/.agents) skills; plugin skills carry pluginName. */
-export type SkillSource = "builtin" | "user" | "project" | "plugin";
+/** UI-facing source tag of a skill-derived slash command —— 斜杠命令弹窗与
+ *  `/skills` 按它分组展示的四档标签。"user" 覆盖个人技能（~/.wave、~/.claude、
+ *  ~/.agents），插件技能另带 pluginName。
+ *
+ *  别与 `SkillSource` 混用：那个是 `--skills-sources` 的开关值域，只有
+ *  user / project 两档（本次允许扫哪几档）。这里是「技能来自哪里」的完整归类。 */
+export type SkillSourceTag = "builtin" | "user" | "project" | "plugin";
 
 export interface SlashCommand {
   id: string;
@@ -14,7 +18,7 @@ export interface SlashCommand {
   /** Set only on commands registered from skills — GUI slash-command popup
    * renders a source tag (内置/用户/项目/插件) from it. Plain/custom/plugin
    * commands leave it undefined. */
-  skillSource?: SkillSource;
+  skillSource?: SkillSourceTag;
   /**
    * 参数提示（`[path]`、`<file>` 这类），命令插进输入框后以灰字显示在它后面，
    * 用户一打字就消失 —— 形状照 CC 桌面端（spec ui/slash-commands.md「参数提示」）。
@@ -44,7 +48,7 @@ export interface SlashCommandInfo {
   name: string;
   description: string;
   /** Set only on skill-backed commands: the popup renders a source tag from it. */
-  skillSource?: SkillSource;
+  skillSource?: SkillSourceTag;
   /** 选中即执行：the host itself handles the command (dialog / settings page /
    *  panel), so the popup sends `/name` back instead of inserting it into the
    *  input. Absent = insert the name and let the user type the rest, which is

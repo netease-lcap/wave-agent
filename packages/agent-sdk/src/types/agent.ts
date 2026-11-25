@@ -10,6 +10,7 @@ import type {
   BackgroundTask,
   McpServerConfig,
   ConfiguredModel,
+  SkillSource,
 } from "./index.js";
 import type { MessageManagerCallbacks } from "../managers/messageManager.js";
 import type { BackgroundTaskManagerCallbacks } from "../managers/backgroundTaskManager.js";
@@ -120,6 +121,15 @@ export interface AgentOptions {
   isNewWorktree?: boolean;
   /**Whether to watch for skill changes - defaults to true */
   watchSkills?: boolean;
+  /**
+   * Which skill sources this session loads: `user` (`~/.wave/skills`,
+   * `~/.claude/skills`, `~/.agents/skills`) and `project` (`<workdir>` plus
+   * every `additionalDirectories` entry). Builtin skills always load and plugin
+   * skills follow `--plugin-dir`, so neither is part of this switch.
+   * - undefined: both sources on (default).
+   * - []: both off.
+   */
+  skillsSources?: SkillSource[];
   /**
    * Optional list of tool names to always allow.
    * These rules follow the standard permission rule syntax: `ToolName` or `ToolName(pattern)`.

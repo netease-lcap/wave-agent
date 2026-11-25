@@ -146,6 +146,17 @@ export interface SkillToolArgs {
   args?: string;
 }
 
+/**
+ * 可以被会话开关限定的技能来源（`--skills-sources`），值域沿用 Claude Code
+ * 内部的来源归类（User / Project），不造新词汇。
+ *
+ * 只有这两档能被限定：builtin 技能恒加载，plugin 技能由 `--plugin-dir` 控制。
+ *
+ * 别与 `SkillSourceTag`（`types/commands.ts`）混用：那个是「技能来自哪里」的
+ * 完整四档归类（含 builtin / plugin），用在斜杠命令弹窗与 `/skills` 的分组标签上。
+ */
+export type SkillSource = "user" | "project";
+
 export interface SkillManagerOptions {
   personalSkillsPath?: string;
   personalClaudeSkillsPath?: string;
@@ -153,6 +164,18 @@ export interface SkillManagerOptions {
   scanTimeout?: number;
   workdir?: string;
   watch?: boolean;
+  /**
+   * 本次会话允许加载哪些来源的技能。
+   * - `undefined`：不限定，user 与 project 都开（默认）。
+   * - `[]`：两档都关，只剩 builtin 与 plugin 技能。
+   */
+  skillsSources?: SkillSource[];
+  /**
+   * `--add-dir` 给出的额外目录。project 档开启时，除 `workdir` 外还会扫每个
+   * 目录下的 `.agents/skills` / `.claude/skills` / `.wave/skills`，加载到的技能
+   * 按项目级归类。
+   */
+  additionalDirectories?: string[];
 }
 
 export interface ParsedSkillFile {

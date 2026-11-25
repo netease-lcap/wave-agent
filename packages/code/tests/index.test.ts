@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import yargs from "yargs";
-import { main } from "../src/index.js";
+import { main, parseSkillSourcesFlag } from "../src/index.js";
 import * as cli from "../src/cli.js";
 import * as printCli from "../src/print-cli.js";
 import * as sessionSelectorCli from "../src/session-selector-cli.js";
@@ -213,6 +213,86 @@ describe("main", () => {
       path.resolve("/tmp/plugins1"),
       path.resolve(process.cwd(), "./my-plugins"),
     ]);
+  });
+
+  describe("--skills-sources", () => {
+    it.each([
+      {
+        name: "未给出时返回 undefined（不传）",
+        flag: undefined,
+        expected: undefined,
+      },
+      {
+        name: "空串返回空数组（user 与 project 都关）",
+        flag: "",
+        expected: [],
+      },
+      {
+        name: "逗号分隔的两档",
+        flag: "user,project",
+        expected: ["user", "project"],
+      },
+      {
+        name: "逗号后带空格的写法",
+        flag: "user, project",
+        expected: ["user", "project"],
+      },
+      { name: "单个来源", flag: "project", expected: ["project"] },
+    ])("$name", ({ flag, expected }) => {
+      expect(parseSkillSourcesFlag(flag)).toEqual(expected);
+    });
+
+    // 空项不做特例：`"user,"` 的尾项按空串判非法，与未知值同一条报错。
+    it.each(["foo", "local", "user,", "user,Project"])(
+      "非法来源 %j 报错并列出合法值",
+      (flag) => {
+        expect(() => parseSkillSourcesFlag(flag)).toThrow(
+          /^Invalid skill source: .*\. Valid options are: user, project$/,
+        );
+      },
+    );
+
+    it("把解析结果交给 startCli", async () => {
+      process.argv = ["node", "index.js", "--skills-sources", "project"];
+      await main();
+      expect(cliOptions()?.skillsSources).toEqual(["project"]);
+    });
+
+    it("空串照样传到 print CLI（两档都关）", async () => {
+      process.argv = ["node", "index.js", "-p", "Hi", "--skills-sources", ""];
+      await main();
+      expect(
+        vi.mocked(printCli.startPrintCli).mock.calls.at(-1)?.[0].skillsSources,
+      ).toEqual([]);
+    });
+
+    it("未给出时不带 skillsSources，行为与之前一致", async () => {
+      process.argv = ["node", "index.js"];
+      await main();
+      expect(cliOptions()?.skillsSources).toBeUndefined();
+    });
+
+    it("非法来源报错并以 1 退出，不启动任何 CLI", async () => {
+      const consoleErrorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(function () {});
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(function () {
+        throw new Error("process.exit was called");
+      });
+
+      process.argv = ["node", "index.js", "--skills-sources", "foo"];
+      await expect(main()).rejects.toThrow("process.exit was called");
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "Invalid skill source: foo. Valid options are: user, project",
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(cli.startCli).not.toHaveBeenCalled();
+      expect(printCli.startPrintCli).not.toHaveBeenCalled();
+
+      consoleErrorSpy.mockRestore();
+      exitSpy.mockRestore();
+    });
   });
 
   it("以 --worktree 建会话：chdir 进新目录，workdir 跟着换", async () => {
