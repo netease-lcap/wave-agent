@@ -26,19 +26,19 @@ order: 110
 
 ---
 
-### 用户故事：流式进度指示器（优先级：P2）
+### 用户故事：运行过程一个字都不打印（优先级：P2）
 
-作为在终端中运行 `wave -p` 的用户，我希望看到轻量级的进度指示器（推理、工具调用），以便我知道 agent 正在工作，即使子 agent 内部被抑制。
+作为在终端中运行 `wave -p` 的用户，我希望运行期间终端上不出现任何过程信息（推理、工具调用、错误行），以便 stdout 只剩最终答案——脚本可以直接消费，人也不必看一堆与结果无关的行。
 
-**为什么是这个优先级**：增强用户体验，但不是核心功能所必需的。
+**为什么是这个优先级**：逐字对齐 Claude Code 的 print 模式；过程信息不是丢了，而是改成按需索取（`stream-json` 事件流 / `json` 的 `tool_calls`）。
 
-**独立测试**：运行 `wave -p 'do something complex'` 并验证推理标题、工具块名称和主 agent 的响应内容被显示。
+**独立测试**：运行 `wave -p 'do something complex'`，验证 stdout 上只有最终答案、stderr 一个字都没有；换成 `--output-format stream-json` 后，推理与工具调用才作为事件出现。
 
 **验收场景**：
 
-1. **假设**打印模式带有复杂提示，**当**主 agent 在响应前推理时，**则**打印 `💭 Reasoning:` 标题后跟推理文本。
-2. **假设**打印模式，**当**主 agent 调用工具时，**则**打印 `🔧 <tool_name> <compactParams>` 行。
-3. **假设**打印模式，**当**错误块被添加时，**则**打印 `❌ Error: <message>` 行。
+1. **假设**打印模式带有复杂提示，**当**主 agent 在响应前推理时，**则**推理既不写 stdout 也不写 stderr（只有 `--output-format stream-json` 的 `assistant/reasoning_delta` 事件带着它）。
+2. **假设**打印模式，**当**主 agent 调用工具时，**则**不打印 `🔧 <tool_name> <compactParams>` 行——工具调用只记进 `json` 的 `tool_calls` 与 `stream-json` 的 `tool/start` / `tool/end` 事件。
+3. **假设**打印模式，**当**错误块被添加时，**则**不打印任何行：错误只进 result 事件的 `errors`（Claude Code 的运行期失败同样不进 stdout，stderr 也是空的）。
 
 ---
 
@@ -116,10 +116,11 @@ order: 110
 7. **假设** `--output-format stream-json`，**当** 流式内容到达时，**则** 文本事件携带的是**增量**（delta），不是累积快照，消费方拼接即得完整文本。
 8. **假设** 任一结构化格式，**当** 进程退出时，**则** stdout 上已排队的 JSON 全部写完（管道消费方不会读到截断的末行）。
 9. **假设** 任一结构化格式，**当** 有代码往 stdout 写了非 JSON 的行（依赖库的 `console.log`、遗漏的调试输出）时，**则** 该行被转到 stderr 并带标记前缀，stdout 上的 NDJSON 流不被打断。
-10. **假设** 不指定 `--output-format`（默认 `text`），**当** 一次运行正常结束时，**则** stdout 上只有**最后一条助手消息的文本**（不以换行结尾时补一个换行），除此之外没有任何字符。运行过程（推理、`💭 Reasoning:` / `📝 Response:` 标题、`🔧` 工具行）在任何一条流上都不打印；诊断（`❌` 错误行、worktree 提示、告警）写 stderr。空响应时 stdout 上只有一个换行。
-11. **假设** text 模式，**当** 运行被判为失败（`is_error`：运行抛错，或错误块非空且主 agent 一句话正文都没产出）时，**则** stdout 上是 `Execution error`（逐字抄 Claude Code，**不带**结尾换行——它只在成功分支补换行），不输出任何模型文本，退出码 1；失败原因（错误块原文）写在 stderr。
-12. **假设** text 模式，**当** 这次运行根本没起来（加载期失败：`-r` 给了非法或不存在的 session、恢复会话抛错、建 agent 抛错）时，**则** stdout 上**一个字节都不写**，原因写 stderr，退出码 1——对齐 Claude Code 的 `emitLoadError`（它的加载期失败同样不写 stdout）。结构化格式不受影响：它们照旧写一条 result 事件，因为 stdout 必须保持可解析。
-13. **假设** 交互模式（没有 `-p`）下给了 `--output-format`，**当** 解析参数时，**则** 报错并以退出码 1 结束（该选项只对打印模式有意义）。
+10. **假设** 不指定 `--output-format`（默认 `text`），**当** 一次运行正常结束时，**则** stdout 上只有**最后一条助手消息的文本**（不以换行结尾时补一个换行），除此之外没有任何字符。运行过程（推理、`💭 Reasoning:` / `📝 Response:` 标题、`🔧` 工具行）在任何一条流上都不打印；诊断（worktree 提示、告警、加载失败的失败原因）写 stderr。空响应时 stdout 上只有一个换行。
+11. **假设** text 模式，**当** 运行被判为失败（`is_error`：运行抛错，或错误块非空且主 agent 一句话正文都没产出）时，**则** stdout 上是 `Execution error`（逐字抄 Claude Code，**不带**结尾换行——它只在成功分支补换行），不输出任何模型文本，退出码 1；**stderr 一个字都不写**——对齐 Claude Code 的运行期失败（它只把 `Execution error` 写到 stdout，失败详情在 result 的 `errors` 里，不往 stderr 打）。
+12. **假设** text 或 json 模式，**当** 这次运行根本没起来（加载期失败：`-r` 给了非法或不存在的 session、恢复会话抛错、建 agent 抛错）时，**则** stdout 上**一个字节都不写**，stderr 上一行 `Error: <原因>`，退出码 1——对齐 Claude Code 的 `emitLoadError`（它的加载期失败只有 `stream-json` 往 stdout 写 error result，`text` / `json` 都是 stdout 静默 + 单行 stderr）。
+13. **假设** `--output-format stream-json`，**当** 同一条加载期失败发生时，**则** 照旧写一条 `subtype: "error_during_execution"`、`is_error: true` 的 result 事件收尾（stdout 必须保持可解析），stderr 不再重复一行原因。
+14. **假设** 交互模式（没有 `-p`）下给了 `--output-format`，**当** 解析参数时，**则** 报错并以退出码 1 结束（该选项只对打印模式有意义）。
 
 ---
 
@@ -127,6 +128,7 @@ order: 110
 
 - **主 agent 的响应为空怎么办？** stdout 上只有一个换行符；结构化模式下 `result` 为空字符串。
 - **打印模式还能看用量和耗时吗？** 能，但只在结构化输出里：`json` 的 `usage` / `model_usage` / `num_turns` / `duration_ms`，`stream-json` 末行的 `result` 同样带这些字段。没有独立的人读统计开关——与 Claude Code 一致，它也没有这个参数。
+- **运行期失败时 stderr 为什么是空的？** 对齐 Claude Code：`claude -p` 在运行起来之后失败只往 stdout 写 `Execution error`，stderr 一个字都不打（失败详情在 result 的 `errors` 里，要看就得用 `stream-json`）。我们的错误块走同一口径，`text` / `json` 的 stdout 与 stderr 都不出现它。
 - **text 模式的失败为什么分两种 stdout？** 因为参照物分两种：运行起来之后失败（`error_during_execution`）它写 `Execution error`，运行根本没起来（加载期失败）它一个字节都不写、原因走 stderr。消费方据此能区分「跑过但错了」与「没跑起来」。
 - **text 模式为什么不输出推理与工具行？** 对齐 Claude Code：它的 print 模式既不写 stdout 也不写 stderr，`text` 的语义就是「最终答案本身」。过程信息不是丢了而是**改成按需索取**：`--output-format stream-json` 会给出 `assistant/reasoning_delta`、`tool/start`、`tool/end` 事件，`json` 的 `tool_calls` 给出调用序列。运行期间终端上没有进度显示是这一口径的直接代价。
 - **text 模式也装 stdout 守卫吗？** 不装（与 Claude Code 一致）：最终答案本身就是纯文本，没有「像不像 JSON」可用来区分它与脏行。stdout 的纯净由写点纪律保证——CLI 侧日志写 logger 文件，代码里不往 stdout 打 `console.log`。

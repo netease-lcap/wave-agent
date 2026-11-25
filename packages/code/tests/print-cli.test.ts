@@ -40,11 +40,6 @@ const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
   return undefined as never;
 });
 
-// Mock console methods to suppress all console output during testing
-const consoleErrorSpy = vi
-  .spyOn(console, "error")
-  .mockImplementation(function () {});
-
 // Mock process.stderr.write to suppress stderr output during testing
 const stderrWriteSpy = vi
   .spyOn(process.stderr, "write")
@@ -82,9 +77,12 @@ test("startPrintCli requires a message when not continuing session", async () =>
   await startPrintCli({ message: "" });
 
   // Verify error message and exit code
-  expect(consoleErrorSpy).toHaveBeenCalledWith(
-    "Print mode requires a message: use --print 'your message' or -p 'your message'",
-  );
+  // 前置校验逐字同 Claude Code（`print.ts:781`）
+  expect(
+    stderrWriteSpy.mock.calls.some((call) =>
+      String(call[0]).startsWith("Error: Input must be provided"),
+    ),
+  ).toBe(true);
   expect(mockExit).toHaveBeenCalledWith(1);
 });
 
@@ -130,9 +128,12 @@ test("an empty -p value plus an empty stdin still fails loudly", async () => {
 
   await startPrintCli({ message: "" });
 
-  expect(consoleErrorSpy).toHaveBeenCalledWith(
-    "Print mode requires a message: use --print 'your message' or -p 'your message'",
-  );
+  // 前置校验逐字同 Claude Code（`print.ts:781`）
+  expect(
+    stderrWriteSpy.mock.calls.some((call) =>
+      String(call[0]).startsWith("Error: Input must be provided"),
+    ),
+  ).toBe(true);
   expect(mockExit).toHaveBeenCalledWith(1);
 });
 
@@ -293,23 +294,22 @@ test("startPrintCli handles sendMessage errors and displays usage summary", asyn
 
   vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
 
-  const consoleErrorSpy = vi
-    .spyOn(console, "error")
-    .mockImplementation(() => {});
+  const stdout = captureStdout();
+  stderrWriteSpy.mockClear();
+  try {
+    await startPrintCli({ message: "test message" });
+  } finally {
+    stdout.restore();
+  }
 
-  await startPrintCli({ message: "test message" });
-
-  // Verify error was logged
-  expect(consoleErrorSpy).toHaveBeenCalledWith(
-    "Failed to send message:",
-    expect.any(Error),
-  );
+  // 运行期失败：Claude Code 的 print 模式 stderr 静默，失败只体现为 stdout 上的
+  // `Execution error`（错误文本进 envelope 的 `errors`）。
+  expect(stderrWriteSpy).not.toHaveBeenCalled();
+  expect(stdout.chunks.join("")).toBe("Execution error");
 
   // Verify agent was destroyed and process.exit was called with error code
   expect(mockAgent.destroy).toHaveBeenCalled();
   expect(mockExit).toHaveBeenCalledWith(1);
-
-  consoleErrorSpy.mockRestore();
 });
 
 test("startPrintCli drains the auto-memory extraction before destroying the agent", async () => {
@@ -358,15 +358,9 @@ test("startPrintCli drains before destroying on the error path too", async () =>
 
   vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
 
-  const consoleErrorSpy = vi
-    .spyOn(console, "error")
-    .mockImplementation(() => {});
-
   await startPrintCli({ message: "test message" });
 
   expect(order).toEqual(["drainAutoMemory", "destroy"]);
-
-  consoleErrorSpy.mockRestore();
 });
 
 test("subagent content callbacks are not registered in print mode", async () => {
@@ -393,10 +387,6 @@ test("subagent content callbacks are not registered in print mode", async () => 
   const stdout = captureStdout();
   stderrWriteSpy.mockClear();
 
-  const consoleErrorSpy = vi
-    .spyOn(console, "error")
-    .mockImplementation(() => {});
-
   await startPrintCli({ message: "test message" });
 
   stdout.chunks.length = 0;
@@ -419,18 +409,21 @@ test("subagent content callbacks are not registered in print mode", async () => 
   });
   expect(stdout.chunks).toEqual([]);
 
-  // Error callback still works — on stderr, never on stdout.
+  // An error notice is recorded for the envelope's `errors` and printed
+  // nowhere: Claude Code's print mode leaves stderr silent for a run that got
+  // that far.
   capturedCallbacks?.onNoticeAdded?.({
     level: "error",
     content: "Something went wrong",
   });
-  expect(stderrWriteSpy).toHaveBeenCalledWith(
-    "\n❌ Error: Something went wrong\n",
-  );
+  expect(
+    stderrWriteSpy.mock.calls.some((call) =>
+      String(call[0]).includes("Something went wrong"),
+    ),
+  ).toBe(false);
   expect(stdout.chunks).toEqual([]);
 
   stdout.restore();
-  consoleErrorSpy.mockRestore();
 });
 
 test("工具调用与推理都不打印：只记进 tool_calls / 事件", async () => {
@@ -822,10 +815,6 @@ test("startPrintCli removes clean worktree after destroy on sendMessage error", 
   vi.mocked(hasUncommittedChanges).mockReturnValue(false);
   vi.mocked(hasNewCommits).mockReturnValue(false);
 
-  // Suppress the "Failed to send message:" stderr write from the error path
-  const consoleErrorSpy = vi
-    .spyOn(console, "error")
-    .mockImplementation(() => {});
   vi.mocked(removeWorktree).mockResolvedValueOnce(true);
 
   await startPrintCli({
@@ -856,8 +845,6 @@ test("startPrintCli removes clean worktree after destroy on sendMessage error", 
     stderrWriteSpy.mock.calls.some((call) => String(call[0]).includes("Done.")),
   ).toBe(true);
   expect(mockExit).toHaveBeenCalledWith(1);
-
-  consoleErrorSpy.mockRestore();
 });
 
 /**
@@ -1153,11 +1140,8 @@ test("--output-format text：运行失败时 stdout 只有 Execution error（不
   }
 
   expect(stdout.chunks.join("")).toBe("Execution error");
-  expect(
-    stderrWriteSpy.mock.calls.some((call) =>
-      String(call[0]).includes("MODEL_NOT_ENABLED"),
-    ),
-  ).toBe(true);
+  // 运行期失败 stderr 静默：错误文本只进 envelope 的 `errors`，与 CC 一致
+  expect(stderrWriteSpy).not.toHaveBeenCalled();
   expect(mockExit).toHaveBeenCalledWith(1);
 });
 
@@ -1179,18 +1163,80 @@ test("--output-format text：会话恢复失败（运行没起来）时 stdout �
   }
 
   expect(stdout.chunks).toEqual([]);
-  expect(
-    stderrWriteSpy.mock.calls.some((call) =>
-      String(call[0]).includes("Invalid session ID format"),
-    ),
-  ).toBe(true);
+  // 逐字同 CC 的 `process.stderr.write(message + '\n')`：只有一行，没有别的前缀
+  expect(stderrWriteSpy.mock.calls.map((call) => String(call[0]))).toEqual([
+    "Error: Failed to load session x: Invalid session ID format\n",
+  ]);
+  expect(mockExit).toHaveBeenCalledWith(1);
+});
+
+test("--output-format json：运行没起来时 stdout 一个字节都没有（与 text 同档）", async () => {
+  // CC 的 `emitLoadError` 只对 `stream-json` 往 stdout 写 error result；
+  // `json` 与 `text` 一样：stdout 空、原因单行走 stderr、exit 1。
+  vi.mocked(Agent.create).mockRejectedValue(
+    new Error("Failed to load session x: Invalid session ID format"),
+  );
+  const stdout = captureStdout();
+  stderrWriteSpy.mockClear();
+
+  try {
+    await startPrintCli({
+      message: "test",
+      restoreSessionId: "not-a-uuid",
+      outputFormat: "json",
+    });
+  } finally {
+    stdout.restore();
+  }
+
+  expect(stdout.chunks).toEqual([]);
+  expect(stderrWriteSpy.mock.calls.map((call) => String(call[0]))).toEqual([
+    "Error: Failed to load session x: Invalid session ID format\n",
+  ]);
+  expect(mockExit).toHaveBeenCalledWith(1);
+});
+
+test("--output-format stream-json：运行没起来时仍写 error result", async () => {
+  // 这条格式是 CC 唯一会往 stdout 写加载失败的：消费方靠它拿 session id 与错误。
+  vi.mocked(Agent.create).mockRejectedValue(
+    new Error("Failed to load session x: Invalid session ID format"),
+  );
+  const stdout = captureStdout();
+
+  try {
+    await startPrintCli({
+      message: "test",
+      restoreSessionId: "not-a-uuid",
+      outputFormat: "stream-json",
+    });
+  } finally {
+    stdout.restore();
+  }
+
+  // error 事件在前、result 收尾：consumer 按 type 取最后一行
+  const events = stdout.chunks
+    .join("")
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as { type: string });
+  const envelope = events.find((event) => event.type === "result") as {
+    type: string;
+    subtype: string;
+    is_error: boolean;
+    errors?: string[];
+  };
+  expect(envelope).toBeDefined();
+  expect(envelope.type).toBe("result");
+  expect(envelope.subtype).toBe("error_during_execution");
+  expect(envelope.is_error).toBe(true);
+  expect(envelope.errors?.join("")).toContain("Invalid session ID format");
   expect(mockExit).toHaveBeenCalledWith(1);
 });
 afterEach(() => {
   vi.clearAllMocks();
   vi.mocked(readPipedStdin).mockResolvedValue("");
   mockExit.mockClear();
-  consoleErrorSpy.mockClear();
   stderrWriteSpy.mockClear();
   stdoutWriteSpy.mockClear();
   capturingStdout = false;

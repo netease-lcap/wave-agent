@@ -69,8 +69,9 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     .join("\n");
 
   if (message.trim() === "" && !continueLastSession && !restoreSessionId) {
-    console.error(
-      "Print mode requires a message: use --print 'your message' or -p 'your message'",
+    // 逐字同 Claude Code 的前置校验（`print.ts:781`）：一行 `Error: …` 走 stderr。
+    process.stderr.write(
+      "Error: Input must be provided either through stdin or as a prompt argument when using --print\n",
     );
     process.exit(1);
   }
@@ -84,8 +85,8 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
   if (output.structured) installStdoutGuard();
   // stdout carries the answer alone in every format, and the run prints no
   // progress at all (no reasoning, no `🔧` lines, no response headers) — that is
-  // Claude Code's print-mode contract. Only diagnostics (error blocks, worktree
-  // notes, usage/timing summary) go to stderr.
+  // Claude Code's print-mode contract. Only diagnostics (worktree notes, a load
+  // failure's single stderr line) go to stderr.
   const diag: Writer = (text) => output.diag(text);
 
   let agent: Agent;
@@ -124,11 +125,13 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     },
 
     // Notice callback: `error` is the turn failure, `info` a hook's line for
-    // the human. Only the former is an error for the CLI's own output.
+    // the human. Only the former is an error for the CLI's own output, and it
+    // goes into the envelope's `errors` and nowhere else: Claude Code's print
+    // mode leaves stderr silent for a run that got that far (the failure shows
+    // up as `Execution error` on stdout / the error result's `errors`).
     onNoticeAdded: ({ level, content }) => {
       if (level !== "error") return;
       output.error(content);
-      diag(`\n❌ Error: ${content}\n`);
     },
   };
 
@@ -275,15 +278,16 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     });
     await exitWithFlushedStdout(envelope.is_error ? 1 : 0);
   } catch (error) {
-    console.error("Failed to send message:", error);
     const reason = (error as Error)?.message ?? String(error);
     output.error(reason);
 
     // Claude Code 的加载失败路径（`emitLoadError`）：这次运行根本没起来
-    // ——session id 非法、恢复失败、create 抛错——它一个字节都不写 stdout，
-    // 原因只进 stderr。结构化格式仍出 envelope：它们必须保持可解析。
-    if (!agent! && !output.structured) {
-      output.diag(`${reason}\n`);
+    // ——session id 非法、恢复失败、create 抛错——**只有 `stream-json`** 往
+    // stdout 写 error result；`text` 与 `json` 都是 stdout 一个字节都不写，
+    // 原因单行走 stderr，exit 1。（"多行"、"json 也出 envelope" 都曾是我们的
+    // 偏离，逐字对齐后不再有。）
+    if (!agent! && output.format !== "stream-json") {
+      output.diag(`Error: ${reason}\n`);
       await exitWithFlushedStdout(1);
       return;
     }

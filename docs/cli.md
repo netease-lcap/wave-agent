@@ -473,7 +473,7 @@ wave -p --output-format json "分析这个项目的依赖关系" | jq '{usage, d
 
 ### 7.17 结构化输出 {#structured-output}
 
-打印模式默认 `--output-format text`，stdout 上只有**最终答案**——最后一条助手消息的文本，结尾补一个换行。运行期间不打印任何过程信息：推理、`📝 Response:` 标题、`🔧` 工具行既不写 stdout 也不写 stderr（与 Claude Code 的 print 模式一致），所以 `wave -p … | …` 拿到的是一段可直接消费的纯文本。诊断信息——`❌` 错误行、worktree 提示——写 **stderr**。运行起来之后失败，stdout 上是 `Execution error`（逐字同 Claude Code，**不带**结尾换行），退出码 1，失败原因在 stderr；如果这次运行根本没起来（`-r` 的 session 不存在或非法、恢复会话抛错），stdout 上**一个字节都没有**，原因同样在 stderr（Claude Code 的 `emitLoadError` 也是这样）。
+打印模式默认 `--output-format text`，stdout 上只有**最终答案**——最后一条助手消息的文本，结尾补一个换行。运行期间不打印任何过程信息：推理、`📝 Response:` 标题、`🔧` 工具行既不写 stdout 也不写 stderr（与 Claude Code 的 print 模式一致），所以 `wave -p … | …` 拿到的是一段可直接消费的纯文本。诊断信息——worktree 提示、加载失败的失败原因——写 **stderr**。运行起来之后失败，stdout 上是 `Execution error`（逐字同 Claude Code，**不带**结尾换行），退出码 1，**stderr 一个字都不写**（失败详情在 result 的 `errors` 里，要看就用 `stream-json`）；如果这次运行根本没起来（`-r` 的 session 不存在或非法、恢复会话抛错），`text` 与 `json` 都是 stdout 上**一个字节都没有**、stderr 一行 `Error: <原因>`、退出码 1，只有 `stream-json` 会写一条 error result 收尾（即 Claude Code 的 `emitLoadError` 形状）。
 
 要程序化消费过程或结构化结果，用 `--output-format` 换成下面两种格式：
 

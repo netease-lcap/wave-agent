@@ -102,12 +102,9 @@ describe("session service additional coverage", () => {
       vi.mocked(fs.access).mockRejectedValue(
         Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
       );
-      // The catch block reports through console.error (stderr, never the
-      // stdout JSON-RPC channel). Silence it here and assert it fired.
-      const consoleError = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => {});
-
+      // The catch block reports through the logger (log file) — never stderr,
+      // which is a visible output surface for scripts and hosts, and never the
+      // stdout JSON-RPC channel.
       await expect(
         handleSessionRestoration(validSessionId, false, workdir),
       ).rejects.toThrow(`Session ${validSessionId} not found on disk`);
@@ -115,12 +112,10 @@ describe("session service additional coverage", () => {
       // loadSessionFromJsonl scans all project dirs as a fallback — reaching
       // the throw means the session truly does not exist anywhere.
       expect(fs.readdir).toHaveBeenCalled();
-      expect(consoleError).toHaveBeenCalledWith(
+      expect(vi.mocked(logger.error)).toHaveBeenCalledWith(
         "Failed to restore session:",
         expect.any(Error),
       );
-
-      consoleError.mockRestore();
     });
 
     it("reports the restore through the logger, never through stdout", async () => {

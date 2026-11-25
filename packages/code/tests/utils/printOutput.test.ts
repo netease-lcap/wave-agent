@@ -125,7 +125,7 @@ test("text 模式：过程信息一个字都不打印，stdout 只有最终答�
   output.reasoningDelta("msg-1", "想一想");
   output.contentDelta("msg-1", "最终答案\n");
   output.toolUpdate(toolParams({ id: "call-1" }));
-  output.diag("\n❌ Error: boom\n");
+  output.diag("\nDeleting worktree ...\n");
   const envelope = output.result({
     sessionId: "s",
     durationMs: 1,
@@ -135,7 +135,7 @@ test("text 模式：过程信息一个字都不打印，stdout 只有最终答�
   // stdout 上只有答案，且是一次写入
   expect(out.chunks).toEqual(["最终答案\n"]);
   // stderr 上只有诊断：没有 💭 / 📝 / 🔧 任何一种过程信息
-  expect(stderr.join("")).toBe("\n❌ Error: boom\n");
+  expect(stderr.join("")).toBe("\nDeleting worktree ...\n");
   expect(envelope.result).toBe("最终答案\n");
 });
 

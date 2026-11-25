@@ -134,7 +134,7 @@ export class PrintOutput {
   }
 
   /**
-   * 诊断信息（错误块、worktree 提示、用量耗时）：一律写 stderr。
+   * 诊断信息（worktree 提示、加载失败的单行原因）：一律写 stderr。
    *
    * 只有**诊断**会走这条通道——运行过程（推理、工具行、响应标题）一个字都不打印，
    * 与 Claude Code 的 print 模式一致：它既不写 stdout 也不写 stderr。
