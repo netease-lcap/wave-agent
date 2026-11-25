@@ -159,7 +159,7 @@ test("text 模式：答案没有结尾换行时补一个，空答案只有一个
   expect(emptyOut.chunks).toEqual(["\n"]);
 });
 
-test("text 模式：运行失败时 stdout 是一行 Execution error，不输出模型文本", () => {
+test("text 模式：运行失败时 stdout 是 Execution error（不带换行），不输出模型文本", () => {
   const out = collector();
   vi.spyOn(process.stderr, "write").mockImplementation(() => true);
   const output = new PrintOutput({ format: "text", write: out.write });
@@ -177,7 +177,8 @@ test("text 模式：运行失败时 stdout 是一行 Execution error，不输出
   });
 
   expect(envelope.is_error).toBe(true);
-  expect(out.chunks).toEqual(["Execution error\n"]);
+  // 逐字对齐 Claude Code：失败分支它**不补**结尾换行（成功分支才补）
+  expect(out.chunks).toEqual(["Execution error"]);
 });
 
 test("作废的半截消息不计入 result 与 num_turns", () => {

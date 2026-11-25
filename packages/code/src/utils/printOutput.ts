@@ -263,10 +263,10 @@ export class PrintOutput {
       this.writeEvent(envelope, false);
     } else {
       // text 模式的唯一 stdout 写点：最终答案（结尾补一个换行），失败时是
-      // Claude Code text 模式的同款文案——消费方拿到的永远是一段完整文本，
-      // 不是「推理 + 正文」的混合物。
+      // Claude Code 的同款文案「Execution error」，**不带**结尾换行（它只在
+      // 成功分支补换行），逐字照抄。
       this.writeStdout(
-        isError ? "Execution error\n" : withTrailingNewline(resultText),
+        isError ? "Execution error" : withTrailingNewline(resultText),
       );
     }
     return envelope;

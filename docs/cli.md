@@ -474,7 +474,7 @@ wave -p --show-stats "分析这个项目的依赖关系"
 
 ### 7.17 结构化输出 {#structured-output}
 
-打印模式默认 `--output-format text`，stdout 上只有**最终答案**——最后一条助手消息的文本，结尾补一个换行。运行期间不打印任何过程信息：推理、`📝 Response:` 标题、`🔧` 工具行既不写 stdout 也不写 stderr（与 Claude Code 的 print 模式一致），所以 `wave -p … | …` 拿到的是一段可直接消费的纯文本。诊断信息——`❌` 错误行、worktree 提示、`--show-stats` 的用量与耗时汇总——写 **stderr**。运行失败时 stdout 上是一行 `Execution error`（与 Claude Code 一致），退出码 1，失败原因在 stderr。
+打印模式默认 `--output-format text`，stdout 上只有**最终答案**——最后一条助手消息的文本，结尾补一个换行。运行期间不打印任何过程信息：推理、`📝 Response:` 标题、`🔧` 工具行既不写 stdout 也不写 stderr（与 Claude Code 的 print 模式一致），所以 `wave -p … | …` 拿到的是一段可直接消费的纯文本。诊断信息——`❌` 错误行、worktree 提示、`--show-stats` 的用量与耗时汇总——写 **stderr**。运行起来之后失败，stdout 上是 `Execution error`（逐字同 Claude Code，**不带**结尾换行），退出码 1，失败原因在 stderr；如果这次运行根本没起来（`-r` 的 session 不存在或非法、恢复会话抛错），stdout 上**一个字节都没有**，原因同样在 stderr（Claude Code 的 `emitLoadError` 也是这样）。
 
 要程序化消费过程或结构化结果，用 `--output-format` 换成下面两种格式：
 

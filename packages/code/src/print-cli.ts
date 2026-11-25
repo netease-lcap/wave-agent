@@ -313,7 +313,17 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     await exitWithFlushedStdout(envelope.is_error ? 1 : 0);
   } catch (error) {
     console.error("Failed to send message:", error);
-    output.error((error as Error)?.message ?? String(error));
+    const reason = (error as Error)?.message ?? String(error);
+    output.error(reason);
+
+    // Claude Code 的加载失败路径（`emitLoadError`）：这次运行根本没起来
+    // ——session id 非法、恢复失败、create 抛错——它一个字节都不写 stdout，
+    // 原因只进 stderr。结构化格式仍出 envelope：它们必须保持可解析。
+    if (!agent! && !output.structured) {
+      output.diag(`${reason}\n`);
+      await exitWithFlushedStdout(1);
+      return;
+    }
 
     let usages: Usage[] = [];
     let sessionId = "";

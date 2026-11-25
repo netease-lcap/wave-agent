@@ -1240,7 +1240,7 @@ test("--output-format text（默认）：stdout 只有最终答案，过程信�
   expect(mockExit).toHaveBeenCalledWith(0);
 });
 
-test("--output-format text：运行失败时 stdout 只有一行 Execution error", async () => {
+test("--output-format text：运行失败时 stdout 只有 Execution error（不带换行）", async () => {
   let callbacks: AgentCallbacks | undefined;
   const agent = structuredAgent({
     sendMessage: vi.fn(async () => {
@@ -1264,7 +1264,7 @@ test("--output-format text：运行失败时 stdout 只有一行 Execution error
     stdout.restore();
   }
 
-  expect(stdout.chunks.join("")).toBe("Execution error\n");
+  expect(stdout.chunks.join("")).toBe("Execution error");
   expect(
     stderrWriteSpy.mock.calls.some((call) =>
       String(call[0]).includes("MODEL_NOT_ENABLED"),
@@ -1273,6 +1273,31 @@ test("--output-format text：运行失败时 stdout 只有一行 Execution error
   expect(mockExit).toHaveBeenCalledWith(1);
 });
 
+test("--output-format text：会话恢复失败（运行没起来）时 stdout 一个字节都没有", async () => {
+  // Claude Code 的 `emitLoadError`：加载期失败只写 stderr，stdout 保持空
+  vi.mocked(Agent.create).mockRejectedValue(
+    new Error("Failed to load session x: Invalid session ID format"),
+  );
+  // 上一个测试 restore 过 console.error，这里自备一个，别让它打到真实 stderr
+  const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  const stdout = captureStdout();
+  stderrWriteSpy.mockClear();
+
+  try {
+    await startPrintCli({ message: "test", restoreSessionId: "not-a-uuid" });
+  } finally {
+    stdout.restore();
+    consoleError.mockRestore();
+  }
+
+  expect(stdout.chunks).toEqual([]);
+  expect(
+    stderrWriteSpy.mock.calls.some((call) =>
+      String(call[0]).includes("Invalid session ID format"),
+    ),
+  ).toBe(true);
+  expect(mockExit).toHaveBeenCalledWith(1);
+});
 afterEach(() => {
   vi.clearAllMocks();
   vi.mocked(readPipedStdin).mockResolvedValue("");

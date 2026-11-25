@@ -117,15 +117,17 @@ order: 110
 8. **假设** 任一结构化格式，**当** 进程退出时，**则** stdout 上已排队的 JSON 全部写完（管道消费方不会读到截断的末行）。
 9. **假设** 任一结构化格式，**当** 有代码往 stdout 写了非 JSON 的行（依赖库的 `console.log`、遗漏的调试输出）时，**则** 该行被转到 stderr 并带标记前缀，stdout 上的 NDJSON 流不被打断。
 10. **假设** 不指定 `--output-format`（默认 `text`），**当** 一次运行正常结束时，**则** stdout 上只有**最后一条助手消息的文本**（不以换行结尾时补一个换行），除此之外没有任何字符。运行过程（推理、`💭 Reasoning:` / `📝 Response:` 标题、`🔧` 工具行）在任何一条流上都不打印；诊断（`❌` 错误行、worktree 提示、告警）与 `--show-stats` 汇总写 stderr。空响应时 stdout 上只有一个换行。
-11. **假设** text 模式，**当** 运行被判为失败（`is_error`：运行抛错，或错误块非空且主 agent 一句话正文都没产出）时，**则** stdout 上是一行 `Execution error`（与 Claude Code 的 text 模式同一文案，不输出任何模型文本），退出码 1；失败原因（错误块原文）写在 stderr。
-12. **假设** 任一格式搭配 `--show-stats`，**当** 运行时，**则** 用量汇总与耗时写到 **stderr**（结构化格式下 stdout 保持纯 JSON，text 模式下 stdout 保持只有最终答案）。
-13. **假设** 交互模式（没有 `-p`）下给了 `--output-format`，**当** 解析参数时，**则** 报错并以退出码 1 结束（该选项只对打印模式有意义）。
+11. **假设** text 模式，**当** 运行被判为失败（`is_error`：运行抛错，或错误块非空且主 agent 一句话正文都没产出）时，**则** stdout 上是 `Execution error`（逐字抄 Claude Code，**不带**结尾换行——它只在成功分支补换行），不输出任何模型文本，退出码 1；失败原因（错误块原文）写在 stderr。
+12. **假设** text 模式，**当** 这次运行根本没起来（加载期失败：`-r` 给了非法或不存在的 session、恢复会话抛错、建 agent 抛错）时，**则** stdout 上**一个字节都不写**，原因写 stderr，退出码 1——对齐 Claude Code 的 `emitLoadError`（它的加载期失败同样不写 stdout）。结构化格式不受影响：它们照旧写一条 result 事件，因为 stdout 必须保持可解析。
+13. **假设** 任一格式搭配 `--show-stats`，**当** 运行时，**则** 用量汇总与耗时写到 **stderr**（结构化格式下 stdout 保持纯 JSON，text 模式下 stdout 保持只有最终答案）。
+14. **假设** 交互模式（没有 `-p`）下给了 `--output-format`，**当** 解析参数时，**则** 报错并以退出码 1 结束（该选项只对打印模式有意义）。
 
 ---
 
 ### 边界情况
 
 - **主 agent 的响应为空怎么办？** stdout 上只有一个换行符；结构化模式下 `result` 为空字符串。
+- **text 模式的失败为什么分两种 stdout？** 因为参照物分两种：运行起来之后失败（`error_during_execution`）它写 `Execution error`，运行根本没起来（加载期失败）它一个字节都不写、原因走 stderr。消费方据此能区分「跑过但错了」与「没跑起来」。
 - **text 模式为什么不输出推理与工具行？** 对齐 Claude Code：它的 print 模式既不写 stdout 也不写 stderr，`text` 的语义就是「最终答案本身」。过程信息不是丢了而是**改成按需索取**：`--output-format stream-json` 会给出 `assistant/reasoning_delta`、`tool/start`、`tool/end` 事件，`json` 的 `tool_calls` 给出调用序列。运行期间终端上没有进度显示是这一口径的直接代价。
 - **text 模式也装 stdout 守卫吗？** 不装（与 Claude Code 一致）：最终答案本身就是纯文本，没有「像不像 JSON」可用来区分它与脏行。stdout 的纯净由写点纪律保证——CLI 侧日志写 logger 文件，代码里不往 stdout 打 `console.log`。
 - **stdout 是一次性写出的吗？** 是。text 模式在运行期间 stdout 完全静默，结束时一次性写出最终答案（或 `Execution error`），所以 `wave -p | head -1` 这类消费方拿到的一定是完整答案而不是半截流。
