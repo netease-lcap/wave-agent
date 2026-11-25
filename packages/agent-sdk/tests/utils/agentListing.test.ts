@@ -80,17 +80,40 @@ describe("formatAgentsWithinBudget", () => {
     expect(a.body.indexOf("- a:")).toBeLessThan(a.body.indexOf("- b:"));
   });
 
-  it("超预算时先压非内置描述，内置保留全描述", () => {
-    // 两条各 5000 字：全量正文超 8000 预算，压完非内置那条才装得下。
+  it("描述一律裁到 250 字，内置也不例外", () => {
+    // 清单只负责发现，子代理正文在派发时才加载；超长描述只会撑大首轮
+    // cache_creation，不一定提高命中率（与 CC 的 MAX_LISTING_DESC_CHARS 一致）。
     const long = "x".repeat(5_000);
-    const { body } = formatAgentsWithinBudget(
-      [agent("custom", long), agent("builtin", long, "builtin")],
+    const { body } = formatAgentsWithinBudget([
+      agent("custom", long),
+      agent("builtin", long, "builtin"),
+    ]);
+    expect(body).not.toContain(long);
+    expect(body).toContain(`- custom: ${"x".repeat(249)}… (Tools: *)`);
+    expect(body).toContain(`- builtin: ${"x".repeat(249)}… (Tools: *)`);
+  });
+
+  it("超预算时非内置按剩余预算等分，内置保留描述", () => {
+    // 40 条自定义子代理、描述各 400 字：全量（已按 250 封顶）装不下，等分后
+    // 每条仍有上百字，而不是过去那个固定 80 的悬崖。
+    const skills = Array.from({ length: 40 }, (_, i) =>
+      agent(`custom-${String(i).padStart(2, "0")}`, "x".repeat(400)),
+    );
+    const { body, omitted } = formatAgentsWithinBudget(
+      skills,
       DEFAULT_AGENT_LISTING_CHAR_BUDGET,
     );
-    // 内置那条留全文，自定义那条被截断成 …。
-    expect(body).toContain(long);
-    expect(body).toContain("…");
-    expect(body).not.toContain(`${long} (Tools: *) (Tools: *)`);
+
+    expect(omitted).toBe(0);
+    expect(body.length).toBeLessThanOrEqual(DEFAULT_AGENT_LISTING_CHAR_BUDGET);
+    for (const skill of skills) {
+      const line = body
+        .split("\n")
+        .find((candidate) => candidate.startsWith(`- ${skill.name}: `));
+      const description = line!.slice(`- ${skill.name}: `.length);
+      expect(description.length).toBeGreaterThan(80);
+      expect(description.endsWith("… (Tools: *)")).toBe(true);
+    }
   });
 
   it("仍超预算时退化为「名字 + 工具池」，不丢工具池", () => {

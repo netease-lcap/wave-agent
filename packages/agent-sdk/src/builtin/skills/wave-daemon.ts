@@ -3,7 +3,7 @@ import { BASH_TOOL_NAME, READ_TOOL_NAME } from "../../constants/tools.js";
 export const waveDaemonSkill: Record<string, string> = {
   "skills/wave-daemon/SKILL.md": `---
 name: wave-daemon
-description: Delegate a development or research task to a background wave daemon session — session creation in an isolated worktree, dispatching messages, aborting and re-scoping, monitoring progress, approving permissions, answering AskUserQuestion, and tearing sessions down with destroy.
+description: Delegate a development or research task to a background daemon session: create it in an isolated worktree, dispatch and re-scope messages, monitor progress, approve permissions, answer AskUserQuestion, and destroy it.
 allowed-tools: ${BASH_TOOL_NAME}(wave daemon *), ${BASH_TOOL_NAME}(git *), ${READ_TOOL_NAME}
 ---
 
