@@ -109,48 +109,6 @@ export const STRUCTURAL_NON_DEFERRABLE: readonly string[] = [
 ];
 
 /**
- * The parameter a pooled shell tool must not declare.
- *
- * Inside a script, backgrounding belongs to the async lane: the script itself is
- * what keeps running, and a `run_in_background` argument would hand the model a
- * task id from a lane the sandbox cannot wait on — a parameter whose only effect
- * is to be silently ignored. Claude Code builds its code-mode Bash schema with
- * `.omit({ run_in_background: true })` for the same reason.
- *
- * Only the *pooled* shape loses it. The flat declaration keeps the parameter,
- * because the flat call is the lane that honours it, so this is applied where a
- * pool entry is built rather than to the tool's own schema.
- */
-export function withoutBackgroundParam(
-  name: string,
-  schema: Record<string, unknown> | undefined,
-): Record<string, unknown> | undefined {
-  if (schema === undefined) return undefined;
-  if (name !== BASH_TOOL_NAME && name !== POWERSHELL_TOOL_NAME) return schema;
-  const properties = schema.properties;
-  if (
-    typeof properties !== "object" ||
-    properties === null ||
-    Array.isArray(properties)
-  ) {
-    return schema;
-  }
-  const kept = { ...(properties as Record<string, unknown>) };
-  if (!(BACKGROUND_PARAM in kept)) return schema;
-  delete kept[BACKGROUND_PARAM];
-  const next: Record<string, unknown> = { ...schema, properties: kept };
-  if (Array.isArray(schema.required)) {
-    next.required = schema.required.filter(
-      (entry) => entry !== BACKGROUND_PARAM,
-    );
-  }
-  return next;
-}
-
-/** The parameter dropped from a pooled shell tool. @see withoutBackgroundParam */
-const BACKGROUND_PARAM = "run_in_background";
-
-/**
  * Whether [name] is one of the core tools and the switch that pools them is on.
  * `coreToolsEnabled` is a required input rather than an ambient read: the switch
  * comes from settings, and a pure function of (name, switch) is what keeps the

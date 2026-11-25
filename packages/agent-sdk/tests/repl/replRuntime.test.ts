@@ -893,6 +893,52 @@ describe("$ — the shell template", () => {
     expect(result.value).toBe("no matches\nExit code 1|1");
   });
 
+  it("hands run_in_background through to the tool and answers with its task id", async () => {
+    // The pool declares the parameter (spec core/repl-tool.md「开关把核心文件与
+    // shell 工具也收进 REPL」场景 6), so nothing in the sandbox may filter it: the
+    // argument reaches the tool unchanged, which is what makes the declared
+    // capability real instead of decorative. The tool's own half — start the task,
+    // answer at once, report on the notification lane — is measured on the real
+    // machine (2026-11-25) and covered by `tests/tools/bashTool.test.ts`.
+    const logPath = path.join("/tmp", "wave-task-task-1.log");
+    const h = harness(() => ({
+      success: true,
+      content: "Command running in background with ID: task-1",
+      data: {
+        stdout: "",
+        interrupted: false,
+        backgroundTaskId: "task-1",
+        backgroundOutputPath: logPath,
+      },
+      backgroundTaskId: "task-1",
+    }));
+
+    const result = await runRepl(
+      h,
+      `
+      const r = await tools.Bash({ command: "sleep 20; echo done", run_in_background: true });
+      self.log(String(r.backgroundTaskId), String(r.backgroundOutputPath));
+      return r.stdout === "" ? "empty" : r.stdout;
+    `,
+      {
+        pool: [...POOL, { name: "Bash", description: "Run a shell command" }],
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    // Not "the tool was asked nicely": the argument itself crossed the boundary,
+    // which is the difference from the schema that used to omit it.
+    expect(h.dispatched).toEqual([
+      {
+        name: "Bash",
+        args: { command: "sleep 20; echo done", run_in_background: true },
+      },
+    ]);
+    expect(result.logs).toEqual([`task-1 ${logPath}`]);
+    // No output to show and no failure: the script continues on the task id.
+    expect(result.value).toBe("empty");
+  });
+
   it("hands a persisted output back as a preview plus the spill file", async () => {
     const filePath = path.resolve("wave-tool-results", "bash_1.txt");
     const wrapper = buildPersistedOutputMessage(
