@@ -18,6 +18,17 @@ vi.mock("../../src/utils/shell/shellSnapshot.js", () => ({
   getShellSnapshot: vi.fn(async () => undefined),
 }));
 
+// Shell *discovery* is the host-dependent half of shell resolution, and `fs` is
+// stubbed below, so the real resolver finds nothing on disk. On Windows it also
+// refuses `WAVE_GIT_BASH_PATH` unless that names an existing bash/sh binary
+// (#3108) — never true under this mock — so the tool answers "Git Bash not found"
+// and no test reaches the spawn. State the resolved path instead; everything
+// downstream (the provider and its `eval '…' && pwd -P` wrapper) stays real,
+// which is what most of this file asserts on.
+vi.mock("../../src/utils/shellResolver.js", () => ({
+  resolveShellPath: vi.fn(),
+}));
+
 // Mock fs and os
 vi.mock("fs", async () => {
   const actual = await vi.importActual("fs");
@@ -96,7 +107,6 @@ import { spawn } from "child_process";
 import * as os from "os";
 import { logger } from "../../src/utils/globalLogger.js";
 import { resolveShellPath } from "../../src/utils/shellResolver.js";
-import * as shellResolver from "../../src/utils/shellResolver.js";
 import { probeTempDir, readDiskPressure } from "../../src/utils/tempDir.js";
 import { terminateChildProcessTree } from "../../src/utils/terminateProcessTree.js";
 const mockSpawn = vi.mocked(spawn);
@@ -111,15 +121,11 @@ describe("bashTool", () => {
     // clearAllMocks keeps mockReturnValue, so re-arm the per-test defaults.
     vi.mocked(probeTempDir).mockReturnValue({ writable: true });
     vi.mocked(readDiskPressure).mockReturnValue({});
-    // `fs` is mocked in this file, so shell discovery reads no real file: state
-    // the shell instead of inheriting whatever the host has installed. While
-    // shell resolution went through a *default* `fs` import it silently saw the
-    // real filesystem here (this mock's `importActual` spread carries a
-    // `default`), so the file only passed on machines that have Git Bash. Both
-    // env vars name the same binary because Windows reads `WAVE_GIT_BASH_PATH`
-    // and POSIX reads `WAVE_SHELL`; `spawn` is mocked, so nothing is executed.
-    vi.stubEnv("WAVE_GIT_BASH_PATH", "/bin/bash");
-    vi.stubEnv("WAVE_SHELL", "/bin/bash");
+    // Discovery is mocked at module level (see the `shellResolver` `vi.mock` above)
+    // so the answer no longer tracks what the host has installed. An env var
+    // cannot do that job here: the resolver validates the path against the
+    // mocked `fs`, which is empty by construction.
+    vi.mocked(resolveShellPath).mockReturnValue("/bin/bash");
     const container = new Container();
     backgroundTaskManager = new BackgroundTaskManager(container, {
       workdir: "/test/workdir",
@@ -1126,26 +1132,19 @@ EOF
   describe("CWD reset when outside safe zone", () => {
     // These tests mock `pwd -P` output as unix-style paths. Pin the platform to
     // non-Windows so the MSYS->Windows conversion (win32 only) doesn't rewrite
-    // them when the suite runs on a Windows machine/CI. resolveShellPath() is
-    // stubbed because the platform pin routes it to the unix resolver, which
-    // probes /bin/bash etc. — none exist on a Windows runner (Windows-only
-    // PATH, no $SHELL), and execute() would fail with "No suitable shell
-    // found" before the CWD logic runs.
+    // them when the suite runs on a Windows machine/CI. Which shell the tool
+    // uses is already settled by the `shellResolver` mock, so the pinned
+    // platform only drives path conversion here.
     let platformSpy: ReturnType<typeof vi.spyOn>;
-    let resolveShellPathSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
       platformSpy = vi
         .spyOn(process, "platform", "get")
         .mockReturnValue("linux" as NodeJS.Platform);
-      resolveShellPathSpy = vi
-        .spyOn(shellResolver, "resolveShellPath")
-        .mockReturnValue("/bin/bash");
     });
 
     afterEach(() => {
       platformSpy.mockRestore();
-      resolveShellPathSpy.mockRestore();
     });
 
     const createMockProcess = (exitCode: number, newCwd: string) => {
@@ -1325,15 +1324,10 @@ EOF
       platformSpy = vi
         .spyOn(process, "platform", "get")
         .mockReturnValue("win32" as NodeJS.Platform);
-      // resolveWindowsShell() honours WAVE_GIT_BASH_PATH only when it names an
-      // existing bash/sh binary (#3108), so /bin/bash is accepted on the POSIX
-      // runners; the alternative is auto-detection, which finds no Git Bash.
-      vi.stubEnv("WAVE_GIT_BASH_PATH", "/bin/bash");
     });
 
     afterEach(() => {
       platformSpy.mockRestore();
-      vi.unstubAllEnvs();
     });
 
     const createMockProcess = (newCwd: string) => {

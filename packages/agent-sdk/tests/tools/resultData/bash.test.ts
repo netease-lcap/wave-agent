@@ -33,6 +33,15 @@ vi.mock("../../../src/utils/shell/shellSnapshot.js", () => ({
   getShellSnapshot: vi.fn(async () => undefined),
 }));
 
+// shell 的「发现层」才是跟宿主机走的那一半，而本文件把 `fs` 整个 mock 了，
+// 所以真解析器在盘上什么都找不到；Windows 分支还要求 `WAVE_GIT_BASH_PATH` 指向
+// 真实存在的 bash/sh 文件（#3108），mock 下恒假 ⇒ 工具直接返回「Git Bash not found」，
+// 一个用例都到不了真分支。这里把解析结果钉住；provider 与它拼出的
+// `eval '…' && pwd -P` 包装仍是真实现，`cd` 那两个用例靠的就是它。
+vi.mock("../../../src/utils/shellResolver.js", () => ({
+  resolveShellPath: vi.fn(),
+}));
+
 vi.mock("fs", async () => {
   const actual = await vi.importActual("fs");
   return {
@@ -79,6 +88,7 @@ vi.mock("../../../src/utils/terminateProcessTree.js", () => ({
 }));
 
 import { probeTempDir, readDiskPressure } from "../../../src/utils/tempDir.js";
+import { resolveShellPath } from "../../../src/utils/shellResolver.js";
 
 const mockSpawn = vi.mocked(spawn);
 const WORKDIR = "/test/workdir";
@@ -172,9 +182,9 @@ describe("Bash 的 data → 文本 golden", () => {
     vi.clearAllMocks();
     vi.mocked(probeTempDir).mockReturnValue({ writable: true });
     vi.mocked(readDiskPressure).mockReturnValue({});
-    // `fs` 被 mock 了，shell 发现读不到真文件：把 shell 明确钉住，别继承开发机。
-    vi.stubEnv("WAVE_GIT_BASH_PATH", "/bin/bash");
-    vi.stubEnv("WAVE_SHELL", "/bin/bash");
+    // 解析层已在模块级 mock（见上面的 `shellResolver` `vi.mock`）：给一个固定路径，
+    // 用例就不再取决于宿主机装没装 Git Bash。
+    vi.mocked(resolveShellPath).mockReturnValue("/bin/bash");
     context = {
       workdir: WORKDIR,
       taskManager: createMockTaskManager(),
@@ -183,7 +193,6 @@ describe("Bash 的 data → 文本 golden", () => {
 
   afterEach(() => {
     vi.useRealTimers();
-    vi.unstubAllEnvs();
   });
 
   it("正常输出：正文就是命令自己的输出", async () => {
