@@ -1238,9 +1238,10 @@ async function answerShellCall(
       ? result.backgroundTaskId
       : undefined;
   if (taskId) {
-    // The command outlived its wait, so `Bash` moved it to the background. The
-    // script is told that rather than handed an exit code it never produced: it
-    // can go on, and read the file instead of running the command again.
+    // `Bash` moved the command to the background — the user pressed Ctrl+B, or
+    // the command outlived its wait. The script is told that rather than handed
+    // an exit code it never produced, and which of the two it was: the user's
+    // decision is not the script's timeout.
     const task = frame.context.backgroundTaskManager?.getTask(taskId);
     return {
       stdout: "",
@@ -1249,7 +1250,11 @@ async function answerShellCall(
       output: result.content ?? "",
       truncated: false,
       command: commandText,
-      running: { taskId, outputPath: task?.outputPath ?? "" },
+      running: {
+        taskId,
+        outputPath: task?.outputPath ?? "",
+        ...(result.backgroundedByUser === true ? { movedByUser: true } : {}),
+      },
     };
   }
 

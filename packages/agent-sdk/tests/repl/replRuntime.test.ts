@@ -576,7 +576,7 @@ describe("$ — the shell template", () => {
       h,
       `
       const out = await $\`bun build\`.timeout(900000);
-      self.log(String(out.exitCode), out.running.taskId, typeof out.running.outputPath);
+      self.log(String(out.exitCode), out.running.taskId, typeof out.running.outputPath, String(out.running.movedByUser));
       return out.stdout === "" ? "empty" : out.stdout;
     `,
     );
@@ -585,8 +585,32 @@ describe("$ — the shell template", () => {
     // A longer wait than the 600000 ms default is the command's own to declare.
     expect(h.dispatched[0].args.timeout).toBe(900000);
     // exitCode null is not a failure: the script is answered and carries on.
-    expect(result.logs).toEqual(["null bg-1 string"]);
+    expect(result.logs).toEqual(["null bg-1 string undefined"]);
     expect(result.value).toBe("empty");
+  });
+
+  it("says so when the user moved the command to the background", async () => {
+    const h = harness(() => ({
+      success: true,
+      content: "Command was moved to the background with ID: bg-2.",
+      backgroundTaskId: "bg-2",
+      backgroundedByUser: true,
+    }));
+
+    const result = await runRepl(
+      h,
+      `
+      const out = await $\`bun build\`;
+      self.log(String(out.exitCode), out.running.taskId, String(out.running.movedByUser));
+      return out.running.movedByUser === true ? "user" : "not-user";
+    `,
+    );
+
+    expect(result.ok).toBe(true);
+    // A user who pressed Ctrl+B is told apart from the wait running out, so the
+    // script does not read that decision as its own timeout.
+    expect(result.logs).toEqual(["null bg-2 true"]);
+    expect(result.value).toBe("user");
   });
 
   it("refuses $ when the context has no tool manager to run it", async () => {
