@@ -10,6 +10,54 @@ import type {
   ShellProvider,
 } from "./shellProvider.js";
 
+/**
+ * Switch the console's output code page to UTF-8 before the command runs.
+ *
+ * Every console has its own output code page, and on a zh-CN system the default
+ * is 936 (GBK). A native program writing localized text — `taskkill`, `ping`,
+ * a compiler's diagnostics — encodes it in that code page, so the bytes that
+ * arrive on the pipe are GBK and decoding them as UTF-8 turns them into U+FFFD
+ * (issue #1753). `chcp.com` sets the code page for the whole console, which
+ * includes the programs the command goes on to spawn, so the bytes are UTF-8
+ * before they are ever written. That is why the fix lives here and not in the
+ * decoder the tool used to carry: the decoder was working around a stream that
+ * should not have been GBK in the first place, and it guessed wrong whenever
+ * the head of the stream was a truncated character. Claude Code prefixes the
+ * same statement (`chcp.com 65001 >nul &`).
+ *
+ * What the switch costs:
+ * - one `chcp.com` spawn per command (measured here: +120-150 ms on Windows,
+ *   where the login shell alone already takes ~430 ms);
+ * - text a program prints through the ANSI API rather than the console keeps
+ *   the ANSI code page and stays mojibake — `ipconfig`'s adapter names and
+ *   `net start`'s service names are the two that show it. File contents in a
+ *   non-UTF-8 code page are in the same boat: the console code page never
+ *   governed either.
+ *
+ * Two details matter: the output is discarded because `chcp.com` prints
+ * "Active code page: 65001", and the separator is `;` rather than `&&` so a
+ * shell that cannot find `chcp.com` still runs the command.
+ */
+export const CONSOLE_CODE_PAGE_PROLOGUE = "chcp.com 65001 >/dev/null 2>&1";
+
+/**
+ * Put {@link CONSOLE_CODE_PAGE_PROLOGUE} in front of a command string.
+ *
+ * In front of the *whole* string, not inside the `eval` body: the bytes the
+ * model wrote then stay exactly as written (the CWD wrapper quotes them, and a
+ * here-doc in them must not be re-parsed), and the switch cannot be reached by
+ * the command's own exit status or by a `&& pwd -P` that follows it.
+ *
+ * The sandbox does not lose the switch: the code page belongs to the console,
+ * which every descendant inherits, so it holds for a command the wrapper runs
+ * in its own `bash -c` as well.
+ */
+export function withConsoleCodePage(command: string): string {
+  return process.platform === "win32"
+    ? `${CONSOLE_CODE_PAGE_PROLOGUE}; ${command}`
+    : command;
+}
+
 /** A path as exactly one shell word. */
 function quoteShellWord(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
@@ -86,15 +134,17 @@ export function createBashProvider(shellPath: string): ShellProvider {
         `wave_cwd_${Date.now()}_${Math.random().toString(36).substring(2, 11)}.tmp`,
       );
       if (!opts.cwdTracking) {
-        return { commandString: command, cwdFilePath };
+        return {
+          commandString: withConsoleCodePage(command),
+          cwdFilePath,
+        };
       }
       // Git Bash's `pwd -P` writes an MSYS-style path, so the file path handed
       // to the shell must be POSIX-shaped; the caller converts the *content*
       // back (bashTool).
       return {
-        commandString: wrapCommandForCwdTracking(
-          command,
-          toPosixPath(cwdFilePath),
+        commandString: withConsoleCodePage(
+          wrapCommandForCwdTracking(command, toPosixPath(cwdFilePath)),
         ),
         cwdFilePath,
       };

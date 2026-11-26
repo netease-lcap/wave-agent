@@ -5,7 +5,6 @@ import * as path from "path";
 import { BackgroundTask, BackgroundShell } from "../types/processes.js";
 import { stripAnsiColors } from "../utils/stringUtils.js";
 import { readTailTextSync } from "../utils/fileUtils.js";
-import { WindowsStreamDecoder } from "../utils/encoding.js";
 import { killProcessTree } from "../utils/killProcessTree.js";
 import { logger } from "../utils/globalLogger.js";
 import { Container } from "../utils/container.js";
@@ -164,6 +163,14 @@ export class BackgroundTaskManager {
       env?: Record<string, string>;
       onExit?: () => void;
       /**
+       * What the task reports as its command when the string that runs is not
+       * what the model wrote — the bash prologue (code page, shell snapshot,
+       * search shadows) or PowerShell's encoding statement. The shell still
+       * gets `command`; this only decides what the task list, the stop message
+       * and the model are shown.
+       */
+      displayCommand?: string;
+      /**
        * How to start the shell, when the default — `shell: <bash path>` — is
        * not what this shell needs. PowerShell has to be started with its own
        * argv (`-NoProfile -NonInteractive -NoLogo -Command <command>`): handing
@@ -234,7 +241,7 @@ export class BackgroundTaskManager {
       id,
       type: "shell",
       process: child,
-      command,
+      command: options?.displayCommand ?? command,
       startTime,
       status: "running",
       stdout: "",
@@ -261,19 +268,13 @@ export class BackgroundTaskManager {
       }, timeout);
     }
 
-    // On Windows, native tools (taskkill, powershell, ...) write GBK (cp936)
-    // instead of UTF-8; decode their byte streams accordingly (issue #1753).
-    const stdoutDecoder =
-      process.platform === "win32" ? new WindowsStreamDecoder() : null;
-    const stderrDecoder =
-      process.platform === "win32" ? new WindowsStreamDecoder() : null;
-
     // ANSI 转义序列原样保留（命令输出、日志文件、交给宿主的文本都是同一份带
     // 色原文，颜色由 UI 渲染；见 specs/core/bash-tools.md「ANSI 颜色代码」）。
+    // UTF-8 with no guessing: the shell the command runs in has its console
+    // code page set to 65001 first (Windows, see `bashProvider`), so a native
+    // program's localized text is already encoded as UTF-8 here.
     const onStdout = (data: Buffer | string) => {
-      const chunk = stdoutDecoder
-        ? stdoutDecoder.push(data as Buffer)
-        : data.toString();
+      const chunk = data.toString();
       shell.stdout += chunk;
       if (logStream.writable) {
         logStream.write(chunk);
@@ -282,9 +283,7 @@ export class BackgroundTaskManager {
     };
 
     const onStderr = (data: Buffer | string) => {
-      const chunk = stderrDecoder
-        ? stderrDecoder.push(data as Buffer)
-        : data.toString();
+      const chunk = data.toString();
       shell.stderr += chunk;
       if (logStream.writable) {
         logStream.write(chunk);
@@ -313,26 +312,6 @@ export class BackgroundTaskManager {
             originId: id,
             command,
           });
-      }
-      // Decode any bytes still held at stream end (e.g. a trailing UTF-8
-      // character split across the last chunk).
-      if (stdoutDecoder) {
-        const rest = stdoutDecoder.flush();
-        if (rest) {
-          shell.stdout += rest;
-          if (logStream.writable) {
-            logStream.write(rest);
-          }
-        }
-      }
-      if (stderrDecoder) {
-        const rest = stderrDecoder.flush();
-        if (rest) {
-          shell.stderr += rest;
-          if (logStream.writable) {
-            logStream.write(rest);
-          }
-        }
       }
       if (logStream.writable) {
         logStream.end();
@@ -388,6 +367,12 @@ export class BackgroundTaskManager {
         );
       }
     };
+
+    // 走 Node 自带的流式解码器：一个汉字被两次 pipe 读切开时保持完整。
+    // 逐 chunk `toString()` 会在每个读边界落一个 U+FFFD（实测 100 KB 中文
+    // 输出里 3 个）；可选调用是因为 child_process 的测试桩只实现了 `on`。
+    child.stdout?.setEncoding?.("utf8");
+    child.stderr?.setEncoding?.("utf8");
 
     child.stdout?.on("data", onStdout);
     child.stderr?.on("data", onStderr);
@@ -452,15 +437,14 @@ export class BackgroundTaskManager {
     this.tasks.set(id, shell);
     this.notifyTasksChange();
 
-    // On Windows, native tools write GBK (cp936) instead of UTF-8; decode
-    // their byte streams accordingly (issue #1753).
-    const stdoutDecoder =
-      process.platform === "win32" ? new WindowsStreamDecoder() : null;
-    const stderrDecoder =
-      process.platform === "win32" ? new WindowsStreamDecoder() : null;
+    // 走 Node 自带的流式解码器：一个汉字被两次 pipe 读切开时保持完整。
+    // 逐 chunk `toString()` 会在每个读边界落一个 U+FFFD（实测 100 KB 中文
+    // 输出里 3 个）；可选调用是因为 child_process 的测试桩只实现了 `on`。
+    child.stdout?.setEncoding?.("utf8");
+    child.stderr?.setEncoding?.("utf8");
 
     child.stdout?.on("data", (data) => {
-      const chunk = stdoutDecoder ? stdoutDecoder.push(data) : data.toString();
+      const chunk = data.toString();
       shell.stdout += chunk;
       if (logStream.writable) {
         logStream.write(chunk);
@@ -469,7 +453,7 @@ export class BackgroundTaskManager {
     });
 
     child.stderr?.on("data", (data) => {
-      const chunk = stderrDecoder ? stderrDecoder.push(data) : data.toString();
+      const chunk = data.toString();
       shell.stderr += chunk;
       if (logStream.writable) {
         logStream.write(chunk);
@@ -478,25 +462,6 @@ export class BackgroundTaskManager {
     });
 
     child.on("exit", (code) => {
-      // Decode any bytes still held at stream end
-      if (stdoutDecoder) {
-        const rest = stdoutDecoder.flush();
-        if (rest) {
-          shell.stdout += rest;
-          if (logStream.writable) {
-            logStream.write(rest);
-          }
-        }
-      }
-      if (stderrDecoder) {
-        const rest = stderrDecoder.flush();
-        if (rest) {
-          shell.stderr += rest;
-          if (logStream.writable) {
-            logStream.write(rest);
-          }
-        }
-      }
       if (logStream.writable) {
         logStream.end();
       }

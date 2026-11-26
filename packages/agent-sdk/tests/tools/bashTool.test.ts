@@ -112,6 +112,15 @@ import { terminateChildProcessTree } from "../../src/utils/terminateProcessTree.
 const mockSpawn = vi.mocked(spawn);
 const mockTerminateTree = vi.mocked(terminateChildProcessTree);
 
+/**
+ * The spawn string minus the console code page switch Windows puts in front of
+ * it (see CONSOLE_CODE_PAGE_PROLOGUE in bashProvider). The wrapper assertions
+ * below are about the CWD wrapper, which always comes after that switch.
+ */
+function withoutCodePage(command: string): string {
+  return command.replace(/^chcp\.com 65001 >\/dev\/null 2>&1; /, "");
+}
+
 describe("bashTool", () => {
   let backgroundTaskManager: BackgroundTaskManager;
   let context: ToolContext;
@@ -174,8 +183,13 @@ describe("bashTool", () => {
 
       const result = await bashTool.execute({ command: "echo hello" }, context);
 
-      // Untracked: the command was handed to the shell verbatim.
-      expect(mockSpawn.mock.calls[0][0]).toBe("echo hello");
+      // Untracked: nothing is appended to the command, and only the console
+      // code page (Windows) comes before it.
+      expect(mockSpawn.mock.calls[0][0]).toBe(
+        process.platform === "win32"
+          ? "chcp.com 65001 >/dev/null 2>&1; echo hello"
+          : "echo hello",
+      );
       expect(mockSpawn.mock.calls[0][0]).not.toContain("pwd -P");
       // The result says what broke, what is degraded, and the way out.
       expect(result.success).toBe(true);
@@ -1097,7 +1111,7 @@ describe("bashTool", () => {
 
       await bashTool.execute({ command: "echo 'hi'" }, context);
 
-      const wrapped = mockSpawn.mock.calls[0][0] as string;
+      const wrapped = withoutCodePage(mockSpawn.mock.calls[0][0] as string);
       // Each single quote in the user command is replaced with '"'"'
       expect(wrapped).toContain(`eval 'echo '"'"'hi'"'"''`);
       expect(wrapped).toMatch(/^eval '.*' && pwd -P >\| .*wave_cwd_.*\.tmp$/);
@@ -1115,7 +1129,7 @@ EOF
 
       await bashTool.execute({ command }, context);
 
-      const wrapped = mockSpawn.mock.calls[0][0] as string;
+      const wrapped = withoutCodePage(mockSpawn.mock.calls[0][0] as string);
       // Whole user command wrapped in eval '...'
       expect(wrapped.startsWith("eval '")).toBe(true);
       expect(wrapped).toContain("pwd -P");

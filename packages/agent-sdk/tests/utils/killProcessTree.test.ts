@@ -63,7 +63,14 @@ function fakeTaskkill(options: {
   return child;
 }
 
-/** GBK bytes for `错误` — what taskkill actually writes on zh-CN Windows. */
+/**
+ * GBK bytes for `错误` — what `taskkill` actually writes on zh-CN Windows.
+ *
+ * They stay GBK: this is the one spawn that runs no shell provider, so nothing
+ * sets a code page for it (see the note in `killProcessTree.ts`). The bytes
+ * decode as U+FFFD, which is why the assertions below pin the pid and the exit
+ * code rather than the localized words.
+ */
 const GBK_ERROR_PREFIX = Buffer.from([0xb4, 0xed, 0xce, 0xf3]);
 
 describe("killProcessTree", () => {
@@ -194,7 +201,7 @@ describe("killProcessTree", () => {
       expect(logger.error).not.toHaveBeenCalled();
     });
 
-    it("decodes taskkill's GBK stderr and reports not-found on exit code 128", async () => {
+    it("reports not-found on exit code 128 and passes taskkill's own bytes through", async () => {
       killSpy.mockImplementation((() => true) as never);
       mockSpawn.mockReturnValue(
         fakeTaskkill({
@@ -208,10 +215,12 @@ describe("killProcessTree", () => {
       expect(result).toBe("not-found");
       expect(mockSpawn).toHaveBeenCalled();
       expect(logger.error).not.toHaveBeenCalled();
-      // GBK round-trip: the message must not be mojibake in the log.
-      expect(logger.debug).toHaveBeenCalledWith(
-        expect.stringContaining("错误"),
-      );
+      const [message] = vi.mocked(logger.debug).mock.calls[0];
+      // The pid and the outcome are ASCII and always readable; the localized
+      // words are not (they arrive as the OEM code page), and the log line is
+      // the only place they go.
+      expect(message).toContain("pid 999999");
+      expect(message).toContain("\uFFFD");
     });
 
     it("reports failed and logs an error for a non-zero, non-128 exit code", async () => {

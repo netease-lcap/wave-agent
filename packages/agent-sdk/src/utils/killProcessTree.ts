@@ -15,7 +15,6 @@
  */
 
 import { spawnHidden } from "./execFileHidden.js";
-import { WindowsStreamDecoder } from "./encoding.js";
 import { logger } from "./globalLogger.js";
 
 export type KillProcessTreeResult =
@@ -104,9 +103,12 @@ function killTreeOnWindows(
     }
 
     const args = ["/PID", String(pid), "/T", "/F"];
-    // taskkill writes the system OEM code page (GBK on zh-CN), see encoding.ts.
-    const stdoutDecoder = new WindowsStreamDecoder();
-    const stderrDecoder = new WindowsStreamDecoder();
+    // Nothing here sets the console code page: this is the one spawn that does
+    // not run through a shell provider, and it exists to kill a process. Its
+    // output only ever reaches the log, so on a zh-CN system a Chinese
+    // `taskkill` message arrives as GBK and reads as U+FFFD there — readable
+    // enough to diagnose with ("ERROR" / a pid / exit code are ASCII), and not
+    // worth a per-kill process to fix.
     let output = "";
     let settled = false;
     const finish = (result: KillProcessTreeResult) => {
@@ -131,10 +133,10 @@ function killTreeOnWindows(
     }
 
     taskkill.stdout?.on("data", (data: Buffer) => {
-      output += stdoutDecoder.push(data);
+      output += data.toString();
     });
     taskkill.stderr?.on("data", (data: Buffer) => {
-      output += stderrDecoder.push(data);
+      output += data.toString();
     });
 
     taskkill.on("error", (error: Error) => {

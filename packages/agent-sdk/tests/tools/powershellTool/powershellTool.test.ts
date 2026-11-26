@@ -679,12 +679,17 @@ describe("powershellTool", () => {
       expect(result.success).toBe(true);
       expect(result.backgroundTaskId).toBe("task_1_2");
       expect(spawn).not.toHaveBeenCalled();
+      // The argv carries what the provider prepared (the stub above passes it
+      // through untouched — the UTF-8 statement the real provider prepends is
+      // powershellProvider.test.ts's business), while the task reports the
+      // command the model wrote.
       expect(manager.startShell).toHaveBeenCalledWith(
         "Start-Sleep -Seconds 5",
         // No default timeout for a background task.
         undefined,
         "/work/project",
         {
+          displayCommand: "Start-Sleep -Seconds 5",
           shell: {
             file: PS_PATH,
             args: [

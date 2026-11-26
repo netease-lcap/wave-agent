@@ -26,6 +26,20 @@ export const POWERSHELL_SPAWN_FLAGS = [
 ] as const;
 
 /**
+ * The statement that makes PowerShell write UTF-8 — the counterpart of the bash
+ * provider's `chcp.com 65001` (see `bashProvider.ts` for the full rationale).
+ *
+ * Windows PowerShell 5.1 encodes its own output, and decodes what a native
+ * program it called produced, in the console's output code page — 936/GBK on a
+ * zh-CN system, which reaches the pipe as GBK bytes (measured: `Write-Output
+ * '中文'` and `cmd /c echo 中文` alike). `[Console]::OutputEncoding` is the code
+ * page 5.1 uses in both directions, and PowerShell 7 already defaults to UTF-8,
+ * so the one statement covers both editions. Claude Code sets the same line.
+ */
+const CONSOLE_UTF8_STATEMENT =
+  "[Console]::OutputEncoding = [Text.Encoding]::UTF8";
+
+/**
  * The statement a **hook** command needs appended, and why it differs from the
  * tool's `$_ec` probe.
  *
@@ -112,9 +126,12 @@ export function createPowerShellProvider(shellPath: string): ShellProvider {
     // suppressed at all (`windowsHide` is a no-op under DETACHED_PROCESS), so
     // the flag would buy nothing and cost a visible window.
     detached: false,
-    // Nothing to prepend: the search shadows are bash functions, and there is
-    // no PowerShell equivalent to install.
-    prepareCommand: async (command) => command,
+    // The code page is the only thing prepended: the search shadows are bash
+    // functions, and there is no PowerShell equivalent to install.
+    prepareCommand: async (command) =>
+      process.platform === "win32"
+        ? `${CONSOLE_UTF8_STATEMENT}\n${command}`
+        : command,
     buildExecCommand(
       command: string,
       opts: ShellExecOptions,

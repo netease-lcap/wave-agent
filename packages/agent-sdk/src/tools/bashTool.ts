@@ -9,8 +9,8 @@ import {
   readDiskPressure,
 } from "../utils/tempDir.js";
 import { getShellProvider } from "../utils/shell/resolveProvider.js";
+import { withConsoleCodePage } from "../utils/shell/bashProvider.js";
 import { toWindowsPath } from "../utils/path.js";
-import { WindowsStreamDecoder } from "../utils/encoding.js";
 import { terminateChildProcessTree } from "../utils/terminateProcessTree.js";
 import { persistToolResult } from "../utils/toolResultStorage.js";
 import { BASH_MAX_OUTPUT_CHARS } from "../constants/toolLimits.js";
@@ -454,11 +454,17 @@ The working directory persists between commands, but shell state (environment va
         };
       }
 
+      // This branch spawns the shell itself, so it misses the code page switch
+      // `buildExecCommand` puts in front of a foreground command.
       const { id: taskId } = backgroundTaskManager.startShell(
-        backgroundCommand,
+        withConsoleCodePage(backgroundCommand),
         undefined,
         context.workdir,
-        backgroundOptions,
+        {
+          ...backgroundOptions,
+          // The task list shows what the model wrote, not the prologue.
+          displayCommand: command,
+        },
       );
       const task = backgroundTaskManager.getTask(taskId);
       const outputPath = task?.outputPath;
@@ -548,13 +554,6 @@ The working directory persists between commands, but shell state (environment va
       let errorBuffer = "";
       let isAborted = false;
       let isBackgrounded = false;
-
-      // On Windows, native tools (taskkill, powershell, ...) write GBK (cp936)
-      // instead of UTF-8; decode their byte streams accordingly (issue #1753).
-      const stdoutDecoder =
-        process.platform === "win32" ? new WindowsStreamDecoder() : null;
-      const stderrDecoder =
-        process.platform === "win32" ? new WindowsStreamDecoder() : null;
 
       // Best-effort cleanup of the temp CWD file — used by abort/error/exit paths
       const cleanupTempFile = () => {
@@ -729,19 +728,28 @@ The working directory persists between commands, but shell state (environment va
       // 成颜色（见 specs/ui/message-rendering-system.md「Bash 工具输出的终端
       // 颜色」），所以收流处不剥离——写入转录、发给模型、交给宿主的都是同一份
       // 带色原文（与 Claude Code 对齐）。纯文本出口才剥。
+      // The bytes are UTF-8, with nothing to guess: on Windows the provider puts
+      // the console's code page at 65001 before the command runs (see
+      // `CONSOLE_CODE_PAGE_PROLOGUE`), so a native program's localized text
+      // arrives already encoded as UTF-8. `toString()` is the one decoding path,
+      // the same one Claude Code uses — a stream that is GBK anyway (a file's
+      // own bytes, a program writing through the ANSI API) shows U+FFFD instead
+      // of being re-read through a guessed code page.
+      // 走 Node 自带的流式解码器：一个汉字被两次 pipe 读切开时保持完整。
+      // 逐 chunk `toString()` 会在每个读边界落一个 U+FFFD（实测 100 KB 中文
+      // 输出里 3 个）；可选调用是因为 child_process 的测试桩只实现了 `on`。
+      child.stdout?.setEncoding?.("utf8");
+      child.stderr?.setEncoding?.("utf8");
+
       child.stdout?.on("data", (data) => {
         if (!isAborted && !isBackgrounded && !runInBackground) {
-          outputBuffer += stdoutDecoder
-            ? stdoutDecoder.push(data)
-            : data.toString();
+          outputBuffer += data.toString();
         }
       });
 
       child.stderr?.on("data", (data) => {
         if (!isAborted && !isBackgrounded && !runInBackground) {
-          errorBuffer += stderrDecoder
-            ? stderrDecoder.push(data)
-            : data.toString();
+          errorBuffer += data.toString();
         }
       });
 
@@ -851,10 +859,6 @@ The working directory persists between commands, but shell state (environment va
         }
 
         const exitCode = code ?? 0;
-        // Decode any bytes still held at stream end (e.g. a trailing UTF-8
-        // character split across the last chunk).
-        if (stdoutDecoder) outputBuffer += stdoutDecoder.flush();
-        if (stderrDecoder) errorBuffer += stderrDecoder.flush();
         let combinedOutput =
           outputBuffer + (errorBuffer ? "\n" + errorBuffer : "");
 
