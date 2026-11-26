@@ -171,6 +171,20 @@ describe("findDangerousRemoval — targets that end the session", () => {
     expect(ruleOf("rm -rf ../*")).toBe("working_directory");
   });
 
+  it("refuses a glob that crosses more than one directory level", () => {
+    // One level is the ordinary "clear this directory"; two or more name a set
+    // whose members cannot be listed before the command runs, which is Claude
+    // Code's `multi_level_glob` (spec scene 9).
+    expect(ruleOf("rm -rf logs/*/*")).toBe("multi_level_glob");
+    expect(ruleOf("rm -rf */*")).toBe("multi_level_glob");
+    expect(ruleOf("rm -rf logs/*/x/*")).toBe("multi_level_glob");
+    const hit = judge("rm -rf logs/*/*")!;
+    expect(describeDangerousRemoval(hit)).toContain("cannot be covered");
+    // A glob whose static prefix is the working directory's parent keeps the
+    // stronger answer.
+    expect(ruleOf("rm -rf ../*/*")).toBe("working_directory");
+  });
+
   it("reports the path it refused, so the card can name it", () => {
     const hit = judge("rm -rf ../..")!;
     expect(hit.target).toBe("../..");
@@ -237,6 +251,30 @@ describe("findDangerousRemoval — shapes that hide the command", () => {
         `sudo bash -c 'cd ${commandPath(elsewhere)} && rm -rf ${commandPath(elsewhere)}'`,
       ),
     ).toBe("working_directory");
+  });
+
+  it("refuses a relative glob behind a cd it cannot follow", () => {
+    // The shell moved into a directory nothing here can name, so `build/*` hangs
+    // off an unknown directory — Claude Code's `relative_glob_after_cd` (spec
+    // scene 21). The alternative is reading the glob against the directory the
+    // shell started in, which is not the directory the command runs in.
+    expect(ruleOf("cd $DIR && rm -rf build/*")).toBe("relative_glob_after_cd");
+    expect(ruleOf("cd $DIR && rm -rf ./build/*")).toBe(
+      "relative_glob_after_cd",
+    );
+    expect(ruleOf("cd - && rm -rf build/*")).toBe("relative_glob_after_cd");
+    expect(ruleOf("cd $DIR && bash -c 'rm -rf build/*'")).toBe(
+      "relative_glob_after_cd",
+    );
+    // A cd this check *can* follow moves the reference instead — narrower than
+    // Claude Code, which cannot follow any cd and so asks on every relative glob
+    // behind one.
+    expect(ruleOf("cd /elsewhere && rm -rf build/*")).toBeNull();
+    expect(ruleOf("cd $DIR && cd /elsewhere && rm -rf build/*")).toBeNull();
+    // Not a glob: the previous directory stays the reference, as in Claude Code,
+    // and an absolute target never needed the cd.
+    expect(ruleOf("cd $DIR && rm -rf build")).toBeNull();
+    expect(ruleOf("cd $DIR && rm -rf ../..")).toBe("working_directory");
   });
 
   it("reads a background job, which the parser stops at", () => {
@@ -367,7 +405,7 @@ describe("findDangerousRemoval — ordinary removals stay ordinary", () => {
       "rm -rf ./*",
       "rm -rf build/*",
       "rm -rf *.log",
-      "rm -rf logs/*/*",
+      "rm -rf logs/*",
     ]) {
       expect(judge(command)).toBeNull();
     }
