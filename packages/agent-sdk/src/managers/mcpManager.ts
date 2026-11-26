@@ -62,6 +62,70 @@ export const MCP_CONNECT_DEADLINE_MS = 5000;
  */
 export const MCP_CONNECT_BATCH_SIZE = 3;
 
+/**
+ * How many transport-level errors in a row recycle a connection
+ * (spec ecosystem/mcp.md 边界情况「下行通知流（SSE GET）断开不等于服务器不可用」).
+ *
+ * A dead downstream notification stream — an SSE GET body timeout, `terminated`,
+ * the SDK giving up on reconnecting — does **not** mean the server is gone:
+ * `tools/call` is its own POST and keeps working. So the first two errors only
+ * count (the server stays `connected`, tools and `instructions` included) and
+ * the third one closes the transport and dials again. Same shape as Claude Code
+ * 2.1.331, which counts transport-level errors and closes at
+ * `consecutiveErrors >= 3` (`2990:4586-4595`, `2990:7050`).
+ */
+export const MCP_TRANSPORT_ERROR_LIMIT = 3;
+
+/**
+ * How long a teardown queued behind in-flight tool calls waits before cutting
+ * them off anyway (Claude Code waits for `callsInProgress === 0` before closing,
+ * `2990:7118-7121`).
+ *
+ * A tool call has no timeout of its own, so an unbounded wait would leave a
+ * broken transport alive for as long as one hung call keeps the counter
+ * non-zero. A minute is far beyond any call this repo expects (`sendFile`,
+ * HTTP bridges) and short enough that the recycle still happens within the same
+ * conversation.
+ */
+export const MCP_CALLS_DRAIN_TIMEOUT_MS = 60_000;
+
+/**
+ * Reconnect backoff, aligned with Claude Code 2.1.331 (`1115:25-28`,
+ * `1115:288-293`): `10s · 2^(n-1)` capped at 300s, and after
+ * `MCP_RECONNECT_MAX_ATTEMPTS` consecutive failures a single 600s cooldown
+ * before the next turn may redial the server.
+ */
+export const MCP_RECONNECT_BASE_DELAY_MS = 10_000;
+export const MCP_RECONNECT_MAX_DELAY_MS = 300_000;
+export const MCP_RECONNECT_MAX_ATTEMPTS = 10;
+export const MCP_RECONNECT_COOLDOWN_MS = 600_000;
+
+/**
+ * Is this transport error one of the "the downstream notification stream died"
+ * kind rather than "the server refused to connect"?
+ *
+ * Used for logging and for the manager's `messageStreamLost` marker only — the
+ * *counting* applies to every `transport.onerror`, because the SDK funnels POST
+ * failures through the same callback. The literals are the ones the SDK actually
+ * emits (`streamableHttp.js`: `SSE stream disconnected: …`,
+ * `Failed to reconnect …`, `Maximum reconnection attempts … exceeded`) plus what
+ * undici surfaces underneath (`Body Timeout Error`, `terminated`).
+ */
+function isDownstreamStreamError(message: string): boolean {
+  return [
+    "SSE stream disconnected",
+    "Failed to reconnect",
+    "Maximum reconnection attempts",
+    "Body Timeout Error",
+    "body timeout",
+    "terminated",
+    "socket hang up",
+    "other side closed",
+    "ECONNRESET",
+    "EPIPE",
+  ].some((fragment) => message.includes(fragment));
+}
+
 /** Which path started the automatic dials, for failure telemetry. */
 type DialPhase = "initialize" | "lazy";
 
@@ -193,7 +257,31 @@ export class McpManager {
   private mcpServers: Record<string, McpServerConfig> | undefined;
 
   private reconnectTimers: Map<string, NodeJS.Timeout> = new Map();
+  /**
+   * Consecutive failed reconnect attempts per server (reset by a successful
+   * dial). Drives the backoff from `reconnectDelay()` and the 600 s cooldown
+   * after `MCP_RECONNECT_MAX_ATTEMPTS`.
+   */
   private reconnectAttempts: Map<string, number> = new Map();
+  /** Earliest moment the next automatic dial may start for that server. */
+  private reconnectEligibleAt: Map<string, number> = new Map();
+  /**
+   * Consecutive transport-level errors on the live transport. Not an error state:
+   * below `MCP_TRANSPORT_ERROR_LIMIT` the server stays usable.
+   */
+  private transportErrors: Map<string, number> = new Map();
+  /**
+   * The server's downstream notification stream is gone (or being re-dialed by
+   * the SDK) while `tools/call` still works. Diagnostics only — the same reason
+   * Claude Code's `messageStreamLost` does not take the server out of the pool.
+   */
+  private messageStreamLost: Set<string> = new Set();
+  /** Tool calls in flight per server; a teardown queues behind these. */
+  private callsInProgress: Map<string, number> = new Map();
+  /** Resolvers woken when that server's in-flight calls reach zero. */
+  private callDrainWaiters: Map<string, Array<() => void>> = new Map();
+  /** One queued recycle per server, so a burst of errors cannot stack teardowns. */
+  private recycling: Set<string> = new Set();
   /** Explicit disconnectServer teardowns currently in flight */
   private disconnecting: Set<string> = new Set();
   /**
@@ -213,6 +301,12 @@ export class McpManager {
    * from dialing the same server twice.
    */
   private pendingDials: Set<string> = new Set();
+  /**
+   * Recovery dials (`recoverServers()`): promised so they cannot be dialed
+   * twice, but deliberately not waited for by the turn — reviving a broken
+   * server must not cost every turn another dial timeout.
+   */
+  private backgroundDials: Set<string> = new Set();
   /** Settles when that server's promised dial is over, however it ended. */
   private dialCompletions: Map<string, Promise<void>> = new Map();
   /**
@@ -338,6 +432,10 @@ export class McpManager {
    * configured with `alwaysLoad: true` are the one exception: the turn waits
    * for them to connect or fail, deadline or not.
    *
+   * Recovery dials (`recoverServers()`) are deliberately not waited for: they
+   * exist so a broken server comes back on its own, not so every turn pays for
+   * a dead one (spec ecosystem/mcp.md「使用前重拨」).
+   *
    * Never throws.
    */
   waitForTurnDials(
@@ -346,12 +444,19 @@ export class McpManager {
     if (this.destroyed) return undefined;
     if (
       !this.autoDialPassActive &&
-      this.pendingDials.size === 0 &&
+      this.foregroundDials().length === 0 &&
       this.pendingDialTargets().length === 0
     ) {
       return undefined;
     }
     return this.waitForDials(deadlineMs);
+  }
+
+  /** Promised dials the turn is allowed to wait for (recovery dials are not). */
+  private foregroundDials(): string[] {
+    return Array.from(this.pendingDials).filter(
+      (name) => !this.backgroundDials.has(name),
+    );
   }
 
   private async waitForDials(deadlineMs: number): Promise<void> {
@@ -365,7 +470,7 @@ export class McpManager {
 
       const claimed: Promise<void>[] = [];
       const alwaysLoad: Promise<void>[] = [];
-      for (const name of this.pendingDials) {
+      for (const name of this.foregroundDials()) {
         const done = this.dialCompletions.get(name);
         if (!done) continue;
         if (this.servers.get(name)?.config.alwaysLoad === true) {
@@ -474,9 +579,14 @@ export class McpManager {
    * the same server twice, and a turn waiting for an `alwaysLoad` server waits
    * for its place in the queue too.
    */
-  private scheduleDial(name: string, phase: DialPhase): ScheduledDial {
+  private scheduleDial(
+    name: string,
+    phase: DialPhase,
+    options: { background?: boolean } = {},
+  ): ScheduledDial {
     this.autoDialAttempted.add(name);
     this.pendingDials.add(name);
+    if (options.background) this.backgroundDials.add(name);
     let settle!: () => void;
     const done = new Promise<void>((resolve) => {
       settle = resolve;
@@ -492,7 +602,7 @@ export class McpManager {
             logger?.debug(`Connected to MCP server ${name}`);
           } else {
             logger?.warn(
-              `MCP server ${name} failed to connect automatically; it stays disconnected until an explicit connect`,
+              `MCP server ${name} failed to connect; it is retried on a later turn once its backoff window expires`,
             );
             this.reportConnectionFailure(name, phase);
           }
@@ -501,6 +611,7 @@ export class McpManager {
           this.reportConnectionFailure(name, phase, error);
         } finally {
           this.pendingDials.delete(name);
+          this.backgroundDials.delete(name);
           this.dialCompletions.delete(name);
           settle();
         }
@@ -805,6 +916,10 @@ export class McpManager {
    * dropped whole, so prose cannot reach the context after the user ruled the
    * server out. A server exposing no tools at all is still reported: nothing was
    * excluded, it is simply a server that brings context rather than tools.
+   *
+   * "Not usable" is not the same as "gone": a server that is still dialing is in
+   * neither set, which `getPendingServerNames()` reports separately so the
+   * announcement does not turn a slow dial into a departure.
    */
   getServerInstructions(
     isDenied?: (toolName: string) => boolean,
@@ -827,6 +942,28 @@ export class McpManager {
       result.push({ name: server.name, instructions });
     }
     return result;
+  }
+
+  /**
+   * Servers that are neither available nor gone: still dialing (or waiting for
+   * their recovery dial to run).
+   *
+   * The announcement path needs this third bucket. It computes "departed" as
+   * `announced - available`, and a server that is mid-dial is in neither set —
+   * so without the exemption, a server that is merely slow would be announced
+   * as "已下线" and announced again when it connects. Claude Code excludes
+   * `pending` from its `mcp_instructions_delta` for exactly that reason
+   * (`0766:115797-115799`).
+   */
+  getPendingServerNames(): string[] {
+    const pending: string[] = [];
+    for (const [name, server] of this.servers) {
+      if (this.connections.has(name)) continue;
+      if (server.status === "connecting" || this.pendingDials.has(name)) {
+        pending.push(name);
+      }
+    }
+    return pending;
   }
 
   updateServerStatus(name: string, updates: Partial<McpServerStatus>): void {
@@ -1207,29 +1344,32 @@ export class McpManager {
       const connectedClient: Client = client;
       const connectedTransport: Transport = transport;
 
-      // Handle transport errors (e.g. SSE stream disconnected)
-      // The SDK auto-reconnects for transient SSE errors, so we use
-      // "reconnecting" status instead of "error". We then poll listTools()
-      // to detect when reconnection succeeds.
+      // A transport error is **not** a terminal state
+      // (spec ecosystem/mcp.md 边界情况「下行通知流（SSE GET）断开不等于服务器不可用」).
+      // What arrives here is a dead downstream stream — SSE GET body timeout
+      // (`Body Timeout Error`), `terminated`, or the SDK giving up on its own
+      // reconnection — while `tools/call` is a separate POST that still works.
+      // So the server stays `connected` and its tools keep being declared; the
+      // error is only counted, and `MCP_TRANSPORT_ERROR_LIMIT` of them in a row
+      // recycle the connection (close → `onclose` → throttled redial).
       transport.onerror = (error: Error) => {
-        const isTransient = error.message?.includes("SSE stream disconnected");
-        if (isTransient) {
+        const message = error?.message ?? String(error);
+        const count = (this.transportErrors.get(name) ?? 0) + 1;
+        this.transportErrors.set(name, count);
+        if (isDownstreamStreamError(message)) {
+          this.messageStreamLost.add(name);
           logger?.warn(
-            `MCP Server ${name} transient transport error (SDK will auto-reconnect): ${error.message}`,
+            `MCP Server ${name} lost its notification stream (${count}/${MCP_TRANSPORT_ERROR_LIMIT}); the server stays usable: ${message}`,
           );
-          this.updateServerStatus(name, {
-            status: "reconnecting",
-            error: error.message,
-          });
-          // Poll to detect when the SDK's auto-reconnect succeeds
-          void this.pollReconnectRecovery(name, connectedClient);
         } else {
-          logger?.error(`MCP Server ${name} transport error:`, error);
-          this.updateServerStatus(name, {
-            status: "error",
-            error: error.message,
-          });
+          logger?.warn(
+            `MCP Server ${name} transport error (${count}/${MCP_TRANSPORT_ERROR_LIMIT}); the server stays usable: ${message}`,
+          );
         }
+        if (count < MCP_TRANSPORT_ERROR_LIMIT) return;
+        // Third in a row: recycle. The teardown queues behind in-flight calls so
+        // a `sendFile` that is already on the wire is never cut in half.
+        this.recycleConnection(name, connectedTransport);
       };
 
       transport.onclose = () => {
@@ -1240,12 +1380,8 @@ export class McpManager {
         const current = this.connections.get(name);
         if (!current || current.transport !== transport) return;
         this.connections.delete(name);
-        this.updateServerStatus(name, {
-          status: "disconnected",
-          tools: [],
-          toolCount: 0,
-          instructions: undefined,
-        });
+        this.resetTransportHealth(name);
+        this.markServerGone(name);
         // Auto-reconnect with exponential backoff. Skipped while an explicit
         // disconnectServer teardown is in flight — that close is expected, and
         // reconnecting would silently undo a user-initiated disconnect.
@@ -1279,6 +1415,12 @@ export class McpManager {
         return false;
       }
 
+      // A fresh transport starts with a clean slate: no leftover error count, and
+      // no leftover backoff — the server is back.
+      this.resetTransportHealth(name);
+      this.reconnectAttempts.delete(name);
+      this.reconnectEligibleAt.delete(name);
+
       // Update status
       this.updateServerStatus(name, {
         status: "connected",
@@ -1304,6 +1446,9 @@ export class McpManager {
           /* best-effort */
         });
       }
+      // A failed dial is throttled, not final: the next turn's
+      // `recoverServers()` retries it once the backoff window has expired.
+      this.noteReconnectFailure(name);
       // updateServerStatus will trigger the callback
       this.updateServerStatus(name, {
         status: "error",
@@ -1357,17 +1502,216 @@ export class McpManager {
     await Promise.all([kill, close()]);
   }
 
+  /** Report the server as gone, keeping the last-known snapshot out of the model's hands. */
+  private markServerGone(name: string): void {
+    this.updateServerStatus(name, {
+      status: "disconnected",
+      tools: [],
+      toolCount: 0,
+      instructions: undefined,
+    });
+  }
+
+  /** Forget everything about the current transport generation's health. */
+  private resetTransportHealth(name: string): void {
+    this.transportErrors.delete(name);
+    this.messageStreamLost.delete(name);
+  }
+
+  /** Count one tool call in flight, so a teardown can wait for it. */
+  private beginCall(name: string): void {
+    this.callsInProgress.set(name, (this.callsInProgress.get(name) ?? 0) + 1);
+  }
+
+  /** One tool call is over; wake whoever is waiting for the count to hit zero. */
+  private endCall(name: string): void {
+    const remaining = (this.callsInProgress.get(name) ?? 1) - 1;
+    if (remaining > 0) {
+      this.callsInProgress.set(name, remaining);
+      return;
+    }
+    this.callsInProgress.delete(name);
+    const waiters = this.callDrainWaiters.get(name);
+    this.callDrainWaiters.delete(name);
+    for (const wake of waiters ?? []) wake();
+  }
+
   /**
-   * Schedule auto-reconnect with exponential backoff.
-   * Delays: 1s, 2s, 4s, 8s, 16s, 30s, 30s, ...
+   * Resolve when this server has no tool call in flight, or after
+   * `MCP_CALLS_DRAIN_TIMEOUT_MS` — whichever comes first. Returns whether the
+   * drain actually finished.
+   */
+  private waitForCallsToDrain(name: string): Promise<boolean> {
+    if ((this.callsInProgress.get(name) ?? 0) === 0) {
+      return Promise.resolve(true);
+    }
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      const settle = (drained: boolean) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(drained);
+      };
+      const waiters = this.callDrainWaiters.get(name) ?? [];
+      waiters.push(() => settle(true));
+      this.callDrainWaiters.set(name, waiters);
+      const timer = setTimeout(() => settle(false), MCP_CALLS_DRAIN_TIMEOUT_MS);
+      // Waiting for a drained call is not a reason for the process to stay up.
+      timer.unref?.();
+    });
+  }
+
+  /**
+   * Queue one connection recycle after `MCP_TRANSPORT_ERROR_LIMIT` consecutive
+   * transport errors: wait for in-flight calls, close the transport, and let the
+   * normal close path redial it under the backoff.
+   */
+  private recycleConnection(name: string, transport: Transport): void {
+    if (this.recycling.has(name)) return;
+    this.recycling.add(name);
+    void this.recycleConnectionWhenIdle(name, transport).finally(() => {
+      this.recycling.delete(name);
+    });
+  }
+
+  private async recycleConnectionWhenIdle(
+    name: string,
+    transport: Transport,
+  ): Promise<void> {
+    if ((this.callsInProgress.get(name) ?? 0) > 0) {
+      logger?.info(
+        `MCP server ${name}: waiting for in-flight tool calls before recycling the connection`,
+      );
+      const drained = await this.waitForCallsToDrain(name);
+      if (!drained) {
+        logger?.warn(
+          `MCP server ${name}: in-flight tool calls did not finish within ${MCP_CALLS_DRAIN_TIMEOUT_MS}ms; recycling anyway`,
+        );
+      }
+    }
+
+    // Generation check *after* the wait: a dial that already replaced this
+    // transport (or a user teardown that closed it) owns the state now.
+    const connection = this.connections.get(name);
+    if (!connection || connection.transport !== transport) return;
+
+    logger?.warn(
+      `MCP server ${name}: recycling the connection after ${MCP_TRANSPORT_ERROR_LIMIT} consecutive transport errors`,
+    );
+    // Drop it from the map first: the transport's own `onclose` then sees a
+    // stale generation and stays quiet, so the state below is written exactly
+    // once (a double update would announce the server gone twice).
+    this.connections.delete(name);
+    await this.closeConnection(name, connection).catch((error) => {
+      logger?.debug(`Error closing MCP connection ${name}:`, error);
+    });
+    this.resetTransportHealth(name);
+    this.markServerGone(name);
+    if (
+      !this.destroyed &&
+      !this.disconnecting.has(name) &&
+      !this.userDisconnected.has(name) &&
+      !this.reconnectTimers.has(name)
+    ) {
+      this.scheduleReconnect(name);
+    }
+  }
+
+  /**
+   * Backoff before the next automatic dial, `failures` being the number of
+   * consecutive failures already recorded: 10s, 20s, 40s, … capped at 300s, and
+   * once the attempt budget is spent one 600s cooldown (Claude Code 2.1.331's
+   * `1115:288-293`). Nothing here is a terminal state — the cooldown merely
+   * ends, and the next turn after it redials.
+   */
+  private reconnectDelay(failures: number): number {
+    if (failures >= MCP_RECONNECT_MAX_ATTEMPTS) {
+      return MCP_RECONNECT_COOLDOWN_MS;
+    }
+    return Math.min(
+      MCP_RECONNECT_BASE_DELAY_MS * Math.pow(2, Math.max(0, failures - 1)),
+      MCP_RECONNECT_MAX_DELAY_MS,
+    );
+  }
+
+  /**
+   * Record one failed dial: bump the attempt count and open a new throttle
+   * window. Failures are only throttled — they never make a server permanently
+   * unusable, which is what `error` used to mean.
+   */
+  private noteReconnectFailure(name: string): void {
+    const failures = (this.reconnectAttempts.get(name) ?? 0) + 1;
+    this.reconnectAttempts.set(name, failures);
+    this.reconnectEligibleAt.set(
+      name,
+      Date.now() + this.reconnectDelay(failures),
+    );
+  }
+
+  /**
+   * Redial the servers this turn may need that are currently down
+   * (spec ecosystem/mcp.md「使用前重拨」, Claude Code 2.1.331's
+   * `ensureConnectedClient`).
+   *
+   * Idempotent, never throws, and never blocks the turn: only servers whose
+   * throttle window has expired are picked up (`reconnectDelay()`), the dial
+   * runs in the background so it adds no wait to this turn, and a server the
+   * user disconnected is never resurrected (场景 9).
+   */
+  recoverServers(): Promise<void> {
+    if (this.destroyed) return Promise.resolve();
+    const targets = this.recoveryTargets();
+    if (targets.length === 0) return Promise.resolve();
+    return this.runDialBatch(
+      targets.map((name) =>
+        this.scheduleDial(name, "lazy", { background: true }),
+      ),
+    );
+  }
+
+  /**
+   * Servers that are down, were already dialed once, and whose throttle window
+   * has expired. A server still waiting for its *first* dial is not here: that
+   * dial belongs to the startup pass (`pendingDialTargets()`).
+   */
+  private recoveryTargets(): string[] {
+    const now = Date.now();
+    const targets: string[] = [];
+    for (const [name, server] of this.servers) {
+      if (server.status !== "error" && server.status !== "disconnected") {
+        continue;
+      }
+      if (this.connections.has(name)) continue;
+      if (this.pendingDials.has(name)) continue;
+      if (this.disconnecting.has(name)) continue;
+      if (this.userDisconnected.has(name)) continue;
+      if (this.reconnectTimers.has(name)) continue;
+      if (!this.reconnectEligibleAt.has(name)) continue;
+      if (now < (this.reconnectEligibleAt.get(name) ?? 0)) continue;
+      targets.push(name);
+    }
+    return targets;
+  }
+
+  /**
+   * Schedule a redial with the backoff from `reconnectDelay()`.
+   *
+   * A failed attempt does not reschedule itself here: recovery is driven by
+   * `recoverServers()` before a turn, so a server nobody uses is not a process
+   * tree spawned every few minutes (Claude Code has no reconnect timer at all).
    */
   private scheduleReconnect(name: string): void {
-    const attempts = this.reconnectAttempts.get(name) ?? 0;
-    const delay = Math.min(1000 * Math.pow(2, attempts), 30000);
-    this.reconnectAttempts.set(name, attempts + 1);
+    if (this.destroyed) return;
+    if (this.disconnecting.has(name) || this.userDisconnected.has(name)) return;
+    if (this.reconnectTimers.has(name)) return;
+    const attempts = (this.reconnectAttempts.get(name) ?? 0) + 1;
+    const delay = this.reconnectDelay(attempts);
+    this.reconnectAttempts.set(name, attempts);
+    this.reconnectEligibleAt.set(name, Date.now() + delay);
 
     logger?.info(
-      `Scheduling MCP server ${name} reconnect in ${delay}ms (attempt ${attempts + 1})`,
+      `Scheduling MCP server ${name} reconnect in ${delay}ms (attempt ${attempts})`,
     );
 
     const timer = setTimeout(() => {
@@ -1375,15 +1719,22 @@ export class McpManager {
       // The Agent was torn down while this backoff was pending — reconnecting
       // would spawn a tree with no owner.
       if (this.destroyed) return;
+      // The user may have disconnected while this timer was pending; that
+      // decision always wins over an automatic redial.
+      if (this.disconnecting.has(name) || this.userDisconnected.has(name)) {
+        return;
+      }
       logger?.debug(`Auto-reconnecting MCP server: ${name}`);
       this.connectServer(name)
         .then((success) => {
           if (success) {
             logger?.info(`Auto-reconnected MCP server: ${name}`);
             this.reconnectAttempts.delete(name);
+            this.reconnectEligibleAt.delete(name);
           } else {
+            // The failure already advanced the throttle window; the next turn
+            // (`recoverServers()`) picks it up.
             logger?.warn(`Auto-reconnect failed for MCP server: ${name}`);
-            // Will be retried via onclose handler
           }
         })
         .catch((error) => {
@@ -1391,59 +1742,9 @@ export class McpManager {
         });
     }, delay);
 
+    // A pending redial must not be a reason for the process to stay up.
+    timer.unref?.();
     this.reconnectTimers.set(name, timer);
-  }
-
-  /**
-   * Poll listTools() to detect when the SDK's auto-reconnect succeeds
-   * after a transient SSE disconnect. Restores status to "connected".
-   */
-  private async pollReconnectRecovery(
-    name: string,
-    client: Client,
-  ): Promise<void> {
-    const maxAttempts = 10;
-    const delay = 3000; // Match SDK's reconnection delay
-    for (let i = 0; i < maxAttempts; i++) {
-      await new Promise((r) => setTimeout(r, delay));
-      if (this.destroyed) return;
-      const serverStatus = this.servers.get(name);
-      if (serverStatus?.status !== "reconnecting") {
-        return; // Status changed by onclose or user action — stop polling
-      }
-      try {
-        const toolsResponse = await client.listTools();
-        const tools =
-          toolsResponse.tools?.map((tool) => ({
-            name: tool.name,
-            description: tool.description,
-            inputSchema: tool.inputSchema,
-            outputSchema: tool.outputSchema,
-            _meta: tool._meta,
-          })) || [];
-        logger?.info(
-          `MCP Server ${name} auto-reconnected successfully (attempt ${i + 1})`,
-        );
-        this.updateServerStatus(name, {
-          status: "connected",
-          tools,
-          toolCount: tools.length,
-          lastConnected: Date.now(),
-          error: undefined,
-        });
-        await this.rememberTools(name, tools);
-        this.reconnectAttempts.delete(name);
-        return;
-      } catch {
-        logger?.debug(
-          `MCP Server ${name} reconnect recovery check ${i + 1}/${maxAttempts} failed`,
-        );
-      }
-    }
-    // If we exhausted attempts, fall through to McpManager's own reconnect
-    logger?.warn(
-      `MCP Server ${name} SDK auto-reconnect did not recover after ${maxAttempts} attempts`,
-    );
   }
 
   private cancelReconnect(name: string): void {
@@ -1453,6 +1754,8 @@ export class McpManager {
       this.reconnectTimers.delete(name);
     }
     this.reconnectAttempts.delete(name);
+    this.reconnectEligibleAt.delete(name);
+    this.resetTransportHealth(name);
   }
 
   async disconnectServer(name: string): Promise<boolean> {
@@ -1684,6 +1987,10 @@ export class McpManager {
     args: Record<string, unknown>,
     serverName: string,
   ): Promise<McpToolCallResult> {
+    // Counted so a connection recycle (third consecutive transport error) queues
+    // behind this call instead of cutting it in half — the same reason Claude
+    // Code waits for `callsInProgress === 0` before closing (`2990:7118-7121`).
+    this.beginCall(serverName);
     try {
       const result = await connection.client.callTool({
         name: toolName,
@@ -1761,6 +2068,8 @@ export class McpManager {
       throw new Error(
         `Tool execution failed: ${error instanceof Error ? error.message : String(error)}`,
       );
+    } finally {
+      this.endCall(serverName);
     }
   }
 
@@ -1790,6 +2099,14 @@ export class McpManager {
       ),
     );
     this.pendingDials.clear();
+    this.backgroundDials.clear();
+    // Nothing may wait on a drain after teardown: wake every queued recycle and
+    // let its own generation check decide there is nothing left to close.
+    for (const waiters of this.callDrainWaiters.values()) {
+      for (const wake of waiters) wake();
+    }
+    this.callDrainWaiters.clear();
+    this.callsInProgress.clear();
   }
 
   // ========== Tools Registry Methods ==========

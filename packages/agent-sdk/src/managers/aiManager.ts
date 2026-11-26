@@ -1641,6 +1641,15 @@ export class AIManager {
     const available = mcpManager.getServerInstructions(
       (toolName) => this.permissionManager?.isToolDenied?.(toolName) === true,
     );
+    // Servers that are merely slow are neither available nor gone. Without this
+    // third bucket a server still dialing would be announced as departed and
+    // announced again moments later when it connects — the very "已下线" the
+    // user saw for a server that was only waiting on its notification stream.
+    // Same exclusion as Claude Code's `pending` (`0766:115797-115799`).
+    const pending =
+      typeof mcpManager.getPendingServerNames === "function"
+        ? new Set(mcpManager.getPendingServerNames())
+        : new Set<string>();
     const announced = collectAnnouncedServers(
       this.messageManager.getMessages(),
     );
@@ -1649,7 +1658,7 @@ export class AIManager {
     const text = buildMcpInstructionsAnnouncement({
       added: available.filter((server) => !announced.has(server.name)),
       removed: Array.from(announced).filter(
-        (name) => !availableNames.has(name),
+        (name) => !availableNames.has(name) && !pending.has(name),
       ),
     });
     if (!text) return;
@@ -2822,7 +2831,18 @@ ${question}`;
     // is the one exception: the user asked to start with it, so it is not bounded
     // by that deadline. `undefined` when nothing is in flight: such a turn must
     // not gain an extra yield point over one built before auto-dialing existed.
+    //
+    // Before waiting: a server that is down but whose backoff window has
+    // expired is redialed here, so the next call to it can go through
+    // (spec ecosystem/mcp.md「使用前重拨」). Deliberately not awaited — the dial
+    // runs in the background (`recoverServers()` marks it background), so
+    // reviving a dead server never adds another wait to this turn.
     const mcp = this.mcpManager;
+    if (mcp && typeof mcp.recoverServers === "function") {
+      void mcp.recoverServers().catch((error: unknown) => {
+        logger?.warn("MCP recovery dial failed:", error);
+      });
+    }
     const mcpDial =
       mcp && typeof mcp.waitForTurnDials === "function"
         ? mcp.waitForTurnDials()?.catch((error: unknown) => {
@@ -3022,11 +3042,10 @@ ${question}`;
           this.maybeAnnounceSkillListing();
           await this.maybeAnnounceAgentListing();
 
-          // Announce MCP servers' own usage notes (persisted meta message) before
-          // the snapshot below, so a server that connected mid-session explains
-          // itself in the request that can already call it. After compaction, so
-          // the announcement is not the content that just got summarized away.
-          this.maybeAnnounceMcpInstructions();
+          // The MCP usage-notes announcement is *not* here: it has to read the
+          // server table after `mcpDial` below settles, or the server that just
+          // connected is missing from the request that can already call it
+          // (`maybeAnnounceMcpInstructions()` is called right after the wait).
           this.maybeAnnounceReplCatalog();
           this.maybeAnnounceReplEvents();
 
@@ -3054,6 +3073,14 @@ ${question}`;
           // nothing was in flight — then this is a no-op, not an extra yield
           // point.
           if (mcpDial) await mcpDial;
+
+          // Announce MCP servers' own usage notes (persisted meta message) after
+          // the wait, before the snapshot below: a server that connected during
+          // this turn explains itself in the request that can already call it,
+          // and one that is still dialing is not mistaken for one that left.
+          // After compaction, so the announcement is not the content that just
+          // got summarized away.
+          this.maybeAnnounceMcpInstructions();
 
           await this.prepareToolDescriptions();
           const { toolsConfig, toolNames, reachableToolPlugins } =

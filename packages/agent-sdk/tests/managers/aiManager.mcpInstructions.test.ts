@@ -153,20 +153,26 @@ function createHarness(mcpManager: unknown) {
   return { aiManager, messages };
 }
 
-/** A live MCP manager double: `mcpDoubleState.available` is what a turn reads. */
+/**
+ * A live MCP manager double: `available` is what a turn reads as usable,
+ * `pending` is what is still being dialed (neither usable nor gone).
+ */
 function mcpDouble() {
   return {
     getServerInstructions: vi.fn(() =>
       mcpDoubleState.available.map((entry) => ({ ...entry })),
     ),
+    getPendingServerNames: vi.fn(() => [...mcpDoubleState.pending]),
+    recoverServers: vi.fn().mockResolvedValue(undefined),
   };
 }
 
-// `getServerInstructions` is read once per turn; the test flips this between
-// turns to model a server connecting or going away mid-session.
+// Read once per turn; the test flips these between turns to model a server
+// connecting, disappearing, or being redialed mid-session.
 const mcpDoubleState: {
   available: Array<{ name: string; instructions: string }>;
-} = { available: [] };
+  pending: string[];
+} = { available: [], pending: [] };
 
 function callAgentReturningText() {
   vi.mocked(aiService.callAgent).mockImplementation(async () => ({
@@ -195,6 +201,7 @@ describe("AIManager MCP usage notes announcement", () => {
     vi.clearAllMocks();
     callAgentReturningText();
     mcpDoubleState.available = [];
+    mcpDoubleState.pending = [];
   });
 
   it("announces a server's notes in the same request that can already use it, and keeps them out of the system prompt", async () => {
@@ -257,6 +264,68 @@ describe("AIManager MCP usage notes announcement", () => {
       "no longer apply",
     );
     expect(departure.type === "text" && departure.content).toContain("guide");
+  });
+
+  it("does not announce a server as gone while it is still being dialed", async () => {
+    mcpDoubleState.available = [
+      { name: "guide", instructions: "Use lookup before mutate." },
+    ];
+    const { aiManager, messages } = createHarness(mcpDouble());
+
+    await aiManager.sendAIMessage({ recursionDepth: 0 });
+    expect(announcements(messages)).toHaveLength(1);
+
+    // Down, and its redial is running: neither usable nor gone, so saying
+    // "已下线" here would be a lie that the next turn has to take back.
+    mcpDoubleState.available = [];
+    mcpDoubleState.pending = ["guide"];
+    await aiManager.sendAIMessage({ recursionDepth: 0 });
+    expect(announcements(messages)).toHaveLength(1);
+
+    // The dial is over and the server is not back: now it really is gone.
+    mcpDoubleState.pending = [];
+    await aiManager.sendAIMessage({ recursionDepth: 0 });
+    const all = announcements(messages);
+    expect(all).toHaveLength(2);
+    const departure = all[1].blocks[0];
+    expect(departure.type === "text" && departure.content).toContain("guide");
+  });
+
+  it("reads the server table only after the turn's MCP dials settle", async () => {
+    // A server that connects during the wait has to explain itself in the
+    // request that can already call it. Reading the table before the wait is
+    // exactly how a connected server got announced one turn late while a
+    // still-dialing one was announced as gone.
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const double = {
+      ...mcpDouble(),
+      waitForTurnDials: vi.fn(() => waiting),
+    };
+    const { aiManager, messages } = createHarness(double);
+
+    const turn = aiManager.sendAIMessage({ recursionDepth: 0 });
+    // Let the turn reach the wait (everything before it is I/O-free).
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(double.waitForTurnDials).toHaveBeenCalled();
+    expect(double.getServerInstructions).not.toHaveBeenCalled();
+
+    mcpDoubleState.available = [
+      { name: "guide", instructions: "Late but usable." },
+    ];
+    release();
+    await turn;
+
+    expect(double.getServerInstructions).toHaveBeenCalled();
+    const [announcement] = announcements(messages);
+    expect(announcement).toBeDefined();
+    // Same request: the snapshot is taken after the announcement is persisted.
+    expect(JSON.stringify(lastCallOptions().messages)).toContain(
+      "Late but usable.",
+    );
   });
 
   it("says nothing when there is nothing to say", async () => {

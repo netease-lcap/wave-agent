@@ -315,7 +315,10 @@ describe("McpManager automatic dial at startup (real stdio child)", () => {
     }
   });
 
-  it("场景 7：自动拨号失败后不再自动拨号", async () => {
+  // 场景 7 只约束"启动那一趟"：失败后不再进入待拨列表，回合不等它、也不重拨。
+  // 之后的恢复是另一条路（`recoverServers()`，受节流窗口约束，见
+  // mcpManager.recovery.test.ts）。
+  it("场景 7：自动拨号失败后不再进入待拨列表", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const harness = await makeHarness({
       broken: { type: "stdio", command: join(tmpdir(), "wave-no-such-binary") },
