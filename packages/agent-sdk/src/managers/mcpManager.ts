@@ -1920,6 +1920,7 @@ export class McpManager {
               actualToolName,
               args,
               targetServerName,
+              context?.abortSignal,
             );
             // `tool_response` 拿 `data`（CC 的 MCP Output：服务端 content 块数组，
             // 见 `McpToolCallResult.data`）；`mcp_server` 只在真 MCP 调用时给
@@ -1986,16 +1987,21 @@ export class McpManager {
     toolName: string,
     args: Record<string, unknown>,
     serverName: string,
+    signal?: AbortSignal,
   ): Promise<McpToolCallResult> {
     // Counted so a connection recycle (third consecutive transport error) queues
     // behind this call instead of cutting it in half — the same reason Claude
     // Code waits for `callsInProgress === 0` before closing (`2990:7118-7121`).
     this.beginCall(serverName);
     try {
-      const result = await connection.client.callTool({
-        name: toolName,
-        arguments: args,
-      });
+      // The signal travels so a cancelled call really stops: a REPL watchdog
+      // aborts it, and holding the request open would keep the connection busy
+      // for as long as the server takes to answer (see beginCall above).
+      const result = await connection.client.callTool(
+        { name: toolName, arguments: args },
+        undefined,
+        signal ? { signal } : undefined,
+      );
 
       // Separate text content and image data
       const textContent: string[] = [];

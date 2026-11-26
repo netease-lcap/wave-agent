@@ -6,6 +6,7 @@ import {
 } from "../../src/managers/mcpManager.js";
 import { Container } from "../../src/utils/container.js";
 import type { McpServerConfig } from "../../src/types/index.js";
+import type { ToolContext } from "../../src/tools/types.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
@@ -1270,10 +1271,43 @@ describe("McpManager", () => {
         serverName: "test-server",
       });
 
-      expect(mockClient.callTool).toHaveBeenCalledWith({
-        name: "test_tool",
-        arguments: { param: "value" },
+      expect(mockClient.callTool).toHaveBeenCalledWith(
+        { name: "test_tool", arguments: { param: "value" } },
+        undefined,
+        undefined,
+      );
+    });
+
+    it("forwards the call's abort signal to the server request", async () => {
+      // A REPL watchdog cancels a call by aborting the signal in the context.
+      // Holding the request open would keep the connection busy on a call
+      // nobody is waiting for any more (see beginCall).
+      mockClient.listTools.mockResolvedValue({
+        tools: [
+          {
+            name: "test_tool",
+            description: "A test tool",
+            inputSchema: { type: "object" },
+          },
+        ],
       });
+      mockClient.callTool.mockResolvedValue({
+        content: [{ type: "text", text: "done" }],
+      });
+      await mcpManager.connectServer("test-server");
+
+      const controller = new AbortController();
+      await mcpManager.executeMcpTool(
+        "mcp__test-server__test_tool",
+        { param: "value" },
+        { abortSignal: controller.signal } as ToolContext,
+      );
+
+      expect(mockClient.callTool).toHaveBeenCalledWith(
+        { name: "test_tool", arguments: { param: "value" } },
+        undefined,
+        { signal: controller.signal },
+      );
     });
 
     it("should surface structuredContent as the value a script gets", async () => {
@@ -1368,10 +1402,11 @@ describe("McpManager", () => {
         serverName: "test-server",
       });
 
-      expect(mockClient.callTool).toHaveBeenCalledWith({
-        name: "screenshot_tool",
-        arguments: { action: "capture" },
-      });
+      expect(mockClient.callTool).toHaveBeenCalledWith(
+        { name: "screenshot_tool", arguments: { action: "capture" } },
+        undefined,
+        undefined,
+      );
     });
 
     it("should use the MCP standard mimeType field when provided", async () => {
