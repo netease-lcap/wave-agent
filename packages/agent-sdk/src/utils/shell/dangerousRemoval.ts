@@ -570,10 +570,20 @@ function removalTargets(
  * backslash that precedes anything but `$`, a backtick, `"` or `\`, which is why
  * `"C:\Users\x"` arrives with its separators while the same word unquoted
  * reaches the command as the drive-relative `C:Usersx`.
+ *
+ * `escapedDollar` says a `\$` was resolved into a literal `$` on the way. It is not
+ * `dynamic` — the command receives a character, not an expansion — but a caller
+ * that also judges the spelling as written has to know the difference (see
+ * {@link judgeTarget}).
  */
-function scanWord(raw: string): { text: string; dynamic: boolean } {
+function scanWord(raw: string): {
+  text: string;
+  dynamic: boolean;
+  escapedDollar: boolean;
+} {
   let text = "";
   let dynamic = false;
+  let escapedDollar = false;
   let quote: '"' | "'" | null = null;
 
   for (let i = 0; i < raw.length; i++) {
@@ -604,6 +614,9 @@ function scanWord(raw: string): { text: string; dynamic: boolean } {
       }
       // One character is consumed either way, so an escaped `$` never falls
       // through to the expansion check below: `"a\$b"` is the literal `a$b`.
+      // Noted separately because the spelling as written still says `$`,
+      // which is not what the command is handed.
+      if (next === "$") escapedDollar = true;
       text += next;
       i++;
       continue;
@@ -627,7 +640,7 @@ function scanWord(raw: string): { text: string; dynamic: boolean } {
     text += char;
   }
 
-  return { text, dynamic };
+  return { text, dynamic, escapedDollar };
 }
 
 const LEADING_VARIABLE =
@@ -719,14 +732,24 @@ function isWindowsUnplaceablePath(target: string, platform: NodeJS.Platform) {
 /**
  * The target as it was written, minus one layer of surrounding quotes.
  *
- * Needed next to {@link scanWord} because the two are not the same string: the
- * shell eats `\c` in `E:\code\myrepo` (`E:codemyrepo`, a drive-relative path)
- * but not in `"E:\code\myrepo"`. Both spellings are judged, and either one
- * hitting is enough.
+ * Not the same string as {@link scanWord}'s reading: the shell eats `\c` in
+ * `E:\code\myrepo` (`E:codemyrepo`, a drive-relative path) but not in
+ * `"E:\code\myrepo"`. It is read on its own by the three judgments that are
+ * about the spelling rather than about the argv — the `\\?\` prefix, a
+ * backslash-only target, and whether a glob behind an unfollowable `cd` names
+ * an absolute place — and it is judged next to the argv only for a word with no
+ * quotes in it (see {@link judgeTarget}).
  */
 function writtenWord(rawTarget: string): string {
   return rawTarget.replace(/^(["'])([\s\S]*)\1$/, "$2");
 }
+
+/**
+ * A word with no quoting in it at all — the one shape where the spelling and the
+ * argv differ in a way worth judging twice, because every `\c` there is an
+ * escape the shell resolves as it reads the word.
+ */
+const UNQUOTED_WORD = /^[^"']+$/;
 
 /**
  * Judge one removal target.
@@ -817,10 +840,28 @@ function judgeTarget(
   }
 
   // Every spelling of the same target that could reach the filesystem: what the
-  // shell will pass, and what was written. Judged in that order so the message
+  // shell will pass, and — for a word with no quotes in it — what was written.
+  // Unquoted, the pair is real: every `\c` is an escape, so `E:\code\myrepo`
+  // arrives as the drive-relative `E:codemyrepo`, a place of its own. Inside
+  // quotes {@link scanWord} has already resolved those escapes, so a second
+  // reading there names a path nobody deletes: `rm -rf "\$DIR/"` removes the
+  // directory `$DIR` in the current one, while the backslash kept as written
+  // reads as `\$DIR` — the drive's own top-level directory, and a `system` card
+  // for a directory the command never names. Judged in that order so the message
   // names the one that is actually deleted.
+  //
+  // An escaped `\$` is the same mistake without the quotes, so the spelling is
+  // dropped there too: `rm -rf \$DIR/` passes the ordinary name `$DIR/`,
+  // while the spelling resolves as `\$DIR`, the drive's top-level directory. A
+  // word that is still dynamic keeps both readings — `\$X$Y` has an
+  // expansion of its own, and the arithmetic above is about that one.
+  const literalDollar = scanned.escapedDollar && !scanned.dynamic;
+  const writtenSpelling =
+    !literalDollar && UNQUOTED_WORD.test(rawTarget)
+      ? (expandHome(written) ?? written)
+      : null;
   const spellings = [
-    verbatim ?? expandHome(written) ?? written,
+    verbatim ?? writtenSpelling ?? scanned.text,
     expanded,
   ].filter((spelling) => spelling.length > 0);
 
