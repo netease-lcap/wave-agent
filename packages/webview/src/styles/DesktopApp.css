@@ -1973,6 +1973,45 @@ body.is-panel-resizing webview {
   color: var(--vscode-list-activeSelectionForeground);
 }
 
+/* 工具条上的**文字**按钮（预览面板的「查看源码 / 预览」）：同族气泡按钮只有
+   24×24，两个汉字塞不进去 —— 沿用文件面板「取消 / 保存」那套文字按钮配方（透明
+   底 + hover 高亮），只是配色跟着预览工具条走。 */
+.preview-pane-button--labeled {
+  width: auto;
+  height: 24px;
+  padding: 0 6px;
+  gap: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* 源码视图（spec desktop-preview.md「HTML 预览的源码视图」）：盖在 guest 上，
+   guest 只被 visibility 藏起来 —— 布局还在，guest 就不会因为尺寸变 0 而重排/
+   重载，翻回预览是瞬间的。 */
+.preview-pane-webview.is-source-hidden {
+  visibility: hidden;
+}
+
+.preview-pane-source {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--vscode-editor-background);
+}
+
+/* 截断提示条（文件太大只显示开头）：它是**宿主**判的（2MB / 2000 行），跟文件
+   面板同一条口径，所以措辞与文件面板一致。 */
+.preview-pane-source-note {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, #999);
+  border-bottom: 1px solid
+    var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+}
+
 .preview-pane-body {
   position: relative;
   flex: 1;

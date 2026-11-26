@@ -55,7 +55,7 @@ import { PluginMarketPage } from "./PluginMarketPage";
 import { ArtifactsPage } from "./ArtifactsPage";
 import { DesktopWorkdirSelector } from "./DesktopWorkdirSelector";
 import { DesktopWorktreeControls } from "./DesktopWorktreeControls";
-import { PreviewPane } from "./PreviewPane";
+import { PreviewPane, type PreviewPaneProps } from "./PreviewPane";
 import { DiffPane } from "./DiffPane";
 import { TerminalPane, prefetchTerminalLib } from "./TerminalPane";
 import { FilePane } from "./FilePane";
@@ -138,6 +138,7 @@ import {
 } from "../utils/fileDraftGuard";
 import { toAbsoluteFilePath } from "../utils/messageUtils";
 import { copyTextToClipboard } from "../utils/clipboard";
+import { requestPreviewSource } from "../utils/previewSourceRequest";
 import { isMacHiddenTitlebar, isRemotePageHost } from "../utils/platform";
 import { useMediaQuery } from "../utils/useMediaQuery";
 import {
@@ -5373,6 +5374,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     [addTab, effectiveWorkdir, postToHost],
   );
 
+  // 预览面板的「查看源码」（spec desktop-preview.md「HTML 预览的源码视图」）：
+  // 读的是**这个 pane 的 host** —— `postToHost` 补 paneId，宿主据此决定读本地
+  // fs 还是经该会话的远程 host 读，分屏下不会读成兄弟 pane 的文件。
+  const handleReadPreviewSource = useCallback(
+    (path: string) => requestPreviewSource(postToHost, path),
+    [postToHost],
+  );
+
   // Desktop file panel (spec: 文件面板): a file path clicked in a message or
   // terminal opens here instead of the OS. Show the panel immediately with a
   // loading stub; the host reads the file (local fs or over ssh) and replies
@@ -6363,6 +6372,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     onAddComment?: (text: string) => void;
     onTitleChange: (title: string) => void;
     onNavigate: (url: string) => void;
+    /** 这个预览 tab 是从哪个文件打开的（`.html/.htm`）——源码视图读它。 */
+    filePath?: string;
+    /** 读源码（宿主那侧的读盘通道，本地/远程同一套）。停靠的 guest 不接。 */
+    onReadSource?: PreviewPaneProps["onReadSource"];
     /** 停靠：保活但不显示（非激活一级 tab / 面板折叠 / 已切走的会话）。 */
     parked: boolean;
   };
@@ -6427,6 +6440,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         live: boolean;
       },
     ) => {
+      // 源码视图只对「从 .html 文件打开的预览 tab」有意义：地址栏手输网址、
+      // localhost 链接点进来的预览没有文件可读，那颗切换按钮也就不出现。
+      const filePath = tab.previewFilePath;
       entries.push({
         key: `${group}#${tab.id}`,
         group,
@@ -6443,6 +6459,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         onAddComment: opts.live ? handleAddComment : undefined,
         onTitleChange: (title) => setPreviewTabTitle(group, tab.id, title),
         onNavigate: (url) => setPreviewTabUrl(group, tab.id, url),
+        filePath,
+        // 停靠的 guest 点不到，也不该带着别的会话的读通道（同 onAddComment）。
+        onReadSource:
+          opts.live && filePath !== undefined
+            ? handleReadPreviewSource
+            : undefined,
         parked: opts.parked,
       });
     };
@@ -7488,6 +7510,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
                     onAddComment={entry.onAddComment}
                     onTitleChange={entry.onTitleChange}
                     onNavigate={entry.onNavigate}
+                    filePath={entry.filePath}
+                    onReadSource={entry.onReadSource}
                     parked={entry.parked}
                     width={entry.width}
                   />

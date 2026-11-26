@@ -46,6 +46,13 @@ describe("highlight.js language subset", () => {
     }
   });
 
+  it("maps .vue onto the markup grammar", () => {
+    // highlight.js 的 common 集里没有 vue，标记语言是最近的可用档；这条通道只剩
+    // 降级场景（文件面板的代码视图是 CodeMirror，.vue 由 @codemirror/lang-vue 解析），
+    // 钉住它只为让「map 到未注册语言 → 静默丢高亮」这条守护测试覆盖到它。
+    expect(EXT_LANGUAGE.vue).toBe("xml");
+  });
+
   it("falls back to plain text for languages it no longer ships", () => {
     // The guard in FilePane: an unregistered fence renders unhighlighted rather
     // than throwing.

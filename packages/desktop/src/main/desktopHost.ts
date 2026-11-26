@@ -7296,6 +7296,16 @@ export class DesktopHost {
         }
         break;
 
+      // 预览面板的「查看源码」：面板要的是**文本**（不是转发后的 URL），复刻
+      // 文件面板那条读路径（spec desktop-preview.md「HTML 预览的源码视图」）。
+      case "desktopPreviewSource":
+        await this.handlePreviewSourceFile(
+          pid,
+          msg.path as string,
+          msg.requestId as string,
+        );
+        break;
+
       // surface 来要某个 pane 的树（spec ecosystem/plugin-mods.md「架构约束」：
       // 树由 surface 拉取，宿主不缓存）。每一笔请求都真跑一次 mod 的 `ui.render`，
       // 所以这里既不能去重也不能读取缓存 —— 合并只发生在 agent 侧的 stale 通知上。
@@ -10625,6 +10635,52 @@ export class DesktopHost {
       reply({
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  }
+
+  /**
+   * The preview pane's source view (spec desktop-preview.md「HTML 预览的源码
+   * 视图」). Deliberately the file panel's own readers, not a second
+   * implementation: a local pane reads fs, a remote pane goes through that
+   * session's host, and the 2 MB / 2000-line cap is the same one the panel uses —
+   * so the code the user reads next to the rendered page is the same code the
+   * file panel shows. Images/binaries come back from those readers without a
+   * `content` field; that becomes an error the pane can render.
+   */
+  private async handlePreviewSourceFile(
+    paneId: string,
+    filePath: string,
+    requestId: string,
+  ): Promise<void> {
+    const reply = (payload: {
+      content?: string;
+      truncated?: boolean;
+      error?: string;
+    }) =>
+      this.postMessage({
+        command: "desktopPreviewSourceResult",
+        paneId,
+        requestId,
+        path: filePath,
+        ...payload,
+      });
+    if (!filePath || !requestId) return;
+    const host = this.hostForPane(paneId);
+    try {
+      const view =
+        host === LOCAL_HOST
+          ? await this.readLocalFileForPanel(paneId, filePath)
+          : await this.readRemoteFileForPanel(host, filePath);
+      if (typeof view.content !== "string") {
+        throw new Error(
+          typeof view.error === "string"
+            ? view.error
+            : "该文件没有可显示的文本",
+        );
+      }
+      reply({ content: view.content, truncated: view.truncated === true });
+    } catch (error) {
+      reply({ error: error instanceof Error ? error.message : String(error) });
     }
   }
 
