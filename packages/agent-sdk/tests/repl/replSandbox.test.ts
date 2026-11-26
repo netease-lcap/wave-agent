@@ -143,6 +143,66 @@ describe("repl sandbox: long-lived context", () => {
     expect(after.value).toBe("yes");
   });
 
+  it("runs a semicolon-free script whose statement starts with a call", async () => {
+    const sandbox = open();
+    const run = await sandbox.run(
+      [
+        "const n = 41",
+        "self.log(n)",
+        "const bumped = n + 1",
+        "return bumped",
+      ].join("\n"),
+      opts(),
+    );
+    expect(run).toMatchObject({ ok: true, value: "42" });
+  });
+
+  it("runs a semicolon-free script whose statement starts with an await", async () => {
+    const sandbox = open();
+    const run = await sandbox.run(
+      [
+        "const first = await tools.Read({ file_path: '/a' })",
+        "await tools.Read({ file_path: '/b' })",
+        "return first.ok",
+      ].join("\n"),
+      opts(["Read"]),
+    );
+    expect(run).toMatchObject({ ok: true, value: "Read" });
+  });
+
+  it("does not clear a name the run declared but never reached", async () => {
+    const sandbox = open();
+    await sandbox.run("const kept = 'first'", opts());
+
+    const failed = await sandbox.run(
+      "throw new Error('boom')\nconst kept = 'second'",
+      opts(),
+    );
+    expect(failed.ok).toBe(false);
+
+    const after = await sandbox.run("return kept", opts());
+    expect(after.value).toBe("first");
+  });
+
+  it("resets a name an earlier run defined when the script writes `let` without a value", async () => {
+    const sandbox = open();
+    await sandbox.run("const value = 5", opts());
+    await sandbox.run("let value", opts());
+    expect((await sandbox.run("return typeof value", opts())).value).toBe(
+      "undefined",
+    );
+  });
+
+  it("persists names bound by a top-level destructuring declaration", async () => {
+    const sandbox = open();
+    const run = await sandbox.run(
+      "const { a, b } = { a: 1, b: 2 }\nreturn a + b",
+      opts(),
+    );
+    expect(run).toMatchObject({ ok: true, value: "3" });
+    expect((await sandbox.run("return b", opts())).value).toBe("2");
+  });
+
   it("reuses the context through acquire/release and drops it on release", async () => {
     counter += 1;
     const key = `repl-shared-${counter}`;
