@@ -126,6 +126,7 @@ const WRAPPERS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ["env", new Set(["-u", "-C", "-S", "--unset", "--chdir", "--split-string"])],
   ["command", new Set()],
   ["builtin", new Set()],
+  ["noglob", new Set()],
   ["exec", new Set(["-a"])],
   ["nohup", new Set()],
   ["time", new Set(["-f", "-o", "--format", "--output"])],
@@ -153,8 +154,16 @@ const INLINE_SHELLS: ReadonlySet<string> = new Set([
   "ash",
   "hush",
   "rbash",
-  "busybox",
 ]);
+
+/**
+ * Applet multiplexers. `busybox sh -c '…'` runs `sh`; `busybox -c '…'` runs
+ * nothing at all, because the word after `busybox` is an applet name, not a flag.
+ * Claude Code draws the same line (its `nCr` drops the multiplexer only when a
+ * real shell follows it), so the multiplexer is not a shell here either — it is
+ * skipped only when it names one.
+ */
+const MULTI_CALL_BINARIES: ReadonlySet<string> = new Set(["busybox", "toybox"]);
 
 /** A short-flag cluster carrying `c` anywhere (`-c`, `-lc`, `-ce`), as Claude
  * Code reads it — `bash -ce '…'` runs the script just as `bash -c '…'` does. */
@@ -490,6 +499,11 @@ function directoryAfterCd(args: string[], cwd: string): string | null {
  * not an inline shell.
  */
 function inlineShellScript(name: string, args: string[]): string | undefined {
+  if (MULTI_CALL_BINARIES.has(name)) {
+    const applet = args[0] === undefined ? undefined : launcherName(args[0]!);
+    if (applet === undefined || !INLINE_SHELLS.has(applet)) return undefined;
+    return inlineShellScript(applet, args.slice(1));
+  }
   if (!INLINE_SHELLS.has(name)) return undefined;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;

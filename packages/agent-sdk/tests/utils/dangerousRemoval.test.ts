@@ -245,6 +245,10 @@ describe("findDangerousRemoval — shapes that hide the command", () => {
     expect(ruleOf("bash -c -- 'rm -rf ../..'")).toBe("working_directory");
     expect(ruleOf("hush -c 'rm -rf ../..'")).toBe("working_directory");
     expect(ruleOf("rbash -c 'rm -rf ../..'")).toBe("working_directory");
+    // A multiplexer is not a shell: it is skipped only when it names one.
+    expect(ruleOf("busybox sh -c 'rm -rf ../..'")).toBe("working_directory");
+    expect(ruleOf("toybox sh -c 'rm -rf ../..'")).toBe("working_directory");
+    expect(ruleOf("busybox -c 'rm -rf ../..'")).toBeNull();
     const elsewhere = path.resolve(path.sep, "fake", "elsewhere");
     expect(
       ruleOf(
@@ -454,6 +458,8 @@ describe("findDangerousRemoval — ordinary removals stay ordinary", () => {
     // AST path strips `builtin` before it asks whether the command is a removal
     // (spec scene 17).
     expect(ruleOf("builtin rm -rf ../..")).toBe("working_directory");
+    // The zsh precommand modifier is in Claude Code's own peel list (its `S1`).
+    expect(ruleOf("noglob rm -rf ../..")).toBe("working_directory");
   });
 
   it("still reads a wrapper or inline shell spelled with a suffix", () => {
