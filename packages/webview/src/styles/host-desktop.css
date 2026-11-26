@@ -1153,9 +1153,19 @@
 }
 
 /* placeholder：Figma #8B8F95（base 用 input-placeholderForeground 偏暗）；
-   深色取 placeholder token #858B8F（approved 文字梯度）。
+   深色改成表单口径 `--cc-field-placeholder`。
    占位显示的两个判据见 MessageInput.css：`[data-empty]` 与 `:empty` 都要覆盖，
-   否则走 JS 判据的那一次会掉回 base 色。 */
+   否则走 JS 判据的那一次会掉回 base 色。
+
+   1126 评论：「深色模式占位符的字体颜色和表单保持一致」。改前深色吃的是
+   `--cc-text-placeholder` #858B8F —— 那是「文字」族（:198，正文梯度
+   primary→regular→secondary→placeholder→disabled）的第四档，与输入框占位不同族；
+   表单族（`--cc-field-*`，见下面那段）单独维护 placeholder：浅 #979CA2 / 深 #6E757A，
+   input / textarea / 侧栏搜索框都吃它。两族在深色下不是一个值（#858B8F vs #6E757A），
+   同屏并排看得出来。故深色改指表单 token，取表单的实测值而不是重写十六进制。
+   浅色她只点名「深色模式」，保持 Figma 定稿 #8B8F95 不动（浅色表单值 #979CA2 比它
+   更浅，一起改就不是 Figma 那个值了）。 */
+
 [data-host="desktop"][data-theme="light"] .content-editable-input:empty:before,
 [data-host="desktop"][data-theme="light"]
   .content-editable-input[data-empty="true"]:before {
@@ -1164,7 +1174,7 @@
 [data-host="desktop"][data-theme="dark"] .content-editable-input:empty:before,
 [data-host="desktop"][data-theme="dark"]
   .content-editable-input[data-empty="true"]:before {
-  color: var(--cc-text-placeholder, #858b8f);
+  color: var(--cc-field-placeholder, #6e757a);
 }
 
 /* Composer 卡片常态：Figma 白底卡片 stroke #DCDFE6。无 resting 阴影 ——
