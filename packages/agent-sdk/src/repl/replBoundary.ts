@@ -559,12 +559,14 @@ export const REPL_BOUNDARY_SOURCE = `(() => {
         out.cwdNote = data.cwdNote;
       }
       if (typeof data.command === "string") out.command = data.command;
-      // Present only when the command outlived its timeout: it is still running,
-      // so \`exitCode\` is null and the output streams to \`outputPath\` instead.
+      // Present only while the command is still running — it outlived its wait or
+      // the user moved it to the background with Ctrl+B. \`movedByUser\` says which,
+      // and either way \`exitCode\` is null, the output streams to \`outputPath\` instead.
       if (data.running !== null && typeof data.running === "object") {
         const background = objectCreate(null);
         background.taskId = StringCtor(data.running.taskId);
         background.outputPath = StringCtor(data.running.outputPath);
+        if (data.running.movedByUser === true) background.movedByUser = true;
         out.running = background;
       }
       return decorateShellOutput(out);
