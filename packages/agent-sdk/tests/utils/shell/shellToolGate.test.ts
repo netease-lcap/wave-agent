@@ -1,9 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   collectShellToolGateInput,
   isPowerShellToolEnabled,
   MSG_NO_SHELL,
   MSG_POWERSHELL_MISSING,
+  POWERSHELL_TOOL_ENV_VAR,
   resolveSessionShell,
   resolveShellKind,
 } from "../../../src/utils/shell/shellToolGate.js";
@@ -27,6 +28,19 @@ vi.mock("../../../src/utils/shellResolver.js", () => ({
 vi.mock("../../../src/utils/shell/powershellDetection.js", () => ({
   getPowerShellPath: vi.fn(),
 }));
+
+// 每个 case 自带环境。`collectShellToolGateInput` 在 settings 没表态时回落到
+// process.env，而这条变量的值常常来自开发者自己的 ~/.wave/settings.json ——
+// 它经会话 env 进了测试进程，于是「没有 Git Bash 就走 PowerShell」这几条会在
+// 一台把 PowerShell 工具关掉的机器上假红（实测 WAVE_USE_POWERSHELL_TOOL=0 时
+// 2 条失败）。空串与未设置同义（`parseFlag` 对空串返回 undefined），钉成它就
+// 是钉成「没人表态」；case 里 `vi.stubEnv` 的值仍然覆盖它。
+beforeEach(() => {
+  vi.stubEnv(POWERSHELL_TOOL_ENV_VAR, "");
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 const gate = (
   platform: NodeJS.Platform,

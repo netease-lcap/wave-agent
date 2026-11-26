@@ -4,7 +4,6 @@ import { Readable } from "stream";
 import { logger } from "../../utils/globalLogger.js";
 import { spawnHidden } from "../../utils/execFileHidden.js";
 import { getShellProvider } from "../../utils/shell/resolveProvider.js";
-import { WindowsStreamDecoder } from "../../utils/encoding.js";
 import { terminateChildProcessTree } from "../../utils/terminateProcessTree.js";
 import { persistToolResult } from "../../utils/toolResultStorage.js";
 import { probeTempDir, resolveTempDir } from "../../utils/tempDir.js";
@@ -255,14 +254,19 @@ export const powershellTool: ToolPlugin = {
       // outlives this call, so a tracked-cwd temp file would never be read, and
       // the manager reports the shell's own exit code anyway (the Bash tool's
       // background branch skips the wrapper for the same reason).
+      // This branch spawns the shell itself, so it misses the encoding statement
+      // `buildExecCommand` carries: prepare the command and hand that to argv.
+      const preparedCommand = await provider.prepareCommand(command);
       const { id: taskId } = backgroundTaskManager.startShell(
-        command,
+        preparedCommand,
         timeout,
         context.workdir,
         {
+          // The task list shows what the model wrote, not the statement.
+          displayCommand: command,
           shell: {
             file: provider.shellPath,
-            args: provider.getSpawnArgs(command),
+            args: provider.getSpawnArgs(preparedCommand),
             // Measured: a detached Windows PowerShell 5.1 child never runs the
             // command at all (exit 0, no output, no side effect) — DETACHED_PROCESS
             // gives it no console and 5.1's `-Command` then does nothing. So the
@@ -343,14 +347,6 @@ export const powershellTool: ToolPlugin = {
       let isBackgrounded = false;
       let timeoutHandle: NodeJS.Timeout | undefined;
       let finished = false;
-
-      // Windows PowerShell 5.1 writes GBK (cp936) for native tools it calls and
-      // the console's code page in general — not UTF-8, which is what 7 writes.
-      // `WindowsStreamDecoder` decides per stream, so both editions work.
-      const stdoutDecoder =
-        process.platform === "win32" ? new WindowsStreamDecoder() : null;
-      const stderrDecoder =
-        process.platform === "win32" ? new WindowsStreamDecoder() : null;
 
       const describeOutput = (): string =>
         outputBuffer + (errorBuffer ? "\n" + errorBuffer : "");
@@ -511,18 +507,25 @@ export const powershellTool: ToolPlugin = {
         }, timeout);
       }
 
+      // UTF-8 because the provider says so: `prepareCommand` sets
+      // `[Console]::OutputEncoding` before the command runs, which is the code
+      // page 5.1 uses both for its own output and for decoding what a native
+      // program wrote (7 defaults to it). No guessing on this side, matching
+      // Claude Code's single decoding path.
+      // 走 Node 自带的流式解码器：一个汉字被两次 pipe 读切开时保持完整。
+      // 逐 chunk `toString()` 会在每个读边界落一个 U+FFFD（实测 100 KB 中文
+      // 输出里 3 个）；可选调用是因为 child_process 的测试桩只实现了 `on`。
+      child.stdout?.setEncoding?.("utf8");
+      child.stderr?.setEncoding?.("utf8");
+
       child.stdout?.on("data", (data) => {
         if (isAborted) return;
-        outputBuffer += stdoutDecoder
-          ? stdoutDecoder.push(data)
-          : data.toString();
+        outputBuffer += data.toString();
       });
 
       child.stderr?.on("data", (data) => {
         if (isAborted) return;
-        errorBuffer += stderrDecoder
-          ? stderrDecoder.push(data)
-          : data.toString();
+        errorBuffer += data.toString();
       });
 
       /**
@@ -535,9 +538,6 @@ export const powershellTool: ToolPlugin = {
         if (finished) return;
         finished = true;
         if (timeoutHandle) clearTimeout(timeoutHandle);
-
-        if (stdoutDecoder) outputBuffer += stdoutDecoder.flush();
-        if (stderrDecoder) errorBuffer += stderrDecoder.flush();
 
         const exitCode = code ?? 0;
         const combinedOutput = describeOutput();

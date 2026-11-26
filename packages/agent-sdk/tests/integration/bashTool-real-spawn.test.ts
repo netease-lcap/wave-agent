@@ -25,6 +25,20 @@ import { createMockTaskManager } from "../helpers/mockFactories.js";
 
 const isWindows = process.platform === "win32";
 
+/**
+ * `printf` escapes that reproduce `bytes` exactly.
+ *
+ * Node has a UTF-8 encoder but no way to hand raw bytes to a shell, and the
+ * printf builtin only ever sees text — so every byte goes in as a three-digit
+ * octal escape, which also keeps `%`, quotes and backslashes out of the command.
+ */
+function printfOctal(bytes: Buffer): string {
+  return Array.from(
+    bytes,
+    (byte) => `\\${byte.toString(8).padStart(3, "0")}`,
+  ).join("");
+}
+
 function makeContext(workdir: string): ToolContext {
   // Only the fields the foreground execution path touches. Without a
   // permissionManager the permission gate is skipped and the command spawns.
@@ -99,6 +113,65 @@ describe("bashTool with real shell spawn", () => {
     );
     expect(result.success).toBe(true);
     expect(result.content).toContain("3");
+  });
+
+  it("keeps the rest of a stream intact when its head starts mid-character", async () => {
+    // The case that motivated dropping the decoder: `tail -c N` over a
+    // transcript cuts inside a 3-byte character, so the first byte on the pipe
+    // is a continuation byte. The old decoder read that head as "not UTF-8,
+    // therefore GBK" and re-decoded the whole stream, turning the entire tail
+    // into mojibake. One lenient UTF-8 decode costs a single U+FFFD at the cut
+    // and every character after it is exact.
+    const text = "第一批第二批第三批：用 `Edit` 修改 `Glob` 的输出";
+    const bytes = Buffer.from(text, "utf8");
+    // The last byte of 第: one orphan continuation byte, then a character
+    // boundary — the shape of the real report.
+    const command = `printf '${printfOctal(bytes.subarray(2))}'`;
+
+    const result = await bashTool.execute({ command }, makeContext(workdir));
+
+    expect(result.content).toContain(`\uFFFD${text.slice(1)}`);
+    expect(result.content.match(/\uFFFD/g) ?? []).toHaveLength(1);
+  });
+
+  it("keeps a character whole across a pipe read boundary", async () => {
+    // 管道按 64 KiB 读，一个汉字正好跨在两次读之间。逐 chunk 的 `toString()`
+    // 会在每个边界落 U+FFFD（实测 100 KiB 中文输出里 3 个），把好好的中文
+    // 打出一串替换符；挂 `setEncoding("utf8")` 后由 Node 自带的流式解码器
+    // 跨 chunk 续完这个字，字符数与字节数严格对得上。
+    const line = "这是一段用来测试的中文内容，交付即可验收\n";
+    const lineBytes = Buffer.byteLength(line, "utf8");
+    const totalBytes = 70_000; // > 64 KiB：至少跨过一次读边界
+    const fullLines = Math.floor(totalBytes / lineBytes);
+    const restBytes = totalBytes - fullLines * lineBytes;
+    // 整行里每个字符都是 3 字节，剩下的那截也是一串完整的汉字。
+    const expectedChars = fullLines * line.length + restBytes / 3;
+
+    const result = await bashTool.execute(
+      { command: `yes '${line.trim()}' | head -c ${totalBytes}` },
+      makeContext(workdir),
+    );
+
+    expect(result.content.match(/\uFFFD/g) ?? []).toHaveLength(0);
+    expect(result.content).toHaveLength(expectedChars);
+  });
+
+  it("receives a native program's localized text as UTF-8", async () => {
+    // The provider puts the console's code page at 65001 before the command
+    // runs (bashProvider's CONSOLE_CODE_PAGE_PROLOGUE), so a localized message
+    // from a native exe arrives as UTF-8. At the console default of 936
+    // `taskkill` writes GBK and this string would hold U+FFFD instead.
+    const result = await bashTool.execute(
+      {
+        command:
+          process.platform === "win32"
+            ? "taskkill //F //PID 999999"
+            : "ls --no-such-option /nonexistent 2>&1",
+      },
+      makeContext(workdir),
+    );
+
+    expect(result.content).not.toContain("\uFFFD");
   });
 
   // Spec bash-tools.md / 跨平台显式 shell 解析 / 场景 1: process
@@ -409,7 +482,9 @@ describe.skipIf(realBash === undefined)(
 
         // Line 1 sources the snapshot, so the user's functions and aliases
         // already exist when wave's shadows go on top of them — which is also
-        // why the grep shadow starts with `unalias grep`.
+        // why the grep shadow starts with `unalias grep`. (The console code
+        // page switch is not part of this string: it is prepended to the spawn
+        // command, outside the eval wrapper.)
         const snapshotLine = lines[0];
         if (snapshotLine === undefined) throw new Error("expected a command");
         expect(snapshotLine.startsWith(". '")).toBe(true);

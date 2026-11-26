@@ -24,6 +24,14 @@ vi.mock("../../../src/utils/shell/powershellDetection.js", () => ({
   getPowerShellPath: vi.fn(),
 }));
 
+// Windows only: the console's output code page has to be UTF-8 before anything
+// the command runs, or a native program's localized text reaches the pipe as
+// GBK (see CONSOLE_CODE_PAGE_PROLOGUE in bashProvider). It opens the spawn
+// string, in front of the eval wrapper; POSIX has no such code page, so the
+// difference is written into the expectation rather than skipped.
+const CODE_PAGE_PRELUDE =
+  process.platform === "win32" ? "chcp.com 65001 >/dev/null 2>&1; " : "";
+
 const SHELL = "/bin/bash";
 const TEMP_DIR = path.join(os.tmpdir(), "wave-bash-provider-test");
 const SNAPSHOT = "/tmp/snap.sh";
@@ -109,7 +117,11 @@ describe("bashProvider", () => {
         cwdTracking: true,
       });
 
-      expect(exec.commandString).toContain("eval 'echo hi'");
+      // The code page switch, where there is one, opens the string: it has to
+      // run before anything the command spawns can write to the pipe.
+      expect(
+        exec.commandString.startsWith(`${CODE_PAGE_PRELUDE}eval 'echo hi'`),
+      ).toBe(true);
       expect(exec.commandString).toMatch(/&& pwd -P >\| .*wave_cwd_.*\.tmp$/);
       // The path handed to the shell is POSIX-shaped; the caller reads the
       // native one back.
@@ -127,7 +139,8 @@ describe("bashProvider", () => {
         cwdTracking: true,
       });
 
-      expect(exec.commandString).toMatch(/^eval 'echo '"'"'hi'"'"''/);
+      const body = exec.commandString.slice(CODE_PAGE_PRELUDE.length);
+      expect(body).toMatch(/^eval 'echo '"'"'hi'"'"''/);
     });
 
     it("keeps the && pwd -P suffix outside the eval quotes for heredocs", () => {
@@ -153,7 +166,8 @@ describe("bashProvider", () => {
         cwdTracking: false,
       });
 
-      expect(exec.commandString).toBe("echo hi");
+      // Nothing appended — only the code page switch comes before it.
+      expect(exec.commandString).toBe(`${CODE_PAGE_PRELUDE}echo hi`);
       expect(exec.cwdFilePath).toMatch(/wave_cwd_.*\.tmp$/);
     });
 

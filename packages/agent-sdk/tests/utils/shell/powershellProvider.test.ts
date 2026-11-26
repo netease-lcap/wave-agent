@@ -37,11 +37,16 @@ describe("powershellProvider", () => {
     expect(args.slice(0, -1)).toEqual([...POWERSHELL_SPAWN_FLAGS]);
   });
 
-  it("passes the command through untouched — no shadows to install", async () => {
+  it("prepends the UTF-8 output statement on Windows, and nothing else", async () => {
     const provider = createPowerShellProvider(SHELL);
 
+    // Written out rather than imported: this statement is what makes 5.1 hand
+    // back UTF-8, and a silent edit to it would only surface as mojibake on a
+    // user's machine. POSIX pwsh has no console code page to set.
     await expect(provider.prepareCommand("Get-Content .\\a.txt")).resolves.toBe(
-      "Get-Content .\\a.txt",
+      process.platform === "win32"
+        ? "[Console]::OutputEncoding = [Text.Encoding]::UTF8\nGet-Content .\\a.txt"
+        : "Get-Content .\\a.txt",
     );
   });
 

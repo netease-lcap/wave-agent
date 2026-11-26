@@ -1,6 +1,6 @@
 ---
 name: "PowerShell 工具"
-description: "`PowerShell` 工具：三态 shell 门控、前台/后台执行与退出码恢复、cwd 追踪、UTF-8/GBK 输出解码、`PowerShell(...)` 规则与只读自动放行、edition 相关提示词"
+description: "`PowerShell` 工具：三态 shell 门控、前台/后台执行与退出码恢复、cwd 追踪、输出编码（源头设 UTF-8）、`PowerShell(...)` 规则与只读自动放行、edition 相关提示词"
 order: 22
 ---
 
@@ -135,7 +135,7 @@ order: 22
 4. **假设** 通过 PowerShell 工具启动后台任务，**当** 调 `BackgroundTaskManager` 时，**则** 必须传 `shell: { file, args, detached: false }` 这一显式启动描述，而不是让 manager 用自己的默认 shell（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:218-233`；`packages/agent-sdk/src/managers/backgroundTaskManager.ts:143-160`）。
 5. **假设** PowerShell 后台任务的 `detached`，**当** 选定取值时，**则** 必须是 `false`——实测 `detached: true` 的 Windows PowerShell 5.1 子进程完全不执行命令（退出码 0、无输出、无副作用），因为它没有控制台而 5.1 的 `-Command` 随即什么都不做；保持 attached 后 `windowsHide` 才生效（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:226-233`；bash 分支仍是 `detached: true`，见 `packages/agent-sdk/src/managers/backgroundTaskManager.ts:180-189`）。
 6. **假设** 停止后台任务，**当** 执行终止时，**则** 必须终止整棵进程树（Windows 走 `taskkill /PID <pid> /T /F`），与前台中止共用同一实现（`packages/agent-sdk/src/managers/backgroundTaskManager.ts:577-618`、`packages/agent-sdk/src/utils/killProcessTree.ts:106`）。
-7. **假设** 后台任务的输出里有中文，**当** 读日志时，**则** 必须走与前台相同的解码器（UTF-8 严格解码失败即判 GBK），不得把 5.1 的 GBK 输出当 UTF-8 落到日志里（`packages/agent-sdk/src/managers/backgroundTaskManager.ts:246-256`、`:281-298`）。
+7. **假设** 后台任务的输出里有中文，**当** 读日志时，**则** 与前台同一口径：命令串在启动前就设好 `[Console]::OutputEncoding`（后台分支自己 spawn，因此自己走一遍 `provider.prepareCommand`），落进日志的字节已是 UTF-8，收流处只做 UTF-8 解码；任务展示 / `TaskStop` 文本用模型写的原文命令（`displayCommand`），不带编码语句（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts` 后台分支；`packages/agent-sdk/src/managers/backgroundTaskManager.ts` 的 `displayCommand`）。
 8. **假设** 运行环境里没有可用的后台任务管理器，**当** 请求后台执行时，**则** 必须返回 `Background task manager not available`（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:208-211`）。
 
 ---
@@ -144,17 +144,18 @@ order: 22
 
 作为中文 Windows 用户，我希望命令输出里的中文能正常显示，且写出的文件能被其他工具正确读回。
 
-**优先级原因**：Windows PowerShell 5.1 与 7 的输出编码不同（5.1 对原生命令与常规输出走控制台代码页，典型为 GBK/cp936；7 走 UTF-8），而 wave 的子进程 stdout 是管道、不会做代码页转换。解码策略选错的表现是整段中文变乱码或 `\uFFFD`，属可用性而非体验问题。
+**优先级原因**：Windows PowerShell 5.1 与 7 的输出编码不同（5.1 对原生命令与常规输出走控制台代码页，典型为 GBK/cp936；7 走 UTF-8），而 wave 的子进程 stdout 是管道、不会做代码页转换。解法与 Bash 工具同形、也与 Claude Code 同形：在命令之前设一次 `[Console]::OutputEncoding = [Text.Encoding]::UTF8`，字节到达管道时已是 UTF-8，解码侧固定 UTF-8（实测 5.1 的 `Write-Output '中文'` 与 `cmd /c echo 中文` 都随之变成 UTF-8）。旧的「先严格 UTF-8、失败则整条流改判 GBK」解码器已删除：它在流的头被截断时必然猜错，属可用性而非体验问题。
 
 **独立测试**：在 PowerShell 会话里执行会输出中文的原生命令（`git status`、`cmd /c dir`），核对结果文本无乱码；再让模型 `Out-File -Encoding utf8` 写文件后用 `Read` 读回，核对无 BOM 残留。
 
 **验收场景**：
 
-1. **假设** 运行在 Windows，**当** 工具接收子进程输出时，**则** 必须使用「先严格 UTF-8 解码、失败则整条流改判 GBK」的流式解码器，而不是固定 UTF-8 或固定 GBK（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:302-308`；实现 `packages/agent-sdk/src/utils/encoding.ts:1-20`、`:62`、`:73-88`）。
-2. **假设** 命令自身改了输出编码，**当** 解码时，**则** 工具不做「预先设定代码页」的动作——没有 `chcp`、也不设置 `[Console]::OutputEncoding`，解码是对已收到的字节做的判定（`packages/agent-sdk/src/utils/encoding.ts:5-7`、`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:302-303`）。
+1. **假设** 运行在 Windows，**当** 工具接收子进程输出时，**则** 只按 UTF-8 解码，且跨 chunk 连续（给流挂 `setEncoding("utf8")`，管道边界把一个汉字切两半时由 Node 的流式解码器续完）：编码在源头设定——工具把命令交给 provider 前先加 `[Console]::OutputEncoding = [Text.Encoding]::UTF8`（`packages/agent-sdk/src/utils/shell/powershellProvider.ts` 的 `CONSOLE_UTF8_STATEMENT`），收流处没有第二条路，也没有「严格解码失败即改判 GBK」的回退。
+2. **假设** 命令自身改了输出编码，**当** 收流时，**则** 以命令自己设的为准：工具只在命令之前设一次，事后不按字节反推代码页——反推不出来（整条流是 GBK，还是 UTF-8 流的头被截断，从字节上不可区分）。
 3. **假设** 模型要让另一个工具读取自己写出的文件，**当** 提示词给出编码规则时，**则** 必须点明 `Out-File` / `Set-Content` 在 5.1 默认写 UTF-16 LE 带 BOM、要求 `-Encoding utf8`；未知 edition 时按 5.1 的保守规则给出同一句（`packages/agent-sdk/src/tools/powershellTool/prompt.ts:88`、`:91-93`）。
 4. **假设** 模型用重定向运算符（`>` / `>>`）写文件，**当** 落盘时，**则** 编码由 PowerShell 自身决定（5.1 的 `>` 与 `Out-File` 同源，写 UTF-16 LE 带 BOM；7 写 UTF-8 无 BOM）——工具不拦截、不改写重定向的目标编码，提示词也没有单独就 `>` 给出规则，唯一的防线是模型按上一条显式指定 `-Encoding`。**（无单测覆盖：属 PowerShell 自身语义，工具侧不存在对应代码路径）**
 5. **假设** 命令输出了 ANSI 颜色转义序列，**当** 结果落到模型与 UI 时，**则** 序列必须原样保留（与 Bash 工具同一口径），不在收流处剥离（`packages/agent-sdk/src/managers/backgroundTaskManager.ts:251-252`）。
+6. **假设** 某程序绕过控制台代码页输出本地化文本（走 ANSI API），**当** 收流时，**则** 这段就是 `\uFFFD`，工具不恢复代码页猜测、也不为它二次解码——已知代价，与 Bash 工具、Claude Code 相同。
 
 ---
 
