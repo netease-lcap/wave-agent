@@ -157,4 +157,49 @@ describe("Background current task button", () => {
     expect(background.getAttribute("aria-label")).toBe("把本轮转到后台");
     expect(rewind.getAttribute("aria-label")).toBe("回滚到此消息");
   });
+
+  it("appears while a REPL script's shell command is running", async () => {
+    renderChatApp();
+
+    // REPL 里的 `$` 没有自己的块：它用的是 Bash、也真的登记了前台任务，但这个
+    // 事实由运行时标在 REPL 块上（`ToolBlock.backgroundable`）。只认块名时，命令
+    // 跑着、Ctrl+B 有效，界面上却一颗按钮都没有（远控页更是一条路都没有）。
+    const message = MockDataGenerator.createAssistantMessageWithTool(
+      "running a build",
+      "REPL",
+      '{"code":"await $`npm run build`"}',
+    );
+    const block = message.blocks.find((b) => b.type === "tool");
+    if (block?.type === "tool") block.backgroundable = true;
+
+    renderWith([
+      MockDataGenerator.createUserMessage("build it", "msg-u1"),
+      message,
+    ]);
+
+    expect(
+      await screen.findByTestId("background-current-task"),
+    ).toBeInTheDocument();
+  });
+
+  it("is absent while a REPL script runs what cannot be moved", async () => {
+    renderChatApp();
+
+    // 同一个 REPL 块，只调了 Read：没有前台任务，就没有可点的东西（场景 4）。
+    renderWith([
+      MockDataGenerator.createUserMessage("read it", "msg-u1"),
+      MockDataGenerator.createAssistantMessageWithTool(
+        "reading",
+        "REPL",
+        '{"code":"await Read({ file_path: `/tmp/a.ts` })"}',
+      ),
+    ]);
+
+    await waitFor(() => {
+      expect(screen.getByText("reading")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("background-current-task"),
+    ).not.toBeInTheDocument();
+  });
 });

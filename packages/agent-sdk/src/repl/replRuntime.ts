@@ -31,6 +31,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import {
+  AGENT_TOOL_NAME,
   BASH_TOOL_NAME,
   EDIT_TOOL_NAME,
   GLOB_TOOL_NAME,
@@ -41,6 +42,7 @@ import {
   TASK_LIST_TOOL_NAME,
   TASK_STOP_TOOL_NAME,
   TASK_UPDATE_TOOL_NAME,
+  isShellToolName,
 } from "../constants/tools.js";
 import { BASH_DEFAULT_TIMEOUT_MS } from "../tools/bashTool.js";
 import { POWERSHELL_DEFAULT_TIMEOUT_MS } from "../tools/powershellTool/prompt.js";
@@ -210,6 +212,10 @@ interface ReplFrame {
   consoleDroppedChars: number;
   /** Nested calls currently in flight; drives the `running()` state. */
   waiting: number;
+  /** In-flight calls that hold a foreground task the user could background. */
+  backgroundableCalls: number;
+  /** What the block was last told, so only transitions are written. */
+  backgroundableMark: boolean;
   /** Aborted or terminated: calls are still answered, but only within the grace. */
   stopped: boolean;
   graceCalls: number;
@@ -748,6 +754,49 @@ function contextForCall(
 }
 
 /**
+ * Whether one nested call registers a foreground task — the shell tools and
+ * `Agent`, the same two families a flat block is judged by.
+ */
+function holdsForegroundTask(name: string): boolean {
+  return isShellToolName(name) || name === AGENT_TOOL_NAME;
+}
+
+/**
+ * Tell the block that a movable foreground task is running inside this script,
+ * and tell it again when the last one ends.
+ *
+ * A nested call has no block of its own: the names ride on `REPL`'s
+ * `nestedToolCalls`, so a GUI that judges by block name hides the「把本轮转到
+ * 后台」button exactly while a `$` command is running (Ctrl+B still answers; the
+ * remote page has no such key). A count rather than a flag, because two `$`
+ * calls can be in flight at once; only transitions are written, because a
+ * background script keeps calling after its row is closed and a late update would
+ * re-open a finished one.
+ */
+function trackForegroundTask(frame: ReplFrame, name: string): () => void {
+  if (!holdsForegroundTask(name)) return () => {};
+  frame.backgroundableCalls += 1;
+  syncForegroundTaskMark(frame);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    frame.backgroundableCalls -= 1;
+    syncForegroundTaskMark(frame);
+  };
+}
+
+function syncForegroundTaskMark(frame: ReplFrame): void {
+  const backgroundable = frame.backgroundableCalls > 0;
+  if (backgroundable === frame.backgroundableMark) return;
+  const id = frame.context.toolCallId;
+  const messageManager = frame.context.messageManager;
+  if (!id || !messageManager) return;
+  frame.backgroundableMark = backgroundable;
+  messageManager.updateToolBlock({ id, stage: "running", backgroundable });
+}
+
+/**
  * A built-in goes through `ToolManager.execute`, which is the builtins' single
  * funnel: it runs the built-in's own `checkPermission` and the Pre/PostToolUse
  * hooks, and it supplies the enhanced context they read their managers from.
@@ -766,11 +815,17 @@ async function callBuiltInTool(
   if (!toolManager) {
     throw new Error("Tool manager is not available in the REPL context");
   }
-  const result = await toolManager.execute(
-    name,
-    args,
-    contextForCall(frame.context, signal),
-  );
+  const release = trackForegroundTask(frame, name);
+  let result: ToolResult;
+  try {
+    result = await toolManager.execute(
+      name,
+      args,
+      contextForCall(frame.context, signal),
+    );
+  } finally {
+    release();
+  }
   if (!result.success) {
     return {
       output: { error: failureMessage(name, result) },
@@ -1273,13 +1328,21 @@ async function answerShellCall(
   };
 
   frame.toolsUsed.push("Bash");
-  const result = await withWatchdog(
-    frame,
-    (signal) =>
-      toolManager.execute("Bash", args, contextForCall(callContext, signal)),
-    watchdogFor("Bash", waitMs),
-    "Bash",
-  );
+  // Marked for the whole wait, not just the spawn: this is the window in which
+  // the user can move the command to the background.
+  const release = trackForegroundTask(frame, BASH_TOOL_NAME);
+  let result: ToolResult;
+  try {
+    result = await withWatchdog(
+      frame,
+      (signal) =>
+        toolManager.execute("Bash", args, contextForCall(callContext, signal)),
+      watchdogFor("Bash", waitMs),
+      "Bash",
+    );
+  } finally {
+    release();
+  }
   const taskId =
     typeof result.backgroundTaskId === "string"
       ? result.backgroundTaskId
@@ -1713,6 +1776,8 @@ export function runReplScript(options: RunReplOptions): Promise<ReplRunResult> {
     consoleText: "",
     consoleDroppedChars: 0,
     waiting: 0,
+    backgroundableCalls: 0,
+    backgroundableMark: false,
     stopped: false,
     graceCalls: 0,
     closed: false,

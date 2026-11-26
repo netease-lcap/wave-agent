@@ -64,6 +64,12 @@ export interface UpdateToolBlockParams {
    */
   nestedToolCalls?: string[];
   /**
+   * 这一块里现在挂着可后台化的前台任务（见 `ToolBlock.backgroundable`）。
+   * 只有 REPL 这类「嵌套调用没有自己的块」的工具需要置位；shell 族与 Agent 的块
+   * 按块名就能判。
+   */
+  backgroundable?: boolean;
+  /**
    * 工具结果的结构化本体（`ToolResult.data`）。新转录与 `result` 双写：`result`
    * 是全文、这里是剥过大块载荷的骨架（见 `ToolBlock.data` 与
    * `tools/resultData/strip.ts`）。传 `undefined` 等于「这次不改这一格」。
@@ -322,6 +328,7 @@ export const updateToolBlockInMessage = ({
   backgroundedByUser,
   assistantAutoBackgrounded,
   nestedToolCalls,
+  backgroundable,
   data,
 }: UpdateToolBlockParams): { messages: Message[]; messageId?: string } => {
   const newMessages = [...messages];
@@ -361,6 +368,8 @@ export const updateToolBlockInMessage = ({
             toolBlock.assistantAutoBackgrounded = assistantAutoBackgrounded;
           if (nestedToolCalls !== undefined)
             toolBlock.nestedToolCalls = nestedToolCalls;
+          if (backgroundable !== undefined)
+            toolBlock.backgroundable = backgroundable;
           if (data !== undefined) toolBlock.data = data;
         }
       }
@@ -402,6 +411,8 @@ export const updateToolBlockInMessage = ({
             toolBlock.assistantAutoBackgrounded = assistantAutoBackgrounded;
           if (nestedToolCalls !== undefined)
             toolBlock.nestedToolCalls = nestedToolCalls;
+          if (backgroundable !== undefined)
+            toolBlock.backgroundable = backgroundable;
           if (data !== undefined) toolBlock.data = data;
         }
         const foundMessageId = newMessages[i].id;

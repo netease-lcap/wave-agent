@@ -150,6 +150,19 @@ export interface ToolBlock {
    * `images` off a tool block.
    */
   nestedToolCalls?: string[];
+  /**
+   * 这一块里**现在**挂着一个可以「转到后台」的前台任务。
+   *
+   * 判据本来是「块名是不是 shell 族或 Agent」，对 REPL 不够用：脚本里的 `$` 走
+   * 的确实是 Bash 工具、也确实登记了前台任务，但它的调用只在 `nestedToolCalls`
+   * 里留个名字，没有自己的块 —— 界面上只看得到一个 `REPL` 块。于是「把本轮转到
+   * 后台」那颗按钮在命令跑着的时候反而不出现（远控页还没有键盘这条后路）。
+   *
+   * 所以由真正知道前台任务的那些调用方把这件事写在块上：REPL 运行时在脚本里的
+   * shell/Agent 调用进出时置位与清位（`repl/replRuntime.ts`）。宿主只读它，不猜。
+   * 落盘不参与判定，重开会话时它随块一起留在历史里，而已结束的块本就不触发按钮。
+   */
+  backgroundable?: boolean;
   timestamp?: number; // Unix ms, set when tool result is finalized (stage="end")
 }
 
