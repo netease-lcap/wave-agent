@@ -566,7 +566,10 @@ function removalTargets(
  * value can only be known after expansion (`$X`, `$(…)`, backticks).
  *
  * Single quotes make `$` literal, so `rm -rf '$DIR'` is an ordinary (if oddly
- * named) path and must not be reported as unresolvable.
+ * named) path and must not be reported as unresolvable. Double quotes keep a
+ * backslash that precedes anything but `$`, a backtick, `"` or `\`, which is why
+ * `"C:\Users\x"` arrives with its separators while the same word unquoted
+ * reaches the command as the drive-relative `C:Usersx`.
  */
 function scanWord(raw: string): { text: string; dynamic: boolean } {
   let text = "";
@@ -584,10 +587,25 @@ function scanWord(raw: string): { text: string; dynamic: boolean } {
 
     if (char === "\\") {
       const next = raw[i + 1];
-      if (next !== undefined) {
-        text += next;
-        i++;
+      if (next === undefined) continue;
+      if (quote === '"') {
+        // Inside double quotes only these are escapes; before anything else
+        // (`\U`, `\w`, …) the backslash is part of the value, which is why the
+        // separators in a Windows path survive. A backslash ending the line is
+        // a continuation: neither character reaches the command.
+        if (next === "\\n") {
+          i++;
+          continue;
+        }
+        if (!/[$`"\\]/.test(next)) {
+          text += char;
+          continue;
+        }
       }
+      // One character is consumed either way, so an escaped `$` never falls
+      // through to the expansion check below: `"a\$b"` is the literal `a$b`.
+      text += next;
+      i++;
       continue;
     }
 

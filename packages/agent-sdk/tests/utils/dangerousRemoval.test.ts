@@ -350,12 +350,45 @@ describe("findDangerousRemoval — Windows spellings", () => {
   });
 
   it("refuses a drive path Git Bash may read differently", () => {
-    // A bare `\` in a command line is an escape: `E:\code\myrepo` reaches the
-    // shell as `E:codemyrepo`, a drive-*relative* name.
+    // Unquoted, each `\` is an escape: `E:\code\myrepo` reaches the shell as
+    // `E:codemyrepo`, a drive-*relative* name.
     expect(windowsRuleOf("rm -rf E:\\code\\myrepo")).toBe("unplaceable");
-    expect(windowsRuleOf('rm -rf "E:\\code\\myrepo"')).toBe("unplaceable");
     expect(windowsRuleOf("rm -rf E:code")).toBe("unplaceable");
     expect(windowsRuleOf("rm -rf D:/proj/../other")).toBe("unplaceable");
+    // Quoted, the separators survive, so what is left to judge is the shape: an
+    // un-normalised `..` keeps a drive path out of every place this check names.
+    expect(windowsRuleOf('rm -rf "D:\\proj\\..\\other"')).toBe("unplaceable");
+  });
+
+  it("reads a double-quoted backslash path as the place it names", () => {
+    // The quote is the whole difference. Inside double quotes a backslash is
+    // not an escape, so `E:\code\myrepo` arrives as the placeable
+    // `E:/code/myrepo`; unquoted, it was the drive-relative `E:codemyrepo`
+    // above. Reading the quoted form as unplaceable stopped ordinary deletions.
+    expect(windowsRuleOf('rm -rf "E:\\code\\myrepo"')).toBeNull();
+  });
+
+  it("allows the double-quoted backslash paths sessions delete", () => {
+    // Two commands that really ran (2026-11-26, bypass mode) and were stopped:
+    // a probe file under a worktree, and a scratch directory rebuilt on the next
+    // line. Both are ordinary deletions written the way Windows writes a path.
+    for (const command of [
+      'rm -f "C:\\Users\\x\\proj\\.wave\\worktrees\\w/_tsprobe.ts" && echo removed',
+      'rm -rf "C:\\Users\\x\\AppData\\Local\\Temp\\wave-173-verify"',
+    ]) {
+      expect(windowsRuleOf(command), command).toBeNull();
+    }
+  });
+
+  // The counterpart to the two above, so "quoted" cannot be read as "harmless":
+  // the same spelling aimed at the session's own directory. `path.resolve`
+  // follows the host, so off Windows this word is one relative name inside the
+  // session rather than the directory itself — both verdicts are asserted, and
+  // only the Windows one reaches the protected root.
+  it("keeps refusing a quoted backslash spelling of the session directory", () => {
+    expect(cDriveRuleOf('rm -rf "C:\\fake\\worktree\\repo\\sub"')).toBe(
+      WINDOWS ? "working_directory" : null,
+    );
   });
 
   it("says what to write instead", () => {
