@@ -137,7 +137,6 @@ export const REPL_BOUNDARY_SOURCE = `(() => {
   const jsonStringify = JSON.stringify;
   const objectCreate = Object.create;
   const objectFreeze = Object.freeze;
-  const defineProperty = Object.defineProperty;
   const getPrototypeOf = Object.getPrototypeOf;
   const objectKeys = Object.keys;
   const getOwnDescriptor = Object.getOwnPropertyDescriptor;
@@ -395,23 +394,6 @@ export const REPL_BOUNDARY_SOURCE = `(() => {
       // Checking the clock on every step would dominate the loop it is meant to
       // bound; every 1024 steps still trips within a millisecond of a tight spin.
       if ((steps & 1023) === 0 && DateNow() > deadline) throw stepError();
-    };
-
-    const syncDeclaration = (pairs) => {
-      const list = pairs || [];
-      for (let i = 0; i < list.length; i++) {
-        const name = list[i][0];
-        let value;
-        try {
-          value = list[i][1]();
-        } catch (ignored) {
-          // Not initialised (TDZ) or the getter threw: nothing to persist.
-          continue;
-        }
-        try {
-          defineProperty(realmGlobal, name, { value: value, writable: true, enumerable: true, configurable: true });
-        } catch (ignored) {}
-      }
     };
 
     const settleHostCall = (pending, onValue) =>
@@ -802,7 +784,6 @@ export const REPL_BOUNDARY_SOURCE = `(() => {
     globals.clearInterval = (handle) => { timers.clearInterval(handle); };
 
     globals.__replStep = step;
-    globals.__replSync = syncDeclaration;
 
     const names = [];
     const all = objectKeys(globals);

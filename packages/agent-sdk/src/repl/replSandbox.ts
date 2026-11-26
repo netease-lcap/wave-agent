@@ -12,17 +12,22 @@
  * 2. **Termination is woven into the script's source.** `vm`'s `{ timeout }`
  *    bounds one synchronous run only — `(async () => { await 0; while (true) {} })()`
  *    returns in a millisecond and then spins on the host microtask queue, where
- *    that timeout no longer applies. So `__replStep()` is injected at every loop
- *    body and at every call/await, and the counter checks both the step budget
- *    (300,000,000 default) and a sync wall clock that is refreshed each time the
- *    host hands control back. Insertions stay on their own line, so the line
- *    numbers in a stack trace are the ones the model wrote.
- * 3. **Persistence without a parser rewrite.** The body runs inside an async
- *    IIFE (that is what makes top-level `await` and `return` legal, and what lets
- *    the last expression become the value), so its declarations are
- *    function-scoped. They are copied back onto the realm's global object in a
- *    `finally`, which keeps variables and functions across runs while leaving
- *    timers per-run — they are cleared when the run that created them ends.
+ *    that timeout no longer applies. So `__replStep()` is injected at the top of
+ *    every loop body and every function body, and the counter checks both the
+ *    step budget (300,000,000 default) and a sync wall clock that is refreshed
+ *    each time the host hands control back. No insertion adds a line, so the
+ *    line numbers in a stack trace are the ones the model wrote.
+ * 3. **Persistence through the script's own top level.** The body runs inside an
+ *    async IIFE (that is what makes top-level `await` and `return` legal, and
+ *    what lets the last expression become the value), where a declaration would
+ *    be function-scoped and vanish with the run. So the script gets a
+ *    `var a, b;` prelude at its own top level — a top-level `var` in a
+ *    `vm.Script` lands on the realm's global object — and every declaration
+ *    statement is rewritten in place into an assignment. Names therefore appear
+ *    as the run reaches them, and nothing copies them out afterwards, so a
+ *    `let x;` or a declaration after a throw cannot overwrite a previous run's
+ *    value with `undefined`. Timers stay per-run: they are cleared when the run
+ *    that created them ends.
  */
 
 import vm from "node:vm";
@@ -131,7 +136,6 @@ const MANAGED_GLOBAL_NAMES = [
   "setInterval",
   "clearInterval",
   "__replStep",
-  "__replSync",
 ];
 
 /**
@@ -250,8 +254,10 @@ interface ReplAnalysis {
   ok: true;
   program: AstNode;
   declarations: string[];
-  /** Same-line rewrites that put a top-level declaration in function scope. */
+  /** Same-line rewrites that turn a top-level declaration into an assignment. */
   rewrites: Rewrite[];
+  /** Explicit `let x;` names, which the prelude's `var x;` does not reset. */
+  resets: string[];
   lastExpression: AstNode | null;
 }
 
@@ -359,43 +365,90 @@ interface Rewrite {
 interface DeclarationScan {
   names: string[];
   rewrites: Rewrite[];
+  resets: string[];
+}
+
+/** Preserve first-seen order; `var a, a;` must not produce `var a, a;`. */
+function uniqueNames(values: string[]): string[] {
+  const out: string[] = [];
+  for (const value of values) {
+    if (!out.includes(value)) out.push(value);
+  }
+  return out;
 }
 
 /**
  * Collect the names a top-level declaration puts in the context, plus the
- * same-line rewrites that keep them visible to the `finally` that copies them
- * out.
+ * same-line rewrites that turn each declaration statement into an assignment to
+ * the `var` the prelude declared.
  *
- * A `try {}` block is its own lexical scope, so a `const` / `let` / `class`
- * declared inside it cannot be seen by the sibling `finally` block — the run
- * would "succeed" and persist nothing. `var` and (sloppy-mode) function
- * declarations are function-scoped, so the rewrite is: `const` / `let` become
- * `var`, and `class Foo` becomes `var Foo = class Foo`. Redeclaration is the one
- * property `const` was buying, and it is no longer refused: reusing a name an
- * earlier script defined overwrites it, exactly as in Claude Code. `var` is what
- * makes that legal inside the wrapper.
+ * Nothing is scoped by the wrapper: the prelude's `var` is the only declaration,
+ * and it sits at the script's own top level, so a name exists the moment the run
+ * assigns it — and only then. That is what makes a `let x;`, a declaration
+ * after a throw or one inside a branch leave the context's previous value alone
+ * instead of replacing it with `undefined`. `var` also keeps redeclaration
+ * legal: reusing a name an earlier script defined overwrites it, as in Claude
+ * Code.
+ *
+ * Rewrites stay inside the statement they came from, which is what keeps the
+ * script's line numbers honest.
  */
 function scanDeclarations(program: AstNode): DeclarationScan {
   const names: string[] = [];
   const rewrites: Rewrite[] = [];
+  const resets: string[] = [];
   for (const statement of statementsOf(program)) {
     if (statement.type === "VariableDeclaration") {
-      for (const declarator of statement.declarations ?? []) {
-        bindingNames(asNode(declarator.id), names);
-      }
       const kind = typeof statement.kind === "string" ? statement.kind : "";
-      if (kind === "const" || kind === "let") {
+      let destructuring = false;
+      let lastEnd = statement.start;
+      for (const declarator of statement.declarations ?? []) {
+        const id = asNode(declarator.id);
+        bindingNames(id, names);
+        if (!id || id.type !== "Identifier") destructuring = true;
+        // `var x;` does not reset an existing global; `let x;` promises this name
+        // is undefined again, so that one gets its own statement (see `insertionsFor`).
+        if (kind === "let" && !asNode(declarator.init))
+          bindingNames(id, resets);
+        lastEnd = declarator.end;
+      }
+      if (destructuring) {
+        // `({ a } = o)`: a leading `{` in statement position would be a block.
         rewrites.push({
           start: statement.start,
           removeTo: statement.start + kind.length,
-          text: "var",
+          text: "(",
+        });
+        // The declaration's own end includes a trailing `;`, so the closing paren
+        // goes after the last declarator to stay inside the expression.
+        rewrites.push({ start: lastEnd, removeTo: lastEnd, text: ")" });
+      } else {
+        rewrites.push({
+          start: statement.start,
+          removeTo: statement.start + kind.length,
+          text: "",
         });
       }
       continue;
     }
     if (statement.type === "FunctionDeclaration") {
       const id = asNode(statement.id);
-      if (id && typeof id.name === "string") names.push(id.name);
+      if (!id || typeof id.name !== "string") continue;
+      names.push(id.name);
+      // A named function expression, so the body can still call itself. The
+      // trailing `;` is load-bearing: a declaration needs no semicolon, but this
+      // is now an expression statement, and `function f() {} return f()` on one
+      // line is otherwise a syntax error.
+      rewrites.push({
+        start: statement.start,
+        removeTo: statement.start,
+        text: `${id.name} = `,
+      });
+      rewrites.push({
+        start: statement.end,
+        removeTo: statement.end,
+        text: ";",
+      });
       continue;
     }
     if (statement.type === "ClassDeclaration") {
@@ -405,11 +458,16 @@ function scanDeclarations(program: AstNode): DeclarationScan {
       rewrites.push({
         start: statement.start,
         removeTo: statement.start,
-        text: `var ${id.name} = `,
+        text: `${id.name} = `,
+      });
+      rewrites.push({
+        start: statement.end,
+        removeTo: statement.end,
+        text: ";",
       });
     }
   }
-  return { names, rewrites };
+  return { names: uniqueNames(names), rewrites, resets: uniqueNames(resets) };
 }
 
 /** The trailing expression statement, which becomes the run's value. */
@@ -432,6 +490,7 @@ function analyzeCode(code: string): AnalysisResult {
     program: parsed.program,
     declarations: declarations.names,
     rewrites: declarations.rewrites,
+    resets: declarations.resets,
     lastExpression: lastExpressionOf(parsed.program),
   };
 }
@@ -439,14 +498,21 @@ function analyzeCode(code: string): AnalysisResult {
 // ---------------------------------------------------------------------------
 // Step injection.
 //
-// Two shapes, both inserted on a single line so the script's own line numbers
-// survive verbatim:
+// Every insertion edits the interior of a single line, so the script's own line
+// numbers survive verbatim. The shapes are Claude Code 2.1.331's:
 //
-// - loops get `__replStep();` at the top of the body (a tight `while (true) {}`
-//   has no call expressions at all);
-// - calls and awaits get wrapped as `(__replStep(), expr)`, which is valid
-//   everywhere an expression is — including inside argument lists, template
-//   substitutions and loop headers, where a statement would not parse.
+// - a loop body or a function body gets `__replStep();` as its first statement
+//   (a tight `while (true) {}` contains no call expression at all);
+// - if that body starts with a directive prologue, the check goes after the last
+//   directive and carries a leading `;`, so it cannot fuse with a directive
+//   line that has no semicolon of its own;
+// - a loop body that is not a block is wrapped as `{__replStep(); … }`;
+// - an arrow's shorthand body becomes `(__replStep(), expr)`.
+//
+// Nothing is inserted in front of a call or an `await`: that put a `(` at the
+// start of a statement, and a previous line without a semicolon then made the
+// parser read both lines as one call — the variable stayed `undefined` and the
+// next line failed with "(intermediate value) is not a function".
 //
 // A trailing expression statement is turned into `return (expr)` so the run's
 // value is the last expression, as the tool description promises.
@@ -456,6 +522,8 @@ const RANK_EXPRESSION = 0;
 const RANK_LOOP_BODY = 1;
 const RANK_RETURN = 2;
 const RANK_DECLARATION = 3;
+/** Applied last, so a reset stays outside a rewritten declaration at offset 0. */
+const RANK_RESET = 4;
 
 interface Insertion {
   pos: number;
@@ -466,10 +534,22 @@ interface Insertion {
   removeTo: number;
 }
 
+/** End offset of a statement list's last directive prologue statement, or -1. */
+function directiveEndOf(statements: AstNode[]): number {
+  for (let i = statements.length - 1; i >= 0; i -= 1) {
+    const directive = statements[i].directive;
+    if (typeof directive === "string" && directive.length > 0) {
+      return statements[i].end;
+    }
+  }
+  return -1;
+}
+
 function insertionsFor(
   program: AstNode,
   lastExpression: AstNode | null,
   rewrites: Rewrite[],
+  resets: string[],
 ): Insertion[] {
   const insertions: Insertion[] = [];
   const add = (pos: number, end: number, rank: number, text: string): void => {
@@ -485,34 +565,52 @@ function insertionsFor(
     });
   }
 
+  if (resets.length > 0) {
+    // The prelude's `var x;` cannot unset a global an earlier run assigned, so an
+    // explicit `let x;` gets its own `void(x = void 0);`. It has to be the body's
+    // first statement, which means after the directive prologue when there is
+    // one: a `"use strict"` that stops being first stops being a directive.
+    const text = resets.map((name) => `void(${name} = void 0);`).join("");
+    const afterDirectives = directiveEndOf(statementsOf(program));
+    if (afterDirectives < 0) add(0, 0, RANK_RESET, text);
+    else add(afterDirectives, afterDirectives, RANK_RESET, `;${text}`);
+  }
+
+  // A loop or function body is entered once per iteration or call, which is the
+  // one place a step check belongs.
+  const stepIntoBlock = (block: AstNode): void => {
+    const stop = directiveEndOf(statementsOf(block));
+    if (stop < 0) {
+      add(block.start + 1, block.start + 1, RANK_LOOP_BODY, "__replStep();");
+      return;
+    }
+    add(stop, stop, RANK_LOOP_BODY, ";__replStep();");
+  };
+
   walkAst(program, (node) => {
     switch (node.type) {
-      case "CallExpression": {
-        const callee = asNode(node.callee);
-        // `super()` is a SuperCall, not an ordinary expression: wrapping it in a
-        // sequence expression is not portable, and a constructor call is not a
-        // place a script can spin.
-        if (callee && callee.type === "Super") return;
-        add(node.start, node.end, RANK_EXPRESSION, "(__replStep(),");
-        add(node.end, node.end, RANK_EXPRESSION, ")");
-        return;
-      }
-      case "AwaitExpression":
-        add(node.start, node.end, RANK_EXPRESSION, "(__replStep(),");
-        add(node.end, node.end, RANK_EXPRESSION, ")");
-        return;
       case "WhileStatement":
       case "DoWhileStatement":
       case "ForStatement":
       case "ForInStatement":
-      case "ForOfStatement": {
+      case "ForOfStatement":
+      case "FunctionDeclaration":
+      case "FunctionExpression":
+      case "ArrowFunctionExpression": {
         const body = asNode(node.body);
         if (!body) return;
         if (body.type === "BlockStatement") {
-          add(body.start + 1, body.end, RANK_LOOP_BODY, " __replStep();");
+          stepIntoBlock(body);
           return;
         }
-        add(body.start, body.end, RANK_LOOP_BODY, "{ __replStep();");
+        // Only a loop body (a statement, so it needs braces) or an arrow's
+        // shorthand (an expression, so it needs a sequence) can land here.
+        if (node.type === "ArrowFunctionExpression") {
+          add(body.start, body.end, RANK_EXPRESSION, "(__replStep(),");
+          add(body.end, body.end, RANK_EXPRESSION, ")");
+          return;
+        }
+        add(body.start, body.end, RANK_LOOP_BODY, "{__replStep();");
         add(body.end, body.end, RANK_LOOP_BODY, "}");
         return;
       }
@@ -531,14 +629,15 @@ function insertionsFor(
 /**
  * Apply insertions from the end of the source backwards, so earlier offsets stay
  * valid. At one position, lower ranks are inserted first and therefore end up
- * innermost — `while (x) f()` becomes `while (x) { __replStep();(__replStep(),f()) }`
- * rather than an unbalanced nest.
+ * innermost — `while (x) f()` becomes `while (x) {__replStep();f()}` rather than
+ * an unbalanced nest.
  */
 function instrument(code: string, analysis: ReplAnalysis): string {
   const insertions = insertionsFor(
     analysis.program,
     analysis.lastExpression,
     analysis.rewrites,
+    analysis.resets,
   );
   insertions.sort((a, b) => b.pos - a.pos || a.rank - b.rank || a.end - b.end);
   let out = code;
@@ -552,33 +651,30 @@ function instrument(code: string, analysis: ReplAnalysis): string {
 }
 
 /**
- * The runnable source: async IIFE (top-level `await` / `return`), the body on
- * line 1 so line numbers stay honest, and the declared names copied back onto
- * the realm's globals in a `finally` so an early `return` or a throw does not
- * lose them.
+ * The runnable source: a `var` prelude and the async IIFE, both on line 1 so
+ * line numbers stay honest.
+ *
+ * The prelude is what makes this run's top-level names outlive it. The body is
+ * an async function (top-level `await` / `return`, and the last expression as
+ * the value), so a declaration inside it would be function-scoped; a `var` at
+ * the script's own top level lands on the realm's global object, and
+ * `scanDeclarations` has already turned every declaration statement into an
+ * assignment to it. Nothing is copied out afterwards, so a name this run never
+ * reached keeps whatever an earlier run left there.
+ *
+ * A synchronous throw (the sync wall clock, the step counter, anything the
+ * script does before its first await) makes `runInContext` throw, so the run
+ * promise is left behind with nobody holding it — and its rejection would be
+ * reported as an unhandled rejection. One quiet handler inside the realm marks
+ * it observed; the outcome the caller sees still comes from `pending`.
  */
 function buildSource(code: string, analysis: ReplAnalysis): string {
   const body = instrument(code, analysis);
-  const pairs = analysis.declarations
-    .map((name) => `["${name}", () => ${name}]`)
-    .join(", ");
-  const sync =
-    analysis.declarations.length > 0 ? ` __replSync([${pairs}]);` : "";
-  // The body is the *function* body, not a block: a `try {}` of its own would
-  // make `const` / `let` / `class` block-scoped, and the `finally` that copies
-  // them onto the globals could not see them. Inside an async function the
-  // declarations are function-scoped, so `finally` closes over them while
-  // `return` and `throw` still both go through it.
-  //
-  // A synchronous throw (the sync wall clock, the step counter, anything the
-  // script does before its first await) makes `runInContext` throw, so the run
-  // promise is left behind with nobody holding it — and its rejection would be
-  // reported as an unhandled rejection. One quiet handler inside the realm marks
-  // it observed; the outcome the caller sees still comes from `pending`.
-  return (
-    "(() => { const p = (async function () {" +
-    `try {${body}\n} finally {${sync}}})(); p.then(null, function () {}); return p })()`
-  );
+  const prelude =
+    analysis.declarations.length > 0
+      ? `var ${analysis.declarations.join(", ")};`
+      : "";
+  return `${prelude}(() => { const p = (async function () {${body}\n})(); p.then(null, function () {}); return p })()`;
 }
 
 // ---------------------------------------------------------------------------
