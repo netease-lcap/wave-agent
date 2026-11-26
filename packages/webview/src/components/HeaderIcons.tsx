@@ -1215,6 +1215,46 @@ export const RefreshIcon: React.FC<IconProps> = ({
   </svg>
 );
 
+/** 后退 / 前进（预览面板工具条，形制照 Claude 桌面端预览的那对
+ *  ArrowLeft / ArrowRight）：16 画板的「轴 + 折角」箭头，描边与同排图标同为 1.4。 */
+export const ArrowLeftIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.4}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <path d="M12.8 8H3.2" />
+    <path d="M7.2 3.8 3.2 8l4 4.2" />
+  </svg>
+);
+
+export const ArrowRightIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.4}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <path d="M3.2 8h9.6" />
+    <path d="M8.8 3.8 12.8 8l-4 4.2" />
+  </svg>
+);
+
 /** 加载转圈环（桌面 loading svg 形制，Figma 13576:40802）：环身 + 弧头双色，
  *  整图 css 旋转（`.loading-ring`，见 DesktopApp.css）。双色走
  *  `--loading-ring-track` / `--loading-ring-head`，消费方按所在面覆盖

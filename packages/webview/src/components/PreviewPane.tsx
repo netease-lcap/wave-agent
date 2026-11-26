@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { VsCodeApi } from "../types";
 import {
+  ArrowLeftIcon,
+  ArrowRightIcon,
   CodeIcon,
   EyeIcon,
   InspectorCursorIcon,
@@ -43,6 +45,13 @@ export interface WebviewTagElement extends HTMLElement {
   setZoomFactor(factor: number): void;
   getZoomFactor(): number;
   executeJavaScript<T>(code: string): Promise<T>;
+  /** Guest history (Electron WebviewTag): the DOM API exposes only the two
+   *  booleans plus the two moves — no navigationHistory/getActiveIndex, and we
+   *  deliberately keep no history stack of our own. Throws before dom-ready. */
+  canGoBack(): boolean;
+  canGoForward(): boolean;
+  goBack(): void;
+  goForward(): void;
 }
 
 export interface PreviewComment {
@@ -300,6 +309,14 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   // 停靠后不会自己亮回来。
   const [pickerRequested, setPickerRequested] = useState(false);
   const [pickerUnsupported, setPickerUnsupported] = useState(false);
+  // 前进/后退的可用态：直接取 guest 自己的历史，不另建导航栈。刷新时机只有
+  // 五个 webview 事件 + 每次点击后各一次 —— **不轮询**（Claude 桌面端那 1s
+  // setInterval 是因为导航状态在主进程、渲染端只能问；guest 就在本组件里，
+  // 事件比轮询又快又准）。
+  const [navState, setNavState] = useState({
+    canGoBack: false,
+    canGoForward: false,
+  });
   const webviewRef = useRef<WebviewTagElement | null>(null);
   // URL the guest is currently showing — follows in-guest navigation.
   const currentUrlRef = useRef(url);
@@ -440,6 +457,24 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
     if (parked) sendPicker("deactivate");
   }, [parked, sendPicker]);
 
+  /** 读 guest 的真实历史态。`canGoBack()` 在 guest 未 attach 时会抛，所以门在
+   *  dom-ready 上并整段 try/catch；失败就保持上一态。只在事件与点击之后调用。 */
+  const refreshNavState = useCallback(() => {
+    const wv = webviewRef.current;
+    if (!wv || !domReadyRef.current) return;
+    try {
+      const canGoBack = wv.canGoBack();
+      const canGoForward = wv.canGoForward();
+      setNavState((prev) =>
+        prev.canGoBack === canGoBack && prev.canGoForward === canGoForward
+          ? prev
+          : { canGoBack, canGoForward },
+      );
+    } catch {
+      /* guest not attached yet / torn down mid-call */
+    }
+  }, []);
+
   // Wire the <webview> once. `src` is set imperatively (never from JSX) so
   // React re-renders can't reload the guest; later navigations use loadURL.
   useEffect(() => {
@@ -448,6 +483,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
 
     const onDomReady = () => {
       domReadyRef.current = true;
+      refreshNavState();
       // Manual refresh keeps the picker on: the fresh guest preload starts
       // inactive, so re-send. (Real navigations already reset the toggle.)
       if (pickerActiveRef.current) sendPicker("activate");
@@ -477,6 +513,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
       } catch {
         /* guest not attached yet */
       }
+      refreshNavState();
     };
     const onDidFinishLoad = () => {
       // 200ms: give the initial paint a chance before measuring (SPAs render
@@ -484,6 +521,12 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
       // read from the prop — a guest finishing load while fullscreen (CSS
       // stretched) must fit the real width or it comes up shrunk.
       void runFitPass(measurePanelWidth(), 200);
+      refreshNavState();
+    };
+    const onDidStopLoading = () => {
+      // 整段加载停稳时的最后一道读取：goBack/goForward 之后可用态在这刻才最终
+      // 确定（did-navigate 可能早于历史索引落定）。
+      refreshNavState();
     };
     const onDidNavigateInPage = (e: Event) => {
       const navUrl = (e as { url?: string }).url;
@@ -495,6 +538,8 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
       }
       // SPA navigation keeps the SAME preload alive — tell it to stand down.
       deactivatePicker();
+      // pushState/replaceState 也写历史：前进/后退的可用态要跟着变。
+      refreshNavState();
     };
     const onPageTitleUpdated = (e: Event) => {
       const title = (e as { title?: string }).title;
@@ -543,6 +588,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
     wv.addEventListener("did-navigate-in-page", onDidNavigateInPage);
     wv.addEventListener("did-fail-load", onDidFailLoad);
     wv.addEventListener("did-finish-load", onDidFinishLoad);
+    wv.addEventListener("did-stop-loading", onDidStopLoading);
     wv.addEventListener("ipc-message", onIpcMessage);
     wv.addEventListener("page-title-updated", onPageTitleUpdated);
     return () => {
@@ -551,12 +597,19 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
       wv.removeEventListener("did-navigate-in-page", onDidNavigateInPage);
       wv.removeEventListener("did-fail-load", onDidFailLoad);
       wv.removeEventListener("did-finish-load", onDidFinishLoad);
+      wv.removeEventListener("did-stop-loading", onDidStopLoading);
       wv.removeEventListener("ipc-message", onIpcMessage);
       wv.removeEventListener("page-title-updated", onPageTitleUpdated);
     };
-    // deactivatePicker/sendPicker/runFitPass/measurePanelWidth are stable
-    // useCallbacks, so this still only runs once per mount.
-  }, [deactivatePicker, sendPicker, runFitPass, measurePanelWidth]);
+    // deactivatePicker/sendPicker/runFitPass/measurePanelWidth/refreshNavState
+    // are stable useCallbacks, so this still only runs once per mount.
+  }, [
+    deactivatePicker,
+    sendPicker,
+    runFitPass,
+    measurePanelWidth,
+    refreshNavState,
+  ]);
 
   // Panel resized → re-fit (debounced; drag resizes fire this continuously).
   // 250ms after the debounce: the guest's layout viewport also updates
@@ -727,6 +780,39 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
     webviewRef.current?.reloadIgnoringCache();
   };
 
+  // 工具条那两颗箭头（前进 / 后退）：**只**让 guest 走它自己的历史 —— 绝不
+  // loadURL（那会把历史写坏：用户点「后退」，地址却往前、栈也被截断）。停靠的
+  // pane 是隐藏的，一律不碰 webview；源码态这两颗按钮不渲染，守卫只是兜底。
+  //
+  // 快捷键不走这里，也不经过本组件：宿主在预览 guest 的 before-input-event 上
+  // 判键，然后直接对那个 guest 调 navigationHistory.goBack/goForward（见
+  // desktop/src/main/index.ts）。
+  const handleBack = () => {
+    if (parked || sourceMode) return;
+    const wv = webviewRef.current;
+    if (!wv || !domReadyRef.current) return;
+    try {
+      wv.goBack();
+    } catch {
+      return;
+    }
+    // 不等事件：点击后立刻读一次（did-navigate 的时机不保证早于本帧），
+    // 之后 did-navigate / did-stop-loading 再校正。
+    refreshNavState();
+  };
+
+  const handleForward = () => {
+    if (parked || sourceMode) return;
+    const wv = webviewRef.current;
+    if (!wv || !domReadyRef.current) return;
+    try {
+      wv.goForward();
+    } catch {
+      return;
+    }
+    refreshNavState();
+  };
+
   const handleOpenExternal = () => {
     vscode.postMessage({ command: "openExternal", url: currentUrlRef.current });
   };
@@ -743,6 +829,36 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
       asideRef={asideRef}
       toolbar={
         <>
+          {/* 前进 / 后退（对齐 Claude 桌面端预览面板：工具条最左两颗箭头）。这是
+              「原型里点进子页面就出不来」的出口：可用态取自 guest 自己的历史，
+              没有历史时灰显。源码视图下藏起来 —— guest 只是被 visibility 藏住，
+              让用户在看不见的页面上翻历史没有意义（同「刷新」在源码态改语义）。 */}
+          {!sourceMode && (
+            <>
+              <Tooltip text="后退" position="bottom">
+                <button
+                  className="preview-pane-button"
+                  aria-label="后退"
+                  data-testid="preview-back"
+                  disabled={!navState.canGoBack}
+                  onClick={handleBack}
+                >
+                  <ArrowLeftIcon className="preview-pane-icon" />
+                </button>
+              </Tooltip>
+              <Tooltip text="前进" position="bottom">
+                <button
+                  className="preview-pane-button"
+                  aria-label="前进"
+                  data-testid="preview-forward"
+                  disabled={!navState.canGoForward}
+                  onClick={handleForward}
+                >
+                  <ArrowRightIcon className="preview-pane-icon" />
+                </button>
+              </Tooltip>
+            </>
+          )}
           {addressEditing || !displayUrl ? (
             <input
               ref={addressInputRef}

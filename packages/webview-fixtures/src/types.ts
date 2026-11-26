@@ -1227,6 +1227,10 @@ export interface FocusInputMessage extends HostToWebviewMessageBase {
   command: "focusInput";
 }
 
+/**
+ * 宿主判键之后转发的一条操作。name 目前有：`history-search`、
+ * `open-permission-mode`。
+ */
 export interface TriggerShortcutMessage extends HostToWebviewMessageBase {
   command: "triggerShortcut";
   name: string;
