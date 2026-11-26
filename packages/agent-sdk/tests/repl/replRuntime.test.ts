@@ -5,6 +5,7 @@ import type { ReplPoolEntry } from "../../src/repl/catalog.js";
 import {
   REPL_ASYNC_CONCURRENCY_LIMIT,
   REPL_ASK_MODE_TOTAL_MS,
+  REPL_DEFAULT_NATIVE_TIMEOUT_MS,
   REPL_BACKGROUND_MAX_MS,
   REPL_MAX_IMAGES,
   REPL_MAX_PDFS,
@@ -1338,16 +1339,46 @@ describe("abort", () => {
 });
 
 describe("the per-call watchdog", () => {
+  const SHELL_POOL: ReplPoolEntry[] = [
+    ...POOL,
+    { name: "Bash", description: "Run a shell command" },
+    { name: "Grep", description: "Search file contents" },
+  ];
+
+  /**
+   * Run a script whose only interesting moment is a shell watchdog firing.
+   *
+   * Every shell gate is past the fixed 30000 ms window (the bonus alone is 30000),
+   * so the script is dispatched first and the failure arrives as an event rather
+   * than in the receipt.
+   */
+  async function runToWatchdog(
+    h: Harness,
+    code: string,
+    limitMs: number,
+  ): Promise<ReplRunResult> {
+    const run = runRepl(h, code, {
+      pool: SHELL_POOL,
+      permissionMode: "bypassPermissions",
+    });
+    await vi.advanceTimersByTimeAsync(REPL_SYNC_WAIT_MS);
+    expect((await run).asyncDispatched).toBe(true);
+    await vi.advanceTimersByTimeAsync(limitMs - REPL_SYNC_WAIT_MS);
+    const events = await waitForReplEvents(5_000);
+    expect(events).toHaveLength(1);
+    return events[0].result;
+  }
+
   it("abandons one call and lets the script continue", async () => {
     vi.useFakeTimers();
-    const h = harness((name) => (name === "Slow" ? blocked() : ok("echo")));
+    const h = harness((name) => (name === "Grep" ? blocked() : ok("echo")));
 
     const run = runRepl(
       h,
       `
       let message = "";
       try {
-        await Slow({ timeout: 1000 });
+        await Grep({ pattern: "x" });
       } catch (e) {
         message = e.message;
       }
@@ -1355,41 +1386,84 @@ describe("the per-call watchdog", () => {
       self.log(await Echo({}));
       return "after";
     `,
-      { permissionMode: "bypassPermissions" },
+      { pool: SHELL_POOL, permissionMode: "bypassPermissions" },
     );
 
-    // 1000 × 1.5 + 5000 = 6500: the declarer's own timeout plus the base term.
-    await vi.advanceTimersByTimeAsync(6500);
-    const result = await run;
-
-    expect(result.ok).toBe(true);
-    expect(result.value).toBe("after");
-    expect(result.logs[0]).toContain("Slow did not return within 6500 ms");
-    expect(result.logs[1]).toBe("echo");
-  });
-
-  it("measures a call that declares no timeout against the 10000 ms default", async () => {
-    vi.useFakeTimers();
-    const h = harness(() => blocked());
-
-    const run = runRepl(
-      h,
-      `
-      try {
-        await Slow({});
-      } catch (e) {
-        self.log(e.message);
-      }
-      return "after";
-    `,
-      { permissionMode: "bypassPermissions" },
-    );
-
+    // A file tool takes no timeout of its own: 10000 × 1.5 + 5000 = 20000.
     await vi.advanceTimersByTimeAsync(20000);
     const result = await run;
 
     expect(result.ok).toBe(true);
-    expect(result.logs[0]).toContain("did not return within 20000 ms");
+    expect(result.value).toBe("after");
+    expect(result.logs[0]).toContain("Grep did not return within 20000 ms");
+    expect(result.logs[1]).toBe("echo");
+  });
+
+  it("counts a shell call from the two minutes the tool gives itself", async () => {
+    vi.useFakeTimers();
+    const h = harness(() => blocked());
+
+    const result = await runToWatchdog(
+      h,
+      `try { await Bash({}); } catch (e) { self.log(e.message); } return "after";`,
+      // 120000 × 1.5 + 5000 + 30000 = 215000: the tool's own default, plus the
+      // room a shell command gets for a spawn or a virus scan it cannot time.
+      215000,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.logs[0]).toContain("Bash did not return within 215000 ms");
+    expect(result.logs[0]).toContain(
+      "120000 ms × 1.5 + 5000 ms + 30000 ms for a shell command",
+    );
+  });
+
+  it("honours a timeout a shell call declares", async () => {
+    vi.useFakeTimers();
+    const h = harness(() => blocked());
+
+    const result = await runToWatchdog(
+      h,
+      `try { await Bash({ timeout: 1000 }); } catch (e) { self.log(e.message); } return "after";`,
+      // 1000 × 1.5 + 5000 + 30000 = 36500.
+      36500,
+    );
+
+    expect(result.logs[0]).toContain("Bash did not return within 36500 ms");
+  });
+
+  it("arms nothing for a tool with no timeout of its own", async () => {
+    vi.useFakeTimers();
+    let release: ((result: ToolResult) => void) | undefined;
+    const h = harness(
+      () =>
+        new Promise<ToolResult>((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    // `Slow` is neither a shell tool nor a file tool, so no base speaks for it —
+    // Claude Code leaves that whole class unguarded rather than invent one.
+    const run = runRepl(h, `return "after:" + (await Slow({}));`, {
+      permissionMode: "bypassPermissions",
+    });
+    let settled = false;
+    void run.then(() => {
+      settled = true;
+    });
+
+    // One millisecond past where the old catch-all would have cut the call.
+    await vi.advanceTimersByTimeAsync(
+      REPL_DEFAULT_NATIVE_TIMEOUT_MS * 1.5 + 5000 + 1,
+    );
+    await settleFake();
+    expect(settled).toBe(false);
+
+    release?.(ok("slow"));
+    await settleFake();
+    const result = await run;
+    expect(result.ok).toBe(true);
+    expect(result.value).toBe("after:slow");
   });
 });
 
@@ -1420,8 +1494,8 @@ describe("termination reasons are distinguishable", () => {
     let settled = false;
     const run = runRepl(
       h,
-      // The call declares a timeout long enough that its own watchdog (the call
-      // level guard) cannot fire first: this test is about the script level one.
+      // `Slow` gets no per-call watchdog at all (not a shell tool, no fixed
+      // default), so only the script-level ceiling can end this.
       `await Slow({ timeout: 500000 }); return "done";`,
       { permissionMode: "default" },
     );
@@ -1558,8 +1632,8 @@ describe("the async lane", () => {
         }),
     );
 
-    // The nested call declares its own timeout so its watchdog (50 s) cannot be
-    // what ends this: the window is.
+    // The nested call gets no per-call watchdog, so nothing but the window can
+    // end this wait.
     const run = runRepl(
       h,
       `return "value:" + (await Slow({ timeout: 30000 }));`,
