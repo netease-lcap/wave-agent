@@ -2182,3 +2182,73 @@ describe("the long-resident context", () => {
     expect(after.error).toContain("REPL context was reset");
   });
 });
+
+describe("the mark the GUI judges a block by", () => {
+  /**
+   * REPL 里的 `$` 用的是 Bash 工具、也真的登记了前台任务，但这次调用没有自己的
+   * 块 —— 名字只落在 `nestedToolCalls` 里。界面按块名判「能不能转到后台」时，
+   * 命令跑着的时候反而没有那颗按钮（远控页还没有 Ctrl+B 这条后路），所以运行时
+   * 把这件事直接写在 REPL 块上（spec multi-agent/task-background-execution.md
+   * 场景 3 / 7，读方是 `webview` 的 `hasRunningBackgroundableTool`）。
+   */
+  function withBlock(h: Harness): Array<Record<string, unknown>> {
+    const updates: Array<Record<string, unknown>> = [];
+    h.context = {
+      ...(h.context as ToolContext),
+      toolCallId: "tool_repl_1",
+      messageManager: {
+        updateToolBlock: (params: Record<string, unknown>) => {
+          updates.push(params);
+        },
+      },
+    } as unknown as ToolContext;
+    return updates;
+  }
+
+  it("is set while a `$` command runs, and cleared when it answers", async () => {
+    const h = harness(() => ok("done"));
+    const updates = withBlock(h);
+
+    const result = await runRepl(h, "return (await $`ls`).stdout;");
+
+    expect(result.ok).toBe(true);
+    // Transitions only, on the REPL's own block: the block is not re-opened after
+    // its row is closed, and a script with two calls in flight stays marked.
+    expect(updates).toEqual([
+      { id: "tool_repl_1", stage: "running", backgroundable: true },
+      { id: "tool_repl_1", stage: "running", backgroundable: false },
+    ]);
+  });
+
+  it("is set for a shell call made through tools.Bash too", async () => {
+    const h = harness(() => ok("done"));
+    const updates = withBlock(h);
+
+    const result = await runRepl(
+      h,
+      'await tools.Bash({ command: "ls" }); return "done";',
+      {
+        pool: [...POOL, { name: "Bash", description: "Run a shell command" }],
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(updates.map((u) => u.backgroundable)).toEqual([true, false]);
+  });
+
+  it("is never set by a call that holds no foreground task", async () => {
+    const h = harness();
+    const updates = withBlock(h);
+
+    const result = await runRepl(
+      h,
+      'await tools.Echo({ a: 1 }); return "done";',
+    );
+
+    expect(result.ok).toBe(true);
+    // `Read`/`Grep`/`Echo`-style calls register nothing to move, so the GUI must
+    // not be told about them — that is the "button that does nothing" the spec
+    // forbids.
+    expect(updates).toEqual([]);
+  });
+});

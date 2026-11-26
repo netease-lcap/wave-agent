@@ -1051,6 +1051,11 @@ const isRewindTargetMessage = (message: MessageType): boolean =>
 // 工具，那会让按钮在一个点了什么都不会发生的回合里出现（spec:
 // task-background-execution.md 场景 4）。shell 一族取常量表，PS 工具进后台时
 // 不需要再改这里。
+//
+// 名字之外还有一条「块自己承认」的通道 `ToolBlock.backgroundable`：REPL 脚本里的
+// `$` 用的就是这两个族里的 Bash，也确实登记了前台任务，但它没有自己的块 ——
+// 判据只认块名时，命令跑着的时候按钮反而不出现（远控页还没有 Ctrl+B 这条后路）。
+// 标记由 REPL 运行时在嵌套调用进出时打在 REPL 块上，宿主只读、不猜。
 const BACKGROUNDABLE_TOOL_NAMES = new Set<string>([
   ...SHELL_TOOL_NAMES,
   AGENT_TOOL_NAME,
@@ -1069,8 +1074,8 @@ const hasRunningBackgroundableTool = (message: MessageType): boolean =>
     (b) =>
       b.type === "tool" &&
       !!b.name &&
-      BACKGROUNDABLE_TOOL_NAMES.has(b.name) &&
-      b.stage !== "end",
+      b.stage !== "end" &&
+      (BACKGROUNDABLE_TOOL_NAMES.has(b.name) || b.backgroundable === true),
   );
 
 /**
