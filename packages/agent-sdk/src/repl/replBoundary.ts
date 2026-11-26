@@ -146,6 +146,9 @@ export const REPL_BOUNDARY_SOURCE = `(() => {
   const slice = Array.prototype.slice;
   const ErrorCtor = Error;
   const StringCtor = String;
+  const NumberCtor = Number;
+  const MathFloor = Math.floor;
+  const WeakMapCtor = WeakMap;
   const DateNow = () => Date.now();
   const SQUOTE = StringCtor.fromCharCode(39);
   const BACKSLASH = StringCtor.fromCharCode(92);
@@ -518,6 +521,12 @@ export const REPL_BOUNDARY_SOURCE = `(() => {
       }
     };
 
+    // Which shell results the host saved to a file, keyed by the object the
+    // script holds. A WeakMap rather than a shape test on the object (a script
+    // can carry a file field of its own and must not be previewed as a shell
+    // result). Claude Code registers the same way.
+    const savedOutputs = new WeakMapCtor();
+
     const decorateShellOutput = (out) => {
       out.text = () => out.stdout;
       out.lines = () => splitLines(out.stdout);
@@ -568,6 +577,19 @@ export const REPL_BOUNDARY_SOURCE = `(() => {
         background.outputPath = StringCtor(data.running.outputPath);
         if (data.running.movedByUser === true) background.movedByUser = true;
         out.running = background;
+      }
+      // stdout is only the start of a persisted output; the header the host
+      // wrote down (total size and the spill path) is what preview shows above
+      // it, so a cut preview still says where the rest is.
+      const saved = data.savedOutput;
+      if (saved !== null && typeof saved === "object" && typeof saved.header === "string") {
+        savedOutputs.set(out, {
+          header: saved.header,
+          after: typeof saved.after === "string" ? saved.after : "",
+          inlineChars: typeof saved.inlineChars === "number" ? saved.inlineChars : undefined,
+          stdout: out.stdout,
+          truncated: out.truncated,
+        });
       }
       return decorateShellOutput(out);
     };
@@ -693,9 +715,43 @@ export const REPL_BOUNDARY_SOURCE = `(() => {
     };
 
     // ---- preview ---------------------------------------------------------
+    // Two tiers, the way Claude Code has it. An ordinary value is its own text
+    // (String): an object is therefore [object Object] on purpose, and self.log is
+    // the channel for values. A shell result the host saved to a file additionally
+    // has a header (how much there was, and where the rest went), so a preview that
+    // only shows the start still tells the script where to read on.
+    const previewLimit = (n) => {
+      if (n === undefined) return 200;
+      const limit = NumberCtor(n);
+      return limit !== limit || limit < 0 ? 200 : MathFloor(limit);
+    };
     globals.preview = (value, n) => {
-      const limit = typeof n === "number" && n >= 0 && n === n && n !== Infinity ? Math.floor(n) : 200;
-      const text = StringCtor(value);
+      const limit = previewLimit(n);
+      const saved = savedOutputs.get(value);
+      if (saved !== undefined) {
+        const windowChars = saved.inlineChars === undefined ? saved.stdout.length : saved.inlineChars;
+        // A limit past both the inline window and the size threshold means "show
+        // me everything that came across", not "cut the window again".
+        const past = limit > windowChars && limit > 2000;
+        const shown = past ? saved.stdout : saved.stdout.slice(0, windowChars);
+        let head = shown.trimEnd();
+        const leading = head.length - head.trimStart().length;
+        if (leading > 0) {
+          const lastBreak = head.slice(0, leading).lastIndexOf("\\n");
+          if (lastBreak >= 0) head = head.slice(lastBreak + 1);
+        }
+        let cut = false;
+        if (head.length > limit) {
+          const firstWindow = head.slice(0, limit);
+          const lastBreak = firstWindow.lastIndexOf("\\n");
+          head = lastBreak > limit * 0.5 ? firstWindow.slice(0, lastBreak) : firstWindow;
+          cut = true;
+        }
+        return saved.header + "\\n\\n" + head +
+          (cut || (past && saved.truncated) ? "\\n..." : "") +
+          (saved.after ? "\\n" + saved.after : "");
+      }
+      const text = value === undefined || value === null ? "" : StringCtor(value);
       if (text.length <= limit) return text;
       return text.slice(0, limit) + "\\u2026[+" + (text.length - limit) + " chars]";
     };
