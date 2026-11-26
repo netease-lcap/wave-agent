@@ -1489,6 +1489,49 @@ describe("the per-call watchdog", () => {
     expect(result.ok).toBe(true);
     expect(result.value).toBe("after:slow");
   });
+
+  it("cancels the call it gives up on, and nothing else", async () => {
+    vi.useFakeTimers();
+    const h = harness((name, args) =>
+      name === "Grep" && args.pattern === "first" ? blocked() : ok("found"),
+    );
+
+    const run = runRepl(
+      h,
+      `
+      let message = "";
+      try {
+        await Grep({ pattern: "first" });
+      } catch (e) {
+        message = e.message;
+      }
+      self.log(message);
+      self.log(await Grep({ pattern: "second" }));
+      return "after";
+    `,
+      { pool: SHELL_POOL, permissionMode: "bypassPermissions" },
+    );
+    // A file tool's gate (20000) is inside the fixed 30000 ms window, so this
+    // script finishes synchronously and the receipt carries the result.
+    await vi.advanceTimersByTimeAsync(20000);
+    const result = await run;
+
+    expect(result.ok).toBe(true);
+    expect(result.value).toBe("after");
+    expect(result.logs[0]).toContain("was cancelled");
+    expect(result.logs[1]).toBe("found");
+    // The watchdog aborts the very signal the tool was handed — that is what makes
+    // `Bash` kill its process tree instead of running on host-side unwatched, and
+    // what Claude Code's `V.abort()` does when its own watchdog fires.
+    expect(h.contexts[0]?.abortSignal?.aborted).toBe(true);
+    // One controller per call: a sibling call keeps a signal nobody aborted, and
+    // the run's own context is copied rather than written to.
+    const second = h.contexts[1]?.abortSignal;
+    expect(second).toBeDefined();
+    expect(second).not.toBe(h.contexts[0]?.abortSignal);
+    expect(second?.aborted).toBe(false);
+    expect(h.context.abortSignal).toBeUndefined();
+  });
 });
 
 describe("termination reasons are distinguishable", () => {

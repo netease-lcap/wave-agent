@@ -452,42 +452,60 @@ function clearTimer(timer: ReturnType<typeof setTimeout> | undefined): void {
  * Run one nested call under its watchdog, or — when the tool gets none — just run
  * it.
  *
- * The underlying call is not cancellable, so the *call* is abandoned rather than
- * killed: the script sees a rejection and keeps going, and the tool may still
- * finish host-side. A late rejection is absorbed by the already-settled race,
- * so nothing surfaces as an unhandled rejection.
+ * A watchdog that fires *cancels* the call rather than merely abandoning it: the
+ * timer aborts the very signal the tool was handed, so `Bash` kills its process
+ * tree instead of running on host-side with nobody listening. Claude Code does
+ * the same when its own watchdog fires (`V.abort()`); what stays narrower here is
+ * the blast radius — only this one call is cancelled, so the script sees a
+ * rejection and keeps going, where Claude Code's one shared controller fails the
+ * whole run.
+ *
+ * The caller's own signal is merged in rather than replaced (`AbortSignal.any`),
+ * so an abort of the run still reaches the tool. A late rejection is absorbed by
+ * the already-settled race, so nothing surfaces as an unhandled rejection.
  */
 async function withWatchdog<T>(
   frame: ReplFrame,
-  call: () => Promise<T>,
+  call: (signal: AbortSignal | undefined) => Promise<T>,
   watchdog: WatchdogPlan | undefined,
   label: string,
 ): Promise<T> {
+  const outer = frame.context.abortSignal;
   frame.waiting += 1;
   if (watchdog === undefined) {
     try {
-      return await call();
+      return await call(outer);
     } finally {
       frame.waiting -= 1;
     }
   }
   const { limitMs, formula } = watchdog;
+  // One controller per call: the watchdog's abort must not take down a sibling
+  // call that is still doing useful work.
+  const cancel = new AbortController();
+  const signal = outer
+    ? AbortSignal.any([outer, cancel.signal])
+    : cancel.signal;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await new Promise<T>((resolve, reject) => {
       timer = unrefTimer(
         setTimeout(() => {
+          cancel.abort(
+            new Error(`${label} was cancelled by the REPL watchdog`),
+          );
           reject(
             new Error(
               `${label} did not return within ${limitMs} ms ` +
                 `(watchdog: ${formula}). ` +
-                "That call was abandoned and the script continues; it may still be running host-side.",
+                "That call was cancelled and the script continues — a shorter " +
+                "timeout on the tool itself is the usual fix.",
             ),
           );
         }, limitMs),
       );
       if (timer !== undefined) frame.timers.watchdog?.add(timer);
-      call().then(resolve, reject);
+      call(signal).then(resolve, reject);
     });
   } finally {
     clearTimeout(timer);
@@ -712,6 +730,24 @@ function noteConsoleRing(frame: ReplFrame): void {
 // ---------------------------------------------------------------------------
 
 /**
+ * The context one nested call runs under: the frame's own, with the call's own
+ * signal in place of the run's.
+ *
+ * Only `abortSignal` is replaced — everything else stays the same object's, so a
+ * nested call remains indistinguishable from a flat one for permissions, hooks and
+ * tool state. The signal is the one field a watchdog has to own (it aborts the
+ * call it armed), and the run's own signal is already folded into it by
+ * `AbortSignal.any`, so nothing is lost on the way down.
+ */
+function contextForCall(
+  context: ToolContext,
+  signal: AbortSignal | undefined,
+): ToolContext {
+  if (signal === undefined || signal === context.abortSignal) return context;
+  return { ...context, abortSignal: signal };
+}
+
+/**
  * A built-in goes through `ToolManager.execute`, which is the builtins' single
  * funnel: it runs the built-in's own `checkPermission` and the Pre/PostToolUse
  * hooks, and it supplies the enhanced context they read their managers from.
@@ -724,12 +760,17 @@ async function callBuiltInTool(
   frame: ReplFrame,
   name: string,
   args: Record<string, unknown>,
+  signal: AbortSignal | undefined,
 ): Promise<ToolOutcome> {
   const toolManager = frame.context.toolManager;
   if (!toolManager) {
     throw new Error("Tool manager is not available in the REPL context");
   }
-  const result = await toolManager.execute(name, args, frame.context);
+  const result = await toolManager.execute(
+    name,
+    args,
+    contextForCall(frame.context, signal),
+  );
   if (!result.success) {
     return {
       output: { error: failureMessage(name, result) },
@@ -825,13 +866,18 @@ async function callMcpTool(
   frame: ReplFrame,
   name: string,
   args: Record<string, unknown>,
+  signal: AbortSignal | undefined,
 ): Promise<ToolOutcome> {
   const mcpManager = frame.context.mcpManager;
   if (!mcpManager) {
     throw new Error("MCP manager is not available in the REPL context");
   }
   try {
-    const result = await mcpManager.executeMcpTool(name, args, frame.context);
+    const result = await mcpManager.executeMcpTool(
+      name,
+      args,
+      contextForCall(frame.context, signal),
+    );
     return { output: parseMcpText(result.output), images: result.images };
   } catch (error) {
     throw annotateMcpFailure(name, error);
@@ -895,10 +941,10 @@ async function answerToolCall(
   const nativeTimeoutMs = nativeTimeoutOf(name, args);
   const outcome = await withWatchdog(
     frame,
-    () =>
+    (signal) =>
       entry?.isMcp === true
-        ? callMcpTool(frame, name, args)
-        : callBuiltInTool(frame, name, args),
+        ? callMcpTool(frame, name, args, signal)
+        : callBuiltInTool(frame, name, args, signal),
     nativeTimeoutMs === undefined
       ? undefined
       : watchdogFor(name, nativeTimeoutMs),
@@ -1229,7 +1275,8 @@ async function answerShellCall(
   frame.toolsUsed.push("Bash");
   const result = await withWatchdog(
     frame,
-    () => toolManager.execute("Bash", args, callContext),
+    (signal) =>
+      toolManager.execute("Bash", args, contextForCall(callContext, signal)),
     watchdogFor("Bash", waitMs),
     "Bash",
   );
