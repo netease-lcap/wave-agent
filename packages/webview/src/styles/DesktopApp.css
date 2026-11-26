@@ -838,6 +838,14 @@ html[data-theme="dark"] .desktop-session-status-slot {
   line-height: inherit;
   color: inherit;
   text-align: left;
+  /* 光标跟行一致。行（`li.desktop-session-item` @527）是 `cursor: pointer`，但这一层
+     是真 `<button>`，UA 给的是 `cursor: default` —— 而它铺满整行、标题 span 又从这里
+     继承 ⇒ 鼠标一进文字区就从手型变箭头；行上下各有 4px（行 30 / 内容 22）落在 li 上
+     又是手型，移进移出就在两档之间闪。
+     1126 评论：「鼠标 hover 这个选项的时候，小手和箭头之间来回闪烁，希望是小手」
+     ⇒ 这里显式钉成 pointer，与行同值；行内其它可点物（「⋯」更多按钮）本来也是 pointer，
+     不可点物（状态点）是 `pointer-events: none`，不参与。 */
+  cursor: pointer;
 }
 
 /* 行有状态点（running/waiting/绿点）时恒让位，文字不钻进点下 */
