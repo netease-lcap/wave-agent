@@ -86,6 +86,12 @@ const REMOVAL_COMMANDS: ReadonlySet<string> = new Set(["rm", "rmdir"]);
  *
  * The value is the set of the wrapper's own flags that consume the next word
  * (`sudo -u root`, `nice -n 5`), so the value is not mistaken for the command.
+ *
+ * `chronic` is deliberately absent: Claude Code peels it nowhere on this
+ * question, and every spelling added beyond it is another card that cannot be
+ * dismissed or covered by a rule. The command is not lost either way —
+ * `chronic rm -rf ..` is still an unknown command name, so it gets the ordinary
+ * confirmation.
  */
 const WRAPPERS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   [
@@ -115,7 +121,6 @@ const WRAPPERS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ["nice", new Set(["-n", "--adjustment"])],
   ["ionice", new Set(["-c", "-n", "-p"])],
   ["stdbuf", new Set(["-i", "-o", "-e"])],
-  ["chronic", new Set()],
 ]);
 
 /** Shells whose `-c <script>` argument is itself a command line to judge. */
@@ -210,7 +215,7 @@ function scanCommand(
       continue;
     }
 
-    const script = inlineShellScript(name, args);
+    const script = inlineShellScript(launcherName(name), args);
     if (script !== undefined) {
       const hit = scanCommand(script, cwd, judgement, depth + 1);
       if (hit) return hit;
@@ -295,14 +300,26 @@ function desugarBackgroundJobs(command: string): string {
 }
 
 /**
- * `rm` / `/bin/rm` / `RM.EXE` / `RMDIR.BAT` → `rm`. Every suffix a Windows shell
- * accepts is stripped, in Claude Code's set: `.exe`, `.bat`, `.cmd`, `.com`.
+ * `rm` / `/bin/rm` / `RM` → `rm`: the path prefix and the case, nothing else.
+ *
+ * This is the name the removal check compares, and Claude Code compares it the
+ * same way — its gate takes the leaf, drops the path and asks whether the result
+ * is exactly `rm` / `rmdir` (`bPe`). Windows executable suffixes are therefore
+ * *not* stripped: `rm.exe` stays `rm.exe`, which is not a removal there either.
  */
 function commandName(word: string): string {
-  return path
-    .basename(restoreWindowsPath(word))
-    .replace(/\.(?:exe|bat|cmd|com)$/i, "")
-    .toLowerCase();
+  return path.basename(restoreWindowsPath(word)).toLowerCase();
+}
+
+/**
+ * The name used to recognise a *wrapper* (`sudo`, `env`) or an inline shell
+ * (`bash`), which is normalised more generously than the removal command's own
+ * name: Claude Code routes launcher names through `UM`, which drops the path and
+ * the `.exe` suffix, so `sudo.exe rm -rf ..` and `bash.exe -c 'rm -rf ..'` are
+ * the same act as their plain spellings.
+ */
+function launcherName(word: string): string {
+  return commandName(word).replace(/\.exe$/, "");
 }
 
 /**
@@ -314,7 +331,7 @@ function unwrapLeaf(argv: string[]): { name: string; args: string[] } {
   while (index < argv.length && ENV_ASSIGNMENT.test(argv[index]!)) index++;
 
   while (index < argv.length) {
-    const name = commandName(argv[index]!);
+    const name = launcherName(argv[index]!);
     const valueFlags = WRAPPERS.get(name);
     if (!valueFlags) break;
     index++;

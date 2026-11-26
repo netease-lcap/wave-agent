@@ -373,6 +373,32 @@ describe("findDangerousRemoval — ordinary removals stay ordinary", () => {
     expect(judge("ls | xargs rm -rf")).toBeNull();
   });
 
+  it("ignores spellings Claude Code does not read as a removal", () => {
+    // Claude Code peels `builtin` but not `chronic`, and it compares the removal
+    // command's own name without stripping a Windows executable suffix — so
+    // `rm.exe -rf ..` is not a removal there, and giving it the card that cannot
+    // be dismissed would be stricter than the thing we are aligning with
+    // (spec scene 18). The command is still not allowed outright: an unknown
+    // name gets the ordinary confirmation.
+    expect(judge("chronic rm -rf ../..")).toBeNull();
+    expect(judge("rm.exe -rf ../..")).toBeNull();
+    expect(judge("RMDIR.BAT ..")).toBeNull();
+  });
+
+  it("still reads builtin, which Claude Code peels too", () => {
+    // `builtin rm` runs the builtin `rm`, which is the same `rm`: Claude Code's
+    // AST path strips `builtin` before it asks whether the command is a removal
+    // (spec scene 17).
+    expect(ruleOf("builtin rm -rf ../..")).toBe("working_directory");
+  });
+
+  it("still reads a wrapper or inline shell spelled with a suffix", () => {
+    // Launcher names go through the more generous normalisation: Claude Code
+    // drops the path *and* the `.exe` there, so these are the plain commands.
+    expect(ruleOf("sudo.exe rm -rf ../..")).toBe("working_directory");
+    expect(ruleOf("bash.exe -c 'rm -rf ../..'")).toBe("working_directory");
+  });
+
   it("ignores a command the parser cannot read", () => {
     expect(judge("eval 'rm -rf ../..'")).toBeNull();
   });
