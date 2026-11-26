@@ -35,6 +35,7 @@ import type { Plugin } from "../../src/types/plugins.js";
 const probe = vi.hoisted(() => ({
   esbuild: undefined as unknown,
   files: new Map<string, string>(),
+  batches: 0,
 }));
 
 vi.mock("../../src/utils/globalLogger.js", () => ({
@@ -43,6 +44,12 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
 
 vi.mock("../../src/utils/esbuild.js", () => ({
   getEsbuild: () => probe.esbuild,
+  // 排队与释放的语义由 `esbuildBatch.test.ts` 用真 esbuild 覆盖；这里只钉
+  // 「编译有没有走那条路」。
+  withEsbuildBatch: (task: () => Promise<unknown>) => {
+    probe.batches += 1;
+    return task();
+  },
 }));
 
 vi.mock("../../src/utils/atomicWrite.js", () => ({
@@ -5311,5 +5318,51 @@ exports.register = function ($, on) {
     expect(
       (await panesSeenByMod(manager)).map((pane) => pane.isPlaced),
     ).toEqual([false, false]);
+  });
+});
+
+describe("编译走排队的那条路", () => {
+  /**
+   * 编译是一次性的：跑起来的是编出来的 CJS，运行期不需要编译器。而 esbuild
+   * 的常驻服务会把 cwd 钉在加载那一刻的 `process.cwd()` 上 —— 会话在
+   * worktree 里时那正是 worktree 目录，Windows 下会让退出删除失败
+   * （`RemoveDirectoryW` → `EBUSY`）。所以每次编译都由
+   * `withEsbuildBatch` 包着，批次结束就释放（排队与释放的语义见
+   * `esbuildBatch.test.ts`）。
+   */
+  it("带 mod 的插件编译一次就排一批", async () => {
+    const { manager } = createManager({ [MOD_PATH]: COUNTER_MOD });
+    probe.batches = 0;
+
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+
+    expect(probe.batches).toBe(1);
+  });
+
+  it("每个带 mod 的插件各排一批", async () => {
+    const other = path.join(ROOT, "mods", "other.tsx");
+    const { manager } = createManager({
+      [MOD_PATH]: COUNTER_MOD,
+      [other]: COUNTER_MOD,
+    });
+    probe.batches = 0;
+
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+      plugin([{ id: "other:panel", path: other }]),
+    ]);
+
+    expect(probe.batches).toBe(2);
+  });
+
+  it("没有 mod 的插件压根不碰编译器", async () => {
+    const { manager } = createManager({});
+    probe.batches = 0;
+
+    await manager.loadFromPlugins([plugin([])]);
+
+    expect(probe.batches).toBe(0);
   });
 });

@@ -100,3 +100,52 @@ export function resetEsbuild(): void {
   cached = undefined;
   resolutionAttempted = false;
 }
+
+/**
+ * Stop esbuild's resident service, keeping the memoised API for the next batch.
+ *
+ * `transform()` starts a long-lived `<platform> esbuild --service` child (the
+ * sync API does not), and esbuild pins that child's working directory to
+ * `process.cwd()` **as captured when `esbuild/lib/main.js` was evaluated** —
+ * for a session started in a worktree, that is the worktree directory itself.
+ * On Windows a live process whose cwd sits in a directory blocks
+ * `RemoveDirectoryW` (ERROR_SHARING_VIOLATION → `EBUSY`), so deleting the
+ * worktree on exit failed with the directory left as an empty shell.
+ *
+ * Compilation is one-shot — what runs afterwards is the compiled CJS, never the
+ * compiler — so the service is released as soon as a batch is done. The next
+ * compile respawns it (23ms measured, against 41ms cold). Claude Code has no
+ * such process at all: it transpiles in-process with `Bun.Transpiler`.
+ */
+export async function releaseEsbuild(): Promise<void> {
+  await cached?.stop();
+}
+
+/** 编译批次排队用：同一时刻只有一批在跑。 */
+let batchQueue: Promise<void> = Promise.resolve();
+
+/**
+ * Run one compilation batch, one batch at a time, releasing the service when it
+ * ends.
+ *
+ * Batches are serialised because they share **one** esbuild service: two Agents
+ * created at the same moment (one per desktop pane) each compile their own
+ * plugins, and a `stop()` that landed inside the other one's `transform()` would
+ * come back as "The service was stopped" in that pane. Queueing also makes the
+ * release ordering trivial — the next batch starts only after the previous
+ * release finished, so it simply respawns (23ms).
+ *
+ * [release] is injectable so tests can watch the ordering without a real
+ * compiler.
+ */
+export function withEsbuildBatch<T>(
+  task: () => Promise<T>,
+  release: () => Promise<void> = releaseEsbuild,
+): Promise<T> {
+  const run = batchQueue.then(task, task);
+  batchQueue = run.then(release, release).then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
