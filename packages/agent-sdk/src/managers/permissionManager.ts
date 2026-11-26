@@ -1235,10 +1235,7 @@ export class PermissionManager {
     // to bypass at creation time — always allow.
     // Worktree safety check above runs unconditionally, so bypass never skips it;
     // tools that require user interaction never reach here (step 1 above).
-    const bypassesPermissionChecks =
-      context.permissionMode === "bypassPermissions" ||
-      (context.permissionMode === "plan" && this.getBypassAuthorization());
-    if (bypassesPermissionChecks) {
+    if (this.bypassesPermissionChecks(context)) {
       return { decision: "allow", source: "config" };
     }
 
@@ -1458,16 +1455,31 @@ export class PermissionManager {
   }
 
   /**
+   * Modes that answer every card themselves: `bypassPermissions`, and plan mode
+   * in a session that was authorized to bypass when it was created. Shared by
+   * the automatic allow below and by {@link dangerousRemovalVerdict}, which
+   * Claude Code releases in this mode too (`waivableInBypass`).
+   */
+  private bypassesPermissionChecks(context: ToolPermissionContext): boolean {
+    return (
+      context.permissionMode === "bypassPermissions" ||
+      (context.permissionMode === "plan" && this.getBypassAuthorization())
+    );
+  }
+
+  /**
    * The built-in refusal to remove the session's own working directory. Bash
    * only: PowerShell's channel answers the same question in its own hard-deny
    * band (`evaluatePowerShellCommand`), where rules already do not reach.
    *
    * `dontAsk` denies instead of asking — a mode whose whole promise is "do not
-   * ask me" cannot answer a card, and Claude Code draws the same line. Every
-   * other mode asks, including `bypassPermissions`: Claude Code's check is not
-   * waivable by bypass either, and Wave's "no callback configured" path already
-   * turns that `ask` into a deny for headless callers (`wave -p`, SDK hosts
-   * without `canUseTool`).
+   * ask me" cannot answer a card, and Claude Code draws the same line.
+   * `bypassPermissions` releases the check for the same reason, exactly as
+   * Claude Code does (`waivableInBypass: true`, recorded as
+   * `permission_bypass_removal_prompt_waived`); what bypass cannot do is what an
+   * allow rule cannot do either — every other mode asks, above every allow rule.
+   * Wave's "no callback configured" path still turns that `ask` into a deny for
+   * headless callers (`wave -p`, SDK hosts without `canUseTool`).
    */
   private dangerousRemovalVerdict(
     context: ToolPermissionContext,
@@ -1491,14 +1503,18 @@ export class PermissionManager {
     if (!hit) return null;
 
     const message = describeDangerousRemoval(hit);
-    logger?.warn("Refusing to remove the session's working directory", {
+    const detail = {
       toolName: context.toolName,
       rule: hit.rule,
       target: hit.target,
       resolved: hit.resolved,
-    });
+    };
 
     if (context.permissionMode === "dontAsk") {
+      logger?.warn(
+        "Refusing to remove the session's working directory",
+        detail,
+      );
       return {
         decision: "deny",
         message,
@@ -1507,6 +1523,22 @@ export class PermissionManager {
         denyReason: "denied_by_mode",
       };
     }
+
+    // A mode whose promise is "do not ask me" answers the card itself, which is
+    // the property Claude Code gives this check (`waivableInBypass`). The
+    // judgement above still ran, so the release is observable in the logs rather
+    // than silent. It is not a hole an allow rule can use: `allow` rules and
+    // `acceptEdits` sit *below* this method, and a user's own `ask` rule still
+    // reaches them at step 1.5 because that runs after this returns.
+    if (this.bypassesPermissionChecks(context)) {
+      logger?.info(
+        "Waived the dangerous-removal confirmation in bypass mode",
+        detail,
+      );
+      return null;
+    }
+
+    logger?.warn("Refusing to remove the session's working directory", detail);
 
     // The card cannot offer "don't ask again": the person is answering for this
     // one command, not for a rule that would approve the next one too.

@@ -13,6 +13,7 @@ vi.mock("node:fs");
 /** A worktree-shaped session: `sub` is where the shell starts. */
 const WORKDIR = path.resolve(path.sep, "fake", "worktree", "repo", "sub");
 const PROTECTED = [WORKDIR];
+const WINDOWS = process.platform === "win32";
 
 /**
  * Spell a path the way a POSIX shell will hand it back. A literal `D:\x` in a
@@ -24,16 +25,28 @@ function commandPath(p: string): string {
   return p.split(path.sep).join("/");
 }
 
-function judge(command: string): DangerousRemoval | null {
+function judge(
+  command: string,
+  platform: NodeJS.Platform = process.platform,
+): DangerousRemoval | null {
   return findDangerousRemoval({
     command,
     workdir: WORKDIR,
     protectedRoots: PROTECTED,
+    platform,
   });
 }
 
-function ruleOf(command: string): string | null {
-  return judge(command)?.rule ?? null;
+function ruleOf(
+  command: string,
+  platform: NodeJS.Platform = process.platform,
+): string | null {
+  return judge(command, platform)?.rule ?? null;
+}
+
+/** Judge the command as Windows Git Bash would read it, on any host. */
+function windowsRuleOf(command: string): string | null {
+  return ruleOf(command, "win32");
 }
 
 beforeEach(() => {
@@ -68,7 +81,13 @@ describe("findDangerousRemoval — targets that end the session", () => {
 
   it("refuses a target that reaches the working directory through ..", () => {
     expect(ruleOf("rm -rf ./build/../..")).toBe("working_directory");
-    expect(ruleOf(`rm -rf ${WORKDIR}/..`)).toBe("working_directory");
+    // An absolute drive path with an un-normalised `..` segment is the other
+    // half of the Windows rule: the shell may read it differently, so the
+    // verdict there is "where it lands is unknown" — still a stop, and one that
+    // says why — rather than the directory it would reach.
+    expect(ruleOf(`rm -rf ${commandPath(WORKDIR)}/..`)).toBe(
+      WINDOWS ? "unplaceable" : "working_directory",
+    );
   });
 
   it("refuses the user's home directory", () => {
@@ -174,6 +193,92 @@ describe("findDangerousRemoval — shapes that hide the command", () => {
   });
 });
 
+describe("findDangerousRemoval — Windows spellings", () => {
+  it("refuses a backslash-only target", () => {
+    // `rm -rf \` is the drive root in Git Bash, written with one character.
+    expect(windowsRuleOf("rm -rf \\")).toBe("backslash_only");
+    expect(windowsRuleOf("rm -rf '\\'")).toBe("backslash_only");
+    expect(windowsRuleOf("rm -rf \\\\")).toBe("backslash_only");
+    // On POSIX a lone backslash is just an odd name, not the root.
+    expect(ruleOf("rm -rf \\", "linux")).not.toBe("backslash_only");
+  });
+
+  it("refuses a trailing backslash the shell would eat", () => {
+    expect(windowsRuleOf("rm -rf D:\\")).toBe("unplaceable");
+    expect(windowsRuleOf("rm -rf D:/proj/x-tb\\")).toBe("unplaceable");
+    expect(windowsRuleOf("rm -rf E:/code/myrepo\\")).toBe("unplaceable");
+  });
+
+  it("reads a trailing backslash as the literal the shell passes on", () => {
+    // `bash -c 'ls C:\'` lists `C:\`: bash hands the command a literal backslash,
+    // so only the guard's own parser has to be taught the spelling. Judging the
+    // word the line ends with instead reported a removal for every one of these.
+    for (const command of [
+      "ls C:\\",
+      "cd C:\\",
+      "cat D:\\",
+      "mkdir C:\\temp\\",
+      "echo hello \\",
+      "git status \\",
+    ]) {
+      expect(windowsRuleOf(command), command).toBeNull();
+    }
+  });
+
+  it("refuses a drive path Git Bash may read differently", () => {
+    // A bare `\` in a command line is an escape: `E:\code\myrepo` reaches the
+    // shell as `E:codemyrepo`, a drive-*relative* name.
+    expect(windowsRuleOf("rm -rf E:\\code\\myrepo")).toBe("unplaceable");
+    expect(windowsRuleOf('rm -rf "E:\\code\\myrepo"')).toBe("unplaceable");
+    expect(windowsRuleOf("rm -rf E:code")).toBe("unplaceable");
+    expect(windowsRuleOf("rm -rf D:/proj/../other")).toBe("unplaceable");
+  });
+
+  it("says what to write instead", () => {
+    for (const command of ["rm -rf \\", "rm -rf E:/code/myrepo\\"]) {
+      const hit = judge(command, "win32")!;
+      expect(describeDangerousRemoval(hit)).toContain("cannot be covered");
+      expect(describeDangerousRemoval(hit)).toContain("C:/work/build");
+    }
+  });
+
+  // The restore direction is host-bound (`path.resolve` follows the host, and
+  // `restoreWindowsPath` returns the path untouched off Windows), so the drive
+  // it lands on only means something on Windows.
+  it.runIf(WINDOWS)(
+    "reads the MSYS spellings as the drive path they name",
+    () => {
+      expect(ruleOf("rm -rf /c/fake/worktree/repo", "win32")).toBe(
+        "working_directory",
+      );
+      expect(ruleOf("rm -rf /cygdrive/d/fake", "win32")).toBe("system");
+      expect(
+        ruleOf("rm -rf '//localhost/C$/fake/worktree/repo'", "win32"),
+      ).toBe("working_directory");
+    },
+  );
+
+  it.runIf(WINDOWS)("reads \\\\?\\D:\\x as D:\\x", () => {
+    const hit = judge('rm -rf "\\\\?\\D:\\fake"', "win32");
+    expect(hit?.rule).toBe("system");
+    expect(hit?.resolved).toBe("D:\\fake");
+  });
+
+  it("leaves ordinary removals ordinary on Windows", () => {
+    for (const command of [
+      "rm -rf build",
+      "rm -rf node_modules",
+      "rm -rf build/out",
+      "rmdir empty-dir",
+      'echo "rm -rf .."',
+      'git commit -m "fix rm bug"',
+      'grep -r "rm -rf" .',
+    ]) {
+      expect(judge(command, "win32")).toBeNull();
+    }
+  });
+});
+
 describe("findDangerousRemoval — ordinary removals stay ordinary", () => {
   it("allows a directory inside the working directory", () => {
     for (const command of [
@@ -206,7 +311,12 @@ describe("findDangerousRemoval — ordinary removals stay ordinary", () => {
   });
 
   it("ignores a path far below a system directory", () => {
-    const target = path.resolve(path.sep, "usr", "local", "lib", "x");
+    // Spelled with forward slashes, which is the form the shell really passes:
+    // a bare backslash is an escape, so `C:\usr\local` reaches `rm` as the
+    // drive-relative `C:usrlocal` — a different target, judged as such.
+    const target = commandPath(
+      path.resolve(path.sep, "usr", "local", "lib", "x"),
+    );
     expect(judge(`rm -rf ${target}`)).toBeNull();
   });
 
