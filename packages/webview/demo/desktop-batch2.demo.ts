@@ -133,7 +133,7 @@ test.describe("Desktop batch 2 feature screenshots", () => {
       "../../docs/public/screenshots/desktop-compress-button.webp",
     );
 
-    // 2. 账户卡片（v3）：注入套餐用量 + API 额度（登录态；apiQuota 用团队余额
+    // 2. 账户卡片（v3）：注入套餐用量 + 积分余额（登录态；apiQuota 用团队余额
     //    模式 limit:null，显示本人累计消耗金额）。用量自 2026-11 交互改版起收在
     //    个人信息行尾按钮弹出的浮层里（卡片默认只剩个人信息一行），要点开按钮
     //    才拍得到——浮层开着时「查看用量」气泡让位，截图不挂悬停提示。

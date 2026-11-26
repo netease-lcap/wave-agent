@@ -1418,11 +1418,24 @@ export type AccountBillingInfo =
     }
   | { mode: "blocked"; code: AccountBillingCode };
 
-/** API 额度 (codechat `GET /api/v1/account` → `apiQuota`). */
+/**
+ * 积分额度的生效层（codechat `apiQuota.scope`）：`department` = 读数属于**所在部门
+ * 共享池**，`user` = 个人（含未分配、走团队共用池的 `limit = null`）。只影响文案
+ * （两行标签 + `USER_QUOTA_ZERO` 那句），**不是新的 `AccountBillingCode`**。
+ */
+export type AccountQuotaScope = "user" | "department";
+
+/** API 积分额度 (codechat `GET /api/v1/account` → `apiQuota`). */
 export interface AccountApiQuotaInfo {
-  /** 额度上限（元）；null = 不限额. */
+  /** 额度上限（积分）；null = 不限额. */
   limit: number | null;
+  /** 已用积分. */
   used: number;
+  /**
+   * 读数所属的层（2026-11-26 后端新增）；缺失 = 老服务端 / 旧版 CLI，消费方按
+   * `"user"` 渲染。响应头里没有这个字段，映射时必须沿用上次已知值。
+   */
+  scope?: AccountQuotaScope;
 }
 
 /**
