@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, fireEvent, act, screen } from "@testing-library/react";
+import {
+  render,
+  fireEvent,
+  act,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import React from "react";
 import {
   PreviewPane,
@@ -53,6 +59,10 @@ function renderPane(options?: {
   onRetry?: () => void;
   onTitleChange?: (title: string) => void;
   onNavigate?: (url: string) => void;
+  filePath?: string;
+  onReadSource?: (
+    path: string,
+  ) => Promise<{ content: string; truncated: boolean } | { error: string }>;
 }) {
   const vscode = createMockVscode();
   const url = options?.url ?? "http://localhost:5173/app";
@@ -61,6 +71,8 @@ function renderPane(options?: {
   const onRetry = options?.onRetry;
   const onTitleChange = options?.onTitleChange ?? vi.fn();
   const onNavigate = options?.onNavigate ?? vi.fn();
+  const filePath = options?.filePath;
+  const onReadSource = options?.onReadSource;
   // Controlled-width harness: PreviewPane no longer owns its width state.
   // `width` prop on rerender overrides the default so tests can drive panel
   // resizes / the re-fit effect without going through the drag handle.
@@ -80,6 +92,8 @@ function renderPane(options?: {
       onRetry={onRetry}
       onTitleChange={onTitleChange}
       onNavigate={onNavigate}
+      filePath={filePath}
+      onReadSource={onReadSource}
     />
   );
   const result = render(<Harness url={url} />);
@@ -760,6 +774,116 @@ describe("PreviewPane", () => {
         restore();
       }
     });
+  });
+});
+
+// 源码视图（spec desktop-preview.md「HTML 预览的源码视图」）：预览面板头部一颗
+// 按钮在「预览 ↔ 源码」之间翻转，源码走的是文件面板那条只读代码链。
+describe("源码视图（HTML 预览）", () => {
+  const toggle = () => screen.getByTestId("preview-source-toggle");
+
+  it("不是从文件打开的预览没有这颗按钮", () => {
+    renderPane(); // 地址栏手输网址那种预览：没有文件可读
+    expect(screen.queryByTestId("preview-source-toggle")).toBeNull();
+  });
+
+  it("点一下翻到源码：按文件路径读内容，代码视图渲染出来，guest 只被藏起来", async () => {
+    const onReadSource = vi.fn(async () => ({
+      content: "<h1>hello</h1>",
+      truncated: false,
+    }));
+    const { wv } = renderPane({
+      filePath: "/repo/demo/index.html",
+      onReadSource,
+    });
+    expect(toggle().textContent).toContain("查看源码");
+    fireEvent.click(toggle());
+
+    await waitFor(() =>
+      expect(screen.getByTestId("preview-source")).toBeTruthy(),
+    );
+    expect(onReadSource).toHaveBeenCalledWith("/repo/demo/index.html");
+    // 文件面板同一条只读代码链：CodeMirror 真的挂上并渲染了那份文本。
+    await waitFor(() =>
+      expect(document.querySelector(".cm-content")?.textContent).toContain(
+        "<h1>hello</h1>",
+      ),
+    );
+    // guest 不卸载：只挂 is-source-hidden（页面状态、引用计数、保活台账都不动）。
+    expect(wv.className).toContain("is-source-hidden");
+    expect(toggle().textContent).toContain("预览");
+    expect(toggle().getAttribute("data-mode")).toBe("source");
+  });
+
+  it("再点一下翻回预览：guest 恢复可见，且不重复读文件", async () => {
+    const onReadSource = vi.fn(async () => ({
+      content: "<p>hi</p>",
+      truncated: false,
+    }));
+    const { wv } = renderPane({ filePath: "/repo/a.html", onReadSource });
+    fireEvent.click(toggle());
+    await waitFor(() => expect(screen.getByTestId("preview-source")));
+    fireEvent.click(toggle());
+
+    expect(screen.queryByTestId("preview-source")).toBeNull();
+    expect(wv.className).not.toContain("is-source-hidden");
+    expect(toggle().textContent).toContain("查看源码");
+    expect(onReadSource).toHaveBeenCalledTimes(1);
+  });
+
+  it("读取失败给出错误与重试，重试再读一次", async () => {
+    const onReadSource = vi
+      .fn<
+        (
+          path: string,
+        ) => Promise<
+          { content: string; truncated: boolean } | { error: string }
+        >
+      >()
+      .mockResolvedValueOnce({ error: "文件不存在：/repo/gone.html" })
+      .mockResolvedValueOnce({ content: "<p>back</p>", truncated: false });
+    renderPane({ filePath: "/repo/gone.html", onReadSource });
+    fireEvent.click(toggle());
+
+    await waitFor(() =>
+      expect(screen.getByTestId("preview-source-error").textContent).toContain(
+        "文件不存在",
+      ),
+    );
+    fireEvent.click(screen.getByTestId("preview-source-retry"));
+    await waitFor(() =>
+      expect(document.querySelector(".cm-content")?.textContent).toContain(
+        "back",
+      ),
+    );
+    expect(onReadSource).toHaveBeenCalledTimes(2);
+  });
+
+  it("源码态下「刷新」重读文件，不去刷被藏起来的 guest", async () => {
+    const onReadSource = vi.fn(async () => ({
+      content: "<p>v1</p>",
+      truncated: false,
+    }));
+    const { wv } = renderPane({ filePath: "/repo/a.html", onReadSource });
+    fireEvent.click(toggle());
+    await waitFor(() => expect(screen.getByTestId("preview-source")));
+
+    fireEvent.click(screen.getByTestId("preview-refresh"));
+
+    await waitFor(() => expect(onReadSource).toHaveBeenCalledTimes(2));
+    expect(wv.reloadIgnoringCache).not.toHaveBeenCalled();
+  });
+
+  it("宿主的读取上限命中了会写一行说明（截断口径与文件面板同源）", async () => {
+    const onReadSource = vi.fn(async () => ({
+      content: "<p>head</p>",
+      truncated: true,
+    }));
+    renderPane({ filePath: "/repo/big.html", onReadSource });
+    fireEvent.click(toggle());
+    await waitFor(() =>
+      expect(screen.getByTestId("preview-source-truncated")).toBeTruthy(),
+    );
   });
 });
 

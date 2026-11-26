@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, beforeEach } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { render, fireEvent, screen, act } from "@testing-library/react";
 import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
@@ -63,6 +63,11 @@ const openFilePosts = (vscode: ReturnType<typeof createMockVscode>) =>
   vscode.postMessage.mock.calls
     .map(([msg]) => msg as Record<string, unknown>)
     .filter((m) => m.command === "openFile");
+
+const sourceRequests = (vscode: ReturnType<typeof createMockVscode>) =>
+  vscode.postMessage.mock.calls
+    .map(([msg]) => msg as Record<string, unknown>)
+    .filter((m) => m.command === "desktopPreviewSource");
 
 /** Reply to a desktopPreviewFile request with a URL. */
 function replyPreviewUrl(requestId: string, url: string) {
@@ -286,6 +291,55 @@ describe("ChatApp local .html preview routing", () => {
       path: "/work/a/gone.html",
       host: "local",
     });
+  });
+
+  it("源码视图：按钮读的是这个 tab 的文件路径，回包进代码视图（spec「HTML 预览的源码视图」）", async () => {
+    window.waveHostType = "desktop";
+    const { vscode } = renderDesktop({ workdir: "/work/a" });
+    sendHostMessage(
+      fixtures.updateMessages([messageWithPath("/work/a/report.html")]),
+    );
+    clickPathLink("/work/a/report.html");
+    const [first] = previewRequests(vscode);
+    act(() =>
+      replyPreviewUrl(
+        first.requestId as string,
+        "http://127.0.0.1:45000/report.html",
+      ),
+    );
+
+    // 这个预览是从文件打开的 → 有那颗按钮；点它按 tab 记住的文件路径去要源码。
+    fireEvent.click(screen.getByTestId("preview-source-toggle"));
+    const sources = sourceRequests(vscode);
+    expect(sources).toHaveLength(1);
+    expect(sources[0]).toMatchObject({ path: "/work/a/report.html" });
+    expect(typeof sources[0].requestId).toBe("string");
+
+    // 宿主的回包（带 requestId）落进代码视图 —— 文件面板同一条只读代码链。
+    act(() =>
+      sendHostMessage({
+        command: "desktopPreviewSourceResult",
+        requestId: sources[0].requestId,
+        path: "/work/a/report.html",
+        content: "<h1>月度报表</h1>",
+        truncated: false,
+      } as never),
+    );
+    await vi.waitFor(() =>
+      expect(document.querySelector(".cm-content")?.textContent).toContain(
+        "<h1>月度报表</h1>",
+      ),
+    );
+    // 预览一侧的 guest 没被卸载，只是藏起来了。
+    expect(document.querySelector("webview")?.className).toContain(
+      "is-source-hidden",
+    );
+
+    // 翻回预览：guest 恢复可见（页面状态没丢，因为它一直挂着）。
+    fireEvent.click(screen.getByTestId("preview-source-toggle"));
+    expect(document.querySelector("webview")?.className).not.toContain(
+      "is-source-hidden",
+    );
   });
 
   it("closing the preview tab releases the server reference with the path (spec 场景 8)", () => {

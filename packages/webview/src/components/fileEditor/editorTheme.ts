@@ -6,6 +6,7 @@
  * panel's jump-to-line math assumes.
  */
 import { javascript } from "@codemirror/lang-javascript";
+import { vue } from "@codemirror/lang-vue";
 import { HighlightStyle, StreamLanguage } from "@codemirror/language";
 import type { Extension } from "@codemirror/state";
 import {
@@ -54,6 +55,12 @@ export const languageFor = (filePath: string): Extension => {
     case "html":
     case "htm":
       return StreamLanguage.define(html);
+    // Vue 单文件组件。`lang-vue` 建在 `@codemirror/lang-html` 上，所以不止模板
+    // 那层：`<script>` 里按 JS（`lang="ts"` 时连类型注解一起）、`<style>` 里按 CSS
+    // 解析，v-if / @click / {{ }} 也各有自己的节点 —— 上面那条 html 走的是 legacy
+    // StreamLanguage，没有这层嵌套（.vue 才是真正「三件套」都上色的那一档）。
+    case "vue":
+      return vue();
     case "svg":
     case "xml":
       return StreamLanguage.define(xml);
