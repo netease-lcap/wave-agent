@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { McpManager } from "../../src/managers/mcpManager.js";
+import {
+  McpManager,
+  MCP_CALLS_DRAIN_TIMEOUT_MS,
+  MCP_TRANSPORT_ERROR_LIMIT,
+} from "../../src/managers/mcpManager.js";
 import { Container } from "../../src/utils/container.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -59,6 +63,16 @@ function disconnectingOf(manager: McpManager) {
   return (manager as unknown as { disconnecting: Set<string> }).disconnecting;
 }
 
+function transportErrorsOf(manager: McpManager) {
+  return (manager as unknown as { transportErrors: Map<string, number> })
+    .transportErrors;
+}
+
+function messageStreamLostOf(manager: McpManager) {
+  return (manager as unknown as { messageStreamLost: Set<string> })
+    .messageStreamLost;
+}
+
 describe("McpManager transport error/close handlers", () => {
   let manager: McpManager;
   let mockClient: {
@@ -102,37 +116,144 @@ describe("McpManager transport error/close handlers", () => {
     await manager.cleanup();
   });
 
-  it("treats a transient SSE disconnect as reconnecting and starts recovery polling", async () => {
-    vi.useFakeTimers();
+  it("keeps a server usable when its downstream notification stream dies", async () => {
     await connect("s1");
-    mockClient.listTools.mockClear();
+    manager.updateServerStatus("s1", {
+      tools: [{ name: "t1", inputSchema: {} }],
+      toolCount: 1,
+    });
 
-    transport.onerror!(new Error("SSE stream disconnected: eof"));
+    transport.onerror!(
+      new Error("SSE stream disconnected: TypeError: terminated"),
+    );
 
+    // A dead GET stream is not a dead server: `tools/call` is a separate POST
+    // that still goes through. So the status, the tools and the usage notes all
+    // stay, and nothing is scheduled.
     const server = manager.getServer("s1");
-    expect(server?.status).toBe("reconnecting");
-    expect(server?.error).toBe("SSE stream disconnected: eof");
-    // The SDK owns reconnection for transient errors, so no backoff timer.
+    expect(server?.status).toBe("connected");
+    expect(server?.error).toBeUndefined();
+    expect(manager.getAllConnectedTools().map((tool) => tool.name)).toEqual([
+      "t1",
+    ]);
+    expect(manager.getServerInstructions().map((entry) => entry.name)).toEqual([
+      "s1",
+    ]);
+    expect(transportErrorsOf(manager).get("s1")).toBe(1);
+    expect(messageStreamLostOf(manager).has("s1")).toBe(true);
+    expect(connectionsOf(manager).has("s1")).toBe(true);
     expect(reconnectTimersOf(manager).has("s1")).toBe(false);
-    // The recovery poll re-lists tools after the SDK's delay and converges
-    // the status back to connected.
-    await vi.advanceTimersByTimeAsync(3000);
-    expect(mockClient.listTools).toHaveBeenCalledTimes(1);
-    expect(manager.getServer("s1")?.status).toBe("connected");
   });
 
-  it("marks the server as errored on a non-transient transport error", async () => {
+  it("counts a body timeout and the SDK giving up without touching state", async () => {
+    await connect("s1");
+
+    transport.onerror!(new Error("Body Timeout Error"));
+    transport.onerror!(
+      new Error("Maximum reconnection attempts (2) exceeded."),
+    );
+
+    expect(manager.getServer("s1")?.status).toBe("connected");
+    expect(transportErrorsOf(manager).get("s1")).toBe(2);
+    expect(connectionsOf(manager).has("s1")).toBe(true);
+    expect(reconnectTimersOf(manager).has("s1")).toBe(false);
+  });
+
+  it("treats an unclassified transport error the same way: counted, not fatal", async () => {
     await connect("s1");
     const connection = connectionsOf(manager).get("s1");
 
     transport.onerror!(new Error("boom"));
 
     const server = manager.getServer("s1");
-    expect(server?.status).toBe("error");
-    expect(server?.error).toBe("boom");
-    // A non-transient error does not tear the connection down nor reconnect.
+    expect(server?.status).toBe("connected");
+    expect(server?.error).toBeUndefined();
+    // One error is not enough to tear the connection down.
     expect(connectionsOf(manager).get("s1")).toBe(connection);
+    expect(transportErrorsOf(manager).get("s1")).toBe(1);
     expect(reconnectTimersOf(manager).has("s1")).toBe(false);
+  });
+
+  it("recycles the connection on the third consecutive transport error", async () => {
+    vi.useFakeTimers();
+    await connect("s1");
+    manager.updateServerStatus("s1", {
+      tools: [{ name: "t1", inputSchema: {} }],
+      toolCount: 1,
+    });
+
+    for (let i = 0; i < MCP_TRANSPORT_ERROR_LIMIT; i++) {
+      transport.onerror!(
+        new Error(`SSE stream disconnected: Body Timeout Error ${i}`),
+      );
+    }
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(connectionsOf(manager).has("s1")).toBe(false);
+    expect(mockClient.close).toHaveBeenCalled();
+    const server = manager.getServer("s1");
+    expect(server?.status).toBe("disconnected");
+    expect(server?.tools).toEqual([]);
+    // No error state: the server is being redialed, not written off.
+    expect(server?.error).toBeUndefined();
+    expect(transportErrorsOf(manager).get("s1")).toBeUndefined();
+    expect(reconnectTimersOf(manager).has("s1")).toBe(true);
+  });
+
+  it("waits for an in-flight tool call before recycling the connection", async () => {
+    vi.useFakeTimers();
+    await connect("s1");
+    manager.updateServerStatus("s1", {
+      tools: [{ name: "sendFile", inputSchema: {} }],
+      toolCount: 1,
+    });
+
+    let finishCall!: (value: unknown) => void;
+    mockClient.callTool.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishCall = resolve;
+        }),
+    );
+
+    const call = manager.executeMcpTool("mcp__s1__sendFile", {});
+    for (let i = 0; i < MCP_TRANSPORT_ERROR_LIMIT; i++) {
+      transport.onerror!(new Error("terminated"));
+    }
+    await vi.advanceTimersByTimeAsync(0);
+
+    // A `sendFile` already on the wire is never cut in half.
+    expect(connectionsOf(manager).has("s1")).toBe(true);
+    expect(mockClient.close).not.toHaveBeenCalled();
+
+    finishCall({ content: [{ type: "text", text: "sent" }] });
+    await expect(call).resolves.toMatchObject({ content: "sent" });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(connectionsOf(manager).has("s1")).toBe(false);
+    expect(manager.getServer("s1")?.status).toBe("disconnected");
+  });
+
+  it("cuts off a call that never finishes after the drain timeout", async () => {
+    vi.useFakeTimers();
+    await connect("s1");
+    manager.updateServerStatus("s1", {
+      tools: [{ name: "hang", inputSchema: {} }],
+      toolCount: 1,
+    });
+    mockClient.callTool.mockImplementation(() => new Promise(() => {}));
+
+    void manager.executeMcpTool("mcp__s1__hang", {});
+    for (let i = 0; i < MCP_TRANSPORT_ERROR_LIMIT; i++) {
+      transport.onerror!(new Error("terminated"));
+    }
+    // Still waiting: the call has no timeout of its own.
+    await vi.advanceTimersByTimeAsync(MCP_CALLS_DRAIN_TIMEOUT_MS - 1);
+    expect(connectionsOf(manager).has("s1")).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(connectionsOf(manager).has("s1")).toBe(false);
+    expect(manager.getServer("s1")?.status).toBe("disconnected");
   });
 
   it("ignores onclose from a stale transport generation", async () => {
