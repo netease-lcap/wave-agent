@@ -352,12 +352,6 @@
   /** Bumped by every pull and by every switch, so a reply that a switch
    *  overtook can be recognized and dropped instead of landing in the new view. */
   var pullToken = 0;
-  /**
-   * 切会话时挂上的加载态：`restoreSession` 先上一帧占位、再拉数据，成功与
-   * 失败两条路都必须把它收口，否则页面会停在占位上（spec `remote/remote-web.md`
-   * 场景 10「切换的那一瞬」）。
-   */
-  var switching = false;
   /** 记住几条会话：手机上「在最近几条之间来回切」是主场景，8 条够用且丢弃可预期。 */
   var REMEMBERED_SESSIONS = 8;
   /**
@@ -2323,8 +2317,6 @@
           // credential; there is no separate phone login to satisfy.
           isAuthenticated: true,
         });
-        // 快照落地：切会话那层占位到此收口（这一帧的 `isRestoring` 已缺省为假）。
-        switching = false;
         if (typeof usage === "number")
           post({ command: "contextUsage", percent: usage });
         // After the snapshot, so `updateWorkflowRuns` can never land first.
@@ -2345,21 +2337,15 @@
       })
       .catch(function (err) {
         if (blocked || token !== pullToken) return;
-        // 切会话挂上的那层占位还在：读失败也必须收口，否则页面永远停在占位上
-        // （状态条挂在顶栏、看得见原因，但正文得先能出来）。
-        if (switching) {
-          switching = false;
-          post({
-            command: "setInitialState",
-            messages: messages,
-            hasEarlier: hasEarlier,
-            sessions: sessions,
-            session: currentSession(sessions, sessionId),
-            currentSession: currentSession(sessions, sessionId),
-            isAuthenticated: true,
-          });
-        }
         showStatus("拉取会话失败：" + err.message);
+        // 切会话挂上的那层占位**不许揭开**（`remote-web.md` 场景 10「那一拍读
+        // 失败」）。以前这里补发一份空快照把占位摘掉，等于告诉用户「这条会话本来
+        // 就是空的」——页面随即落成新对话的欢迎页，而真相只是这一拍没读到。
+        //
+        // 这一拍也不自作主张重读（2026-11-26 定）：占位留在原地、原因挂在状态条，
+        // 自愈交给本来就会重跑整份快照的那几条入口——重连 / 手机回前台 / 页面重挂 /
+        // 中继 `resync_required` / 结构变化推送（spec「首屏读失败能自己恢复」），
+        // 或者用户自己换一条会话。
       });
   }
 
@@ -3242,7 +3228,6 @@
         // 呈现。只在**没有可显示内容**时才用占位：切会话必走网络，而这一页手里没
         // 有这条会话的内容（看过的那条已经在上面 `kept` 那一支接走了）；下一帧
         // 整份快照会把它揭开。
-        switching = true;
         post({
           command: "setInitialState",
           messages: [],

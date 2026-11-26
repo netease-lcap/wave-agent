@@ -84,6 +84,9 @@ type Held = { send: (data: string) => void; id: number };
 /** 被挂住的 `getMessages` 回包，由用例显式放行。 */
 let held: Held[] = [];
 let holdTails = false;
+/** 让接下来这一拍 `getMessages` 回错误帧的次数（模拟机器侧这一拍没读到）。 */
+let failTails = 0;
+let tailErrors = 0;
 
 async function releaseTails(result: unknown) {
   const frames = held;
@@ -163,6 +166,18 @@ async function openRemotePage(page: Page) {
       if (frame.method === "listDaemonSessions")
         result = { sessions: SESSIONS };
       else if (frame.method === "getMessages") {
+        if (failTails > 0) {
+          failTails -= 1;
+          tailErrors += 1;
+          ws.send(
+            JSON.stringify({
+              id: frame.id,
+              method: "error",
+              params: { code: -32603, message: "boom" },
+            }),
+          );
+          return;
+        }
         if (holdTails) {
           held.push({ send: (data) => ws.send(data), id: frame.id ?? 0 });
           return;
@@ -211,4 +226,50 @@ test("切回这次看过的那条：不出现占位，记忆的尾页当场在�
   // 对齐回来（权威内容变了）→ 整表替换。
   await releaseTails(tailOf("B 的消息（已更新）"));
   await expect(page.getByText("B 的消息（已更新）")).toBeVisible();
+});
+
+/**
+ * 切过去那一拍读**失败**：占位不许揭开（spec remote-web 场景 10「那一拍读
+ * 失败」）。
+ *
+ * 这条是真机序的回归位：以前失败时远程页会补发一份空快照把占位摘掉，页面随即
+ * 落成「新对话」的欢迎页——用户看到的是「切过去是一条空对话」，而真相只是这一
+ * 拍没读到。现在占位留在原地、原因上状态条，页面**不自己重读**（2026-11-26 定），
+ * 自愈靠本来就会重跑整份快照的那几条入口——这里验「手机回前台」那条。
+ */
+test("切过去那一拍读失败：占位不撤，回前台时内容才上屏", async ({ page }) => {
+  held = [];
+  holdTails = false;
+  failTails = 0;
+  tailErrors = 0;
+  await openRemotePage(page);
+  await expect(page.getByText("B 的消息")).toBeVisible();
+
+  // 让切过去那一拍的尾页读回错误帧。
+  failTails = 1;
+  await page.getByTestId("session-switch-btn").click();
+  await page.getByTestId("remote-session-row-select-s-a").click();
+
+  // 这一拍没读到 ≠ 这条会话是空的：正文仍是恢复占位，欢迎页一个字都不该出现。
+  await expect(page.locator("#remote-status-text")).toContainText(
+    "拉取会话失败",
+  );
+  expect(tailErrors).toBe(1);
+  await expect(page.getByTestId("chat-restoring-overlay")).toBeVisible();
+  await expect(page.getByTestId("welcome-wordmark")).toHaveCount(0);
+
+  // 页面也不会自己重读：等一会儿，占位照样在、欢迎页照样没有（以前那档 2 秒自动
+  // 重试已经拿掉，这里等的是「没有」）。
+  await page.waitForTimeout(2500);
+  await expect(page.getByTestId("chat-restoring-overlay")).toBeVisible();
+  await expect(page.getByTestId("welcome-wordmark")).toHaveCount(0);
+
+  // 出口是本来就会重跑整份快照的那几条路之一：手机回前台（`resync` 在消息为空时
+  // 退化成整份拉取）→ 内容这时才上屏，占位揭开、状态条收掉。
+  await page.evaluate(() =>
+    document.dispatchEvent(new Event("visibilitychange")),
+  );
+  await expect(page.getByText("A 的消息")).toBeVisible();
+  await expect(page.getByTestId("chat-restoring-overlay")).toHaveCount(0);
+  await expect(page.locator("#remote-status")).toHaveCount(0);
 });
