@@ -397,7 +397,9 @@ describe("findDangerousRemoval — Windows spellings", () => {
     // The same mistake with the quotes off: `\$` is a literal `$`, so the
     // command removes the directory `$DIR` inside the session directory. Read
     // as written — backslash kept — it is `\$DIR`, a first-level directory of
-    // the drive, and that reading stopped an ordinary deletion as a `system` one.
+    // the drive on Windows, and that reading stopped an ordinary deletion there as
+    // a `system` one. Both hosts come out at `null` now: the escaped dollar is
+    // a name on either of them, and the spelling is no longer read.
     expect(cDriveRuleOf("rm -rf \\$DIR/")).toBeNull();
     expect(cDriveRuleOf("rm -rf \\$DIR")).toBeNull();
     // An escaped `$` is a character, not an expansion: `\$HOME` names a
@@ -407,9 +409,14 @@ describe("findDangerousRemoval — Windows spellings", () => {
     expect(cDriveRuleOf("rm -rf $HOME")).toBe("unresolvable");
     // Quoted or not, the same escape is the same literal.
     expect(cDriveRuleOf('rm -rf "a\\$b"')).toBeNull();
-    // Only the spelling is dropped. The word still walks, so climbing out of it
-    // into a system directory is refused as the place it names.
-    expect(cDriveRuleOf("rm -rf \\$DIR/../../../../../Windows")).toBe("system");
+    // Only the spelling is dropped: the word still walks, and the walk is the
+    // host's own `path.resolve`. Climbing five levels out of the session lands
+    // on `C:\Windows` on Windows — a `system` removal of the place the argv
+    // names — and on `/Windows` on posix, which is not one of the directories that
+    // rule lists. Both verdicts are asserted rather than skipped.
+    expect(cDriveRuleOf("rm -rf \\$DIR/../../../../../Windows")).toBe(
+      WINDOWS ? "system" : null,
+    );
   });
 
   it("keeps refusing the quoted spellings that do name a system directory", () => {
