@@ -134,8 +134,10 @@ vi.mock("../../src/remote/remoteControlConfig.js", async (importOriginal) => {
   };
 });
 
-// vitest.config onConsoleLog throws on any stderr console output — commands use
-// console.error for diagnostics, so capture it (and raw writes) here.
+// Commands report diagnostics through console.error and a few raw stderr writes.
+// `silent: "passed-only"` mutes the console path only (a raw write bypasses the
+// reporter), so both are captured here; `stdoutLines` / `stderrText` read them
+// back for assertions.
 const stderrWriteSpy = vi
   .spyOn(process.stderr, "write")
   .mockImplementation(() => true);

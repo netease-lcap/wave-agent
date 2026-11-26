@@ -71,8 +71,18 @@ it("moves console.log/info/debug onto stderr when stdio mode starts", async () =
     rejection: process.listeners("unhandledRejection"),
   };
 
+  // stdio mode speaks JSON-RPC on stdout, and starting it reports the first
+  // startup stage there (`src/stdio/startupStage.ts`), so this suite owns that
+  // stream — asserting the line is what keeps it a contract instead of noise.
+  const stdoutWrite = vi
+    .spyOn(process.stdout, "write")
+    .mockImplementation(() => true);
+
   await startStdioCli();
 
+  expect(stdoutWrite).toHaveBeenCalledWith(
+    `${JSON.stringify({ method: "startupStage", params: { stage: "startingSession" } })}\n`,
+  );
   expect(startSpy).toHaveBeenCalled();
   // The three stdout-bound levels are redirected…
   expect(consoleLevel("log")).not.toBe(originalConsole.log);
@@ -81,6 +91,8 @@ it("moves console.log/info/debug onto stderr when stdio mode starts", async () =
   // …and the stderr-bound ones are left exactly as they were.
   expect(consoleLevel("error")).toBe(originalConsole.error);
   expect(consoleLevel("warn")).toBe(originalConsole.warn);
+
+  stdoutWrite.mockRestore();
 });
 
 it("forwards the redirected levels to console.error with their arguments", () => {
