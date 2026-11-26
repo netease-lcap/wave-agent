@@ -185,6 +185,19 @@ const CRITICAL_SYSTEM_DIRS: ReadonlySet<string> = new Set([
   "windows/syswow64",
 ]);
 
+/**
+ * Is this first-level name one of the system directories (`tmp`, `etc`, `Users`…)?
+ *
+ * Asked by the removal gate about a target whose first segment is a shell
+ * variable: when the variable is empty, the segment after it becomes the path's
+ * first level, so `$DIR/tmp` is `/tmp` waiting to happen. Name-based on
+ * purpose — the question is what the name means, not where this machine keeps
+ * its `tmp`, so it must not go through the drive rules.
+ */
+export function isSystemDirectoryName(name: string): boolean {
+  return CRITICAL_SYSTEM_DIRS.has(name.toLowerCase());
+}
+
 /** The path's segments below its root, `/`-normalised and empty-free. */
 function segmentsBelowRoot(resolved: string): string[] {
   const { root } = path.parse(resolved);

@@ -36,6 +36,7 @@ import {
   isFilesystemRoot,
   isHomeDirectoryPath,
   isPathAtOrAbove,
+  isSystemDirectoryName,
 } from "../pathSafety.js";
 
 /** Which rule a target broke — the message and the telemetry key hang off it. */
@@ -611,6 +612,48 @@ function scanWord(raw: string): { text: string; dynamic: boolean } {
   return { text, dynamic };
 }
 
+const LEADING_VARIABLE =
+  /^\$(?:\{([A-Za-z_][A-Za-z0-9_]*|[0-9]+|[@*#?$!])[^}]*\}|([A-Za-z_][A-Za-z0-9_]*|[0-9@*#?$!]))/;
+
+const PWD_SUBSTITUTION = /^(?:\$\(\s*pwd\s*\)|`\s*pwd\s*`)[\\/]*$/;
+
+/**
+ * Whether a dynamic target still has to be refused: the shell could land it on a
+ * root or a system directory, which is the one thing this gate exists for.
+ *
+ * A variable's name says nothing about its value, so what is kept is only the
+ * shapes where the rest of the word pins the landing place:
+ *
+ * - the variable is followed by `/` and then a glob, `$`, `/` or nothing —
+ *   `rm -rf $DIR/`, `rm -rf "$DIR"/*`. With `DIR` empty the target collapses to
+ *   the root; with it set to anything the target is still everything that
+ *   directory holds.
+ * - the variable is followed by `/` and a first-level system directory name —
+ *   `rm -rf $DIR/etc`, `rm -rf ${DIR}/tmp/*`. The same collapse, one level down.
+ * - the target is `$PWD` / `$HOME` / `$(pwd)`. These are not unknown — they are
+ *   where this session runs — so refusing them is deliberately stricter than
+ *   Claude Code, which sends them to the ordinary rules.
+ *
+ * Everything else (`rm -rf $DIR/build`, `rm -rf "$DIR"`, `rm -rf build/$DIR`)
+ * names a directory inside something this check cannot see: the ordinary
+ * permission rules still ask, and this gate stays out of the way.
+ */
+function dynamicTargetNeedsApproval(target: string): boolean {
+  const match = LEADING_VARIABLE.exec(target);
+  if (match === null) return PWD_SUBSTITUTION.test(target);
+  const name = (match[1] ?? match[2])!.toUpperCase();
+  const rest = target.slice(match[0].length);
+  // The word is the variable and nothing else: `$DIR`, `"$DIR"`.
+  if (rest === "") return name === "PWD" || name === "HOME";
+  if (!/^[\\/]/.test(rest)) return false;
+  // Everything after the first separator, minus trailing ones: `$DIR/` → "".
+  const after = rest.slice(1).replace(/[\\/]+$/, "");
+  if (after === "" || /^[*?[$\\/]/.test(after)) return true;
+  // `$DIR/../..` is not a first-level name: the walk below does that arithmetic.
+  if (after.startsWith(".")) return false;
+  return isSystemDirectoryName(after.replace(/([\\/]\*+)+\/*$/, ""));
+}
+
 /** `~` / `~/x` → the home directory, `~user/x` → `null` (unknown user). */
 function expandHome(text: string): string | null {
   if (!text.startsWith("~")) return text;
@@ -674,15 +717,15 @@ function writtenWord(rawTarget: string): string {
  * build/*` clears a directory inside the project (an ordinary, still-confirmed
  * operation), while `rm -rf /*` and `rm -rf ../*` name the root or a parent. A
  * bare `*` is the contents of the current directory — not the directory — so it
- * is not this rule's business either. A target holding a variable cannot be
- * checked in advance at all, which is Claude Code's "unresolvable" family; it is
- * reported rather than skipped, because skipping it is a documented way around
- * every static check.
+ * is not this rule's business either. A target holding a variable is reported
+ * only when it can collapse onto a root or a system directory (see
+ * {@link dynamicTargetNeedsApproval}); the rest names a directory inside
+ * something this check cannot see, so the ordinary permission rules ask.
  *
  * Two shapes are about *not knowing* rather than about the path: a glob that
  * spans more than one directory level (`logs/*`, one level deeper) and a
- * relative glob behind a `cd` this check cannot follow. Both are reported for the same reason as the
- * variable — a set nobody can enumerate is a set nobody can vouch for.
+ * relative glob behind a `cd` this check cannot follow. Both are reported
+ * because a set nobody can enumerate is a set nobody can vouch for.
  */
 function judgeTarget(
   rawTarget: string,
@@ -692,7 +735,7 @@ function judgeTarget(
   cwdUnknown = false,
 ): DangerousRemoval | null {
   const scanned = scanWord(rawTarget);
-  if (scanned.dynamic) {
+  if (scanned.dynamic && dynamicTargetNeedsApproval(scanned.text)) {
     return { rule: "unresolvable", target: rawTarget, resolved: "" };
   }
 
@@ -895,7 +938,7 @@ function judgeResolvedPath(
 export function describeDangerousRemoval(hit: DangerousRemoval): string {
   switch (hit.rule) {
     case "unresolvable":
-      return `This command deletes "${hit.target}", whose value cannot be checked before it runs. It is refused unless approved explicitly and cannot be covered by an allow rule or a bypass mode.`;
+      return `This command deletes "${hit.target}", a shell expansion that can leave the target at a root or a system directory — which cannot be checked before it runs. It needs explicit approval and cannot be covered by an allow rule or a bypass mode. Name the directory by its full path instead.`;
     case "backslash_only":
       return `This command deletes a backslash-only target ("${hit.target}"), which Git Bash reads as the drive root on Windows. It needs explicit approval and cannot be covered by an allow rule or a bypass mode. Write the directory you mean as a path, for example /c/work/build or C:/work/build.`;
     case "unplaceable":
