@@ -7588,6 +7588,16 @@
   max-width: none;
 }
 
+/* ═══ 产物卡只有按钮可点（整卡可点已撤回） ═══
+   2026-11-24 她先说「这个也做成整体可点击的」，做过一版（外层 role="button" +
+   标签降成 span + 整卡 hover 面）；2026-11-26 改判：「这里还是不允许点了，只有
+   按钮可以点」⇒ 组件回退成外层纯 div + 内层真 <button>，这里对应的整卡
+   cursor / hover 面 / 焦点环一并删掉。
+   于是卡片**没有**悬停态（它不是热区），右侧那颗按钮回到下面 1109 那组契约：
+   hover 出面 `fill-hover`、按下 `fill-pressed`、描边与字色三态不动、2px 焦点环。
+   与交付行 `.delivered-file` 的区别是语义上的：交付清单每一行本身就是一个打开
+   动作（整行是链接），产物卡只有一个动作 —— 那颗按钮。 */
+
 /* ═══ 1109 评论：产物卡「在浏览器中打开」按按钮契约收口 ═══
    设计师点 `button.message-file-card-toggle`「在浏览器中打开」：「这里要符合按钮规范，
    和按钮交互样式规范，按钮尺寸可以用第二级的」。
@@ -7744,6 +7754,88 @@
    越显得方。取 12 既与卡片同档，又把比例拉回 27.3% ≈ 原来的观感。 */
 [data-host="desktop"] .message-file-card-icon {
   border-radius: 12px;
+}
+
+/* ═══ 1124 评论：交付卡（SendUserFile）圆角与状态按族与交互规范收口 ═══
+   设计师点 `div.delivered-file`「index.html」：「这里的圆角要和 artifact 的卡片
+   保持一致，hover 色和高亮边框线等都参考规范」。
+
+   ① 圆角：产物卡 12 是 1109 那条评论定的——「对话流里带 1px 描边、有底色的块」
+      实测全是 12（markdown pre / write-preview-box / diff-viewer-container /
+      mermaid-renderer / table / 产物卡）。交付卡同样是 1px 描边 + 底色的块，
+      base 却给 6（Message.css:1542），是这一族里第二个例外 ⇒ 对齐 12。
+      只落桌面端：IDE 端这一族本来就是 base 的 6。
+
+   ② 状态：改前 base（Message.css:1547）只有一条 `:hover`——底换
+      `--vscode-list-hoverBackground`、**描边换成 `--vscode-focusBorder`**
+      （浅色 #1F2329 近黑、深色 #A0A5A8），既没有按下态，键盘焦点也落浏览器
+      UA 的 `1px auto` 蓝环。按交互契约收口（common-components.md「Secondary
+      (outlined)」/「Text / icon」两行：hover 出面、pressed 更实一档、描边与
+      字色在三个状态里都不动；「Focus-visible remains distinct from
+      selection」⇒ 2px 焦点环外扩 2px），与同族已收口的
+      `.message-file-card-toggle`（1109）、`.background-task-stop`（1111）逐条
+      同构：
+        · 静止：`--cc-border` 描边；
+        · hover / 按下：两条**逐值相同** —— 底 `--cc-fill-hover`、描边浅
+          #A8ADB4 / 深 #626A6F；
+        · focus-visible：2px `--cc-border-focus`，外扩 2px。
+      改前 hover 那条「描边变近黑」正是这次要去掉的：hover 只该出面，亮边框是
+      焦点态的语义，两档混用会让普通悬停看起来像被选中。
+
+      第二轮（同上一条评论，看了前两版之后）：「描边现在看不出来，可以参考
+      `label.option-item` 这里的描边颜色，然后 hover 和按下，现在颜色不一致，
+      希望是一致的，hover 色就可以。」⇒ 静止描边取它的 rest 档
+      （`--cc-border`，浅 #DCDFE6 / 深 #414649），hover 与按下**逐值相同**、
+      合并成一档底色 `--cc-fill-hover`（原来按下是 `--cc-fill-pressed`，正是她说
+      「不一致」的那处）。
+
+      第三轮（点 `div.delivered-files`「1124 走查产物（报告 / 截图 / 待回写
+      清单）…」）：「这里也保持一致」——指当时产物卡刚定下的两条：**hover 不亮
+      描边**、底色吃侧栏导航面那颗按钮的配方（浅 `--cc-fill-hover` / 深 8% 白，
+      host-desktop.css:1027 的 0916 裁决）。于是把第二轮那两条描边提档
+      （浅 #A8ADB4 / 深 #626A6F）整段删掉：描边三态恒等 = `--cc-border`，
+      hover / 按下只出面；深色底色从 `--cc-fill-hover`(#303436，12% 一档)
+      换成 8% 白（合成 #2C2D2E），也就与「选中」拉开一档。
+      （产物卡 2026-11-26 又改判成「只有按钮可点」、整卡不再有 hover 态；交付
+      清单每一行本身就是一个打开动作，这条交互口径在它身上继续成立。）
+
+   ③ 不可点档（`--plain`，桌面 SSH 会话里 kind=other 的文件）保持静止：
+      base 已把它的 `:hover` 还原成 rest，上面的 `:hover` 特异性更高会把还原
+      覆盖掉，所以这里显式再压一次。 */
+[data-host="desktop"] .delivered-file {
+  border-radius: 12px;
+  border-color: var(--cc-border, #dcdfe6);
+}
+
+[data-host="desktop"] .delivered-file:hover,
+[data-host="desktop"] .delivered-file:active {
+  background: var(--cc-fill-hover, #eef0f3);
+  /* 显式钉住 rest 值：base（Message.css:1547）那条 `:hover` 把描边换成
+     `--vscode-focusBorder`（浅 #1F2329 / 深 #A0A5A8），删掉提档后它会露出来，
+     hover 就又亮一道边——三态恒等的写法必须把这一档按回 `--cc-border`。 */
+  border-color: var(--cc-border, #dcdfe6);
+}
+
+/* 深色底色与侧栏「导航面」hover 同一配方（8% 白）。`:not(--plain)` 是为了不
+   盖掉下面那条不可点档的静止还原。 */
+[data-host="desktop"][data-theme="dark"]
+  .delivered-file:not(.delivered-file--plain):hover,
+[data-host="desktop"][data-theme="dark"]
+  .delivered-file:not(.delivered-file--plain):active {
+  background: rgb(255 255 255 / 8%);
+}
+
+[data-host="desktop"] .delivered-file:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #2f5edb);
+  outline-offset: 2px;
+}
+
+[data-host="desktop"] .delivered-file--plain,
+[data-host="desktop"] .delivered-file--plain:hover,
+[data-host="desktop"] .delivered-file--plain:active {
+  border-color: var(--cc-border, #dcdfe6);
+  background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.1));
+  cursor: default;
 }
 
 /* ═══ 1110 评论：代码块复制键对齐「预览面板工具条图标键」 ═══
