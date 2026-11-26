@@ -168,6 +168,36 @@ describe("replTool description", () => {
     expect(description()).toMatch(/inside the script are essentially free/);
   });
 
+  it("says the language is JavaScript, whatever the codebase is", () => {
+    // Claude Code's REPL description carries this line, and it is the only one in
+    // either prompt that heads off an `as any` written by a model working in a
+    // TypeScript repo: the declarations announcement is a TypeScript block,
+    // `describeTool` answers in TypeScript, and the parse-error notes name only
+    // the backtick and triple-quote traps, never a type.
+    expect(description()).toContain(
+      "The REPL language is always JavaScript, whatever the codebase is written in",
+    );
+    expect(description()).toContain("no type annotations or `as` casts");
+    // The lean tier is the default one, so it carries the same constraint.
+    expect(String(replTool.leanPrompt)).toContain(
+      "always JavaScript, whatever the codebase is written in",
+    );
+  });
+
+  it("states top-level await, the sealed context and the variable cache", () => {
+    // Same paragraph of Claude Code's description, same three facts: the sandbox
+    // really has no process / require / module (typeof each is undefined), and
+    // keeping a result in a variable is what the persistence is for.
+    expect(description()).toContain("Top-level `await` works");
+    expect(description()).toContain(
+      "there is no `import`, `require` or `process`",
+    );
+    expect(description()).toContain("Keep results in variables");
+    const lean = String(replTool.leanPrompt);
+    expect(lean).toContain("Top-level `await` works");
+    expect(lean).toContain("There is no `import`, `require` or `process`");
+  });
+
   it("never names a tool the default configuration keeps out of the pool", () => {
     // enableReplCoreTools defaults to off, so Read is flat-only: an example like
     // `await tools.Read({...})` teaches a call that throws in a script (spec: the
