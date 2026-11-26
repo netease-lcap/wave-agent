@@ -18,7 +18,7 @@
  *      取值，打包器也能把整张图摇掉（实测 2.16 MB → 9.7 KB）。
  *
  * 用法：先 `pnpm -F wave-agent-sdk build`，再 `node scripts/check-sdk-surface.mjs`
- * （CI 见 ci.yml 的 sdk-surface job）。dist 缺失即失败，不静默跳过。
+ * （CI 见 ci.yml 的 check-extras job）。dist 缺失即失败，不静默跳过。
  */
 import { execFileSync } from "node:child_process";
 import {
