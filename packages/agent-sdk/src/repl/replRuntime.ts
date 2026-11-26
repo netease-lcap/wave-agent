@@ -1349,7 +1349,18 @@ async function answerShellCall(
     truncated: persisted !== undefined,
     command: commandText,
   };
-  if (persisted) answer.file = persisted.filePath;
+  if (persisted) {
+    answer.file = persisted.filePath;
+    // `preview($result)` shows this above the first screen: `stdout` carries only
+    // the start of a persisted output, so a preview has to say how much there was
+    // and where the rest went. Claude Code sends the same header (its
+    // `savedOutput: { header, after }`). Characters, not bytes: our spill record
+    // counts characters, and a made-up byte count would be worse than none.
+    answer.savedOutput = {
+      header: `Output too large (${persisted.totalChars} characters). Full output saved to: ${persisted.filePath}`,
+      after: "",
+    };
+  }
   if (note !== undefined) answer.note = note;
   // Not folded into `output`: the note is about where the *next* command will
   // run, not about what this one printed, and an empty command that moved the

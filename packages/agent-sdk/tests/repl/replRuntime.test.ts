@@ -983,6 +983,7 @@ describe("$ — the shell template", () => {
       const out = await $\`cat big.log\`;
       self.log(String(out.truncated), out.file, "file" in out);
       self.log(out.stdout);
+      self.log(preview(out));
       return out.output === out.stdout ? "same" : "differs";
     `,
     );
@@ -991,6 +992,11 @@ describe("$ — the shell template", () => {
     // The wrapper is Bash's own message; the script gets its two facts as fields.
     expect(result.logs[0]).toBe(`true ${filePath} true`);
     expect(result.logs[1]).toBe("first line\nsecond line\n...");
+    // The host hands the script a size-and-path header, so a preview of a saved
+    // output still says where the rest went.
+    expect(result.logs[2]).toBe(
+      `Output too large (42000 characters). Full output saved to: ${filePath}\n\nfirst line\nsecond line\n...`,
+    );
     expect(result.value).toBe("same");
   });
 

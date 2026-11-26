@@ -637,6 +637,43 @@ describe("repl sandbox: $ and preview", () => {
     );
     expect(custom.value).toBe(`${"y".repeat(10)}…[+40 chars]`);
   });
+
+  it("previews undefined and null as empty text", async () => {
+    const sandbox = open();
+    const result = await sandbox.run(
+      'return preview(undefined) + "|" + preview(null)',
+      opts(),
+    );
+    expect(result.value).toBe("|");
+  });
+
+  it("previews a saved shell result with its header first", async () => {
+    const header =
+      "Output too large (42000 characters). Full output saved to: /tmp/spill.txt";
+    const host = makeHost({
+      shell: () => ({
+        stdout: "line one\nline two\n",
+        stderr: "",
+        exitCode: 0,
+        truncated: true,
+        file: "/tmp/spill.txt",
+        savedOutput: { header, after: "" },
+      }),
+    });
+    const sandbox = open(host);
+
+    const whole = await sandbox.run(
+      "return preview(await $`cat big.log`)",
+      opts(),
+    );
+    expect(whole.value).toBe(`${header}\n\nline one\nline two`);
+
+    const cut = await sandbox.run(
+      "return preview(await $`cat big.log`, 10)",
+      opts(),
+    );
+    expect(cut.value).toBe(`${header}\n\nline one\n...`);
+  });
 });
 
 describe("repl sandbox: termination", () => {
