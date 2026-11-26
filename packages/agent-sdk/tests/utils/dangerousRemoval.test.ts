@@ -93,6 +93,7 @@ beforeEach(() => {
 describe("findDangerousRemoval — targets that end the session", () => {
   it("refuses the working directory itself", () => {
     expect(ruleOf("rm -rf .")).toBe("working_directory");
+    expect(ruleOf('rm -rf "."')).toBe("working_directory");
     expect(ruleOf(`rm -rf ${commandPath(WORKDIR)}`)).toBe("working_directory");
     expect(ruleOf(`rm -rf '${commandPath(WORKDIR)}'`)).toBe(
       "working_directory",
@@ -321,6 +322,8 @@ describe("findDangerousRemoval — Windows spellings", () => {
   it("refuses a backslash-only target", () => {
     // `rm -rf \` is the drive root in Git Bash, written with one character.
     expect(windowsRuleOf("rm -rf \\")).toBe("backslash_only");
+    // No flags at all is the same target: the word is the whole line.
+    expect(windowsRuleOf("rm \\")).toBe("backslash_only");
     expect(windowsRuleOf("rm -rf '\\'")).toBe("backslash_only");
     expect(windowsRuleOf("rm -rf \\\\")).toBe("backslash_only");
     // On POSIX a lone backslash is just an odd name, not the root.
@@ -366,6 +369,34 @@ describe("findDangerousRemoval — Windows spellings", () => {
     // `E:/code/myrepo`; unquoted, it was the drive-relative `E:codemyrepo`
     // above. Reading the quoted form as unplaceable stopped ordinary deletions.
     expect(windowsRuleOf('rm -rf "E:\\code\\myrepo"')).toBeNull();
+  });
+
+  it("reads an escaped dollar inside double quotes as a literal name", () => {
+    // \`\\$\` inside double quotes is a literal \`$\`, so this removes the ordinary
+    // directory \`$DIR\` inside the session directory. Judged by the spelling as
+    // written as well — backslash kept, escapes unresolved — it read as \`\\$DIR\`,
+    // which \`path.resolve\` turns into the drive's own top-level directory, and
+    // the command was stopped as a \`system\` removal of a place it never names.
+    expect(cDriveRuleOf('rm -rf "\\$DIR/"')).toBeNull();
+    expect(cDriveRuleOf('rm -rf "\\$DIR"')).toBeNull();
+    // Unescaped, the same word is a variable, and \`$DIR/\` with \`DIR\` empty is the
+    // root: unchanged, that one is this gate's business.
+    expect(cDriveRuleOf('rm -rf "$DIR/"')).toBe("unresolvable");
+  });
+
+  it("keeps refusing the quoted spellings that do name a system directory", () => {
+    // The boundary of the case above: dropping the spelling as written must not
+    // drop the quoted word that really does land on a first-level directory of
+    // a drive. Off Windows \`restoreWindowsPath\` leaves the word alone and
+    // \`path.resolve\` makes it a name inside the session, so only the Windows half
+    // reaches the system directory — both verdicts are asserted.
+    expect(cDriveRuleOf('rm -rf "C:\\Windows"')).toBe(
+      WINDOWS ? "system" : null,
+    );
+    // Unquoted, the same word reaches \`rm\` as the drive-relative \`C:Windows\`,
+    // which is "where it lands is unknown" rather than a directory this check
+    // can name.
+    expect(cDriveRuleOf("rm -rf C:\\Windows")).toBe("unplaceable");
   });
 
   it("allows the double-quoted backslash paths sessions delete", () => {

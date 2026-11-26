@@ -719,14 +719,24 @@ function isWindowsUnplaceablePath(target: string, platform: NodeJS.Platform) {
 /**
  * The target as it was written, minus one layer of surrounding quotes.
  *
- * Needed next to {@link scanWord} because the two are not the same string: the
- * shell eats `\c` in `E:\code\myrepo` (`E:codemyrepo`, a drive-relative path)
- * but not in `"E:\code\myrepo"`. Both spellings are judged, and either one
- * hitting is enough.
+ * Not the same string as {@link scanWord}'s reading: the shell eats `\c` in
+ * `E:\code\myrepo` (`E:codemyrepo`, a drive-relative path) but not in
+ * `"E:\code\myrepo"`. It is read on its own by the three judgments that are
+ * about the spelling rather than about the argv — the `\\?\` prefix, a
+ * backslash-only target, and whether a glob behind an unfollowable `cd` names
+ * an absolute place — and it is judged next to the argv only for a word with no
+ * quotes in it (see {@link judgeTarget}).
  */
 function writtenWord(rawTarget: string): string {
   return rawTarget.replace(/^(["'])([\s\S]*)\1$/, "$2");
 }
+
+/**
+ * A word with no quoting in it at all — the one shape where the spelling and the
+ * argv differ in a way worth judging twice, because every `\c` there is an
+ * escape the shell resolves as it reads the word.
+ */
+const UNQUOTED_WORD = /^[^"']+$/;
 
 /**
  * Judge one removal target.
@@ -817,10 +827,20 @@ function judgeTarget(
   }
 
   // Every spelling of the same target that could reach the filesystem: what the
-  // shell will pass, and what was written. Judged in that order so the message
+  // shell will pass, and — for a word with no quotes in it — what was written.
+  // Unquoted, the pair is real: every `\c` is an escape, so `E:\code\myrepo`
+  // arrives as the drive-relative `E:codemyrepo`, a place of its own. Inside
+  // quotes {@link scanWord} has already resolved those escapes, so a second
+  // reading there names a path nobody deletes: `rm -rf "\$DIR/"` removes the
+  // directory `$DIR` in the current one, while the backslash kept as written
+  // reads as `\$DIR` — the drive's own top-level directory, and a `system` card
+  // for a directory the command never names. Judged in that order so the message
   // names the one that is actually deleted.
+  const writtenSpelling = UNQUOTED_WORD.test(rawTarget)
+    ? (expandHome(written) ?? written)
+    : null;
   const spellings = [
-    verbatim ?? expandHome(written) ?? written,
+    verbatim ?? writtenSpelling ?? scanned.text,
     expanded,
   ].filter((spelling) => spelling.length > 0);
 
