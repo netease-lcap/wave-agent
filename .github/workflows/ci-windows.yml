@@ -1,47 +1,43 @@
 name: CI (Windows)
 
-# Windows compatibility check — non-blocking, post-merge only.
-# Runs after changes merge to main (path-filtered) plus on manual dispatch; it is
-# NOT a required status check and does NOT gate PRs. Windows path/spawn breakage
-# is therefore caught right after merge, not before it — an accepted tradeoff.
+# Windows compatibility check — a required PR gate, and the only place the
+# desktop package runs on Windows.
 #
 # Triggers:
-#   - push → main: path-filtered (subprocess spawning, fs, .cmd/.exe resolution),
-#     i.e. only for merged changes that touch the platform-specific code paths.
+#   - pull_request → main / develop: gated *inside* each job by
+#     dorny/paths-filter, deliberately not by a paths filter on the trigger
+#     (see the trap below).
 #   - workflow_dispatch: manual runs from the Actions tab.
+#   - No push: a PR run already validated the tree that lands (squash and
+#     merge-commit merges keep the files the PR head had), so re-running after
+#     merge would burn five Windows runners per merge and add no coverage. The
+#     push → main trigger existed only while this workflow was non-blocking.
 #
-# History: #2538 briefly made this a required PR gate (ruleset "pr protection",
-# id 9205973, carried `check-windows` alongside the Linux `check` jobs). It was
-# reverted because a single run takes ~6m25s and every PR paid that latency for
-# coverage that only matters on Windows; PR latency stays with the Linux jobs.
+# Trap — never move the filter back onto the trigger. A workflow-level paths
+# filter does not skip jobs, it skips the whole workflow, so no check run is
+# created for that head sha. For a required context, "no check run" is
+# indistinguishable from "still running": the PR sits in "Expected — waiting for
+# status to be reported" and can never merge. Filtering inside the job keeps one
+# check run per leg on a doc-only PR (green, ~10s, nothing to do), which is far
+# cheaper than a PR that is stuck shut.
 #
-# If the PR gate is ever restored, its `pull_request` trigger must NOT carry a
-# `paths` filter: a workflow-level `paths` filter does not just skip jobs — it
-# skips the whole workflow, so no check run is created for that head sha. For a
-# required context, "no check run" is indistinguishable from "still running": the
-# PR sits in "Expected — waiting for status to be reported" and can never merge.
-# Paying one extra Windows run on a doc-only PR is much cheaper than a PR that is
-# stuck shut. (The `push` trigger keeps its filter; it gates nothing.)
+# Required status checks to add to ruleset "pr protection" (9205973) — this
+# workflow contributes none today:
+#   check-windows (agent-sdk, 1)   check-windows (agent-sdk, 2)
+#   check-windows (code, 1)        check-windows (code, 2)
+#   check-windows-small
 #
-# This is the only job that runs the desktop package on Windows: its mocked
-# unit layer plus its real-host layer (Linux runs both in `check-extras`, via
-# `wave-desktop test`). The real-host layer drives a real
-# DesktopHost spawning a real `wave --stdio` child process — exactly the
-# spawning/fs/.cmd surface that differs on Windows, so the two platforms are
-# complementary rather than duplicates.
+# History: #2538 briefly made this a required PR gate and reverted it — back
+# then a single serial job took ~6m25s, and every PR paid that latency for
+# coverage that only matters on Windows. What changed since: the four test
+# invocations that used to be chained with && in one step are now five parallel
+# legs (~2m wall clock), and the Linux critical path is webview-e2e at ~176s — so
+# the longest Windows leg (~126s) sits under the ceiling the PR already pays for
+# and does not extend PR latency.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "packages/agent-sdk/**"
-      - "packages/code/**"
-      - "packages/vscode/**"
-      - "packages/desktop/**"
-      - "packages/webview-fixtures/**"
-      - "pnpm-lock.yaml"
-      - "package.json"
-      - ".github/workflows/ci-windows.yml"
+  pull_request:
+    branches: [main, develop]
   workflow_dispatch:
 
 concurrency:
@@ -51,9 +47,43 @@ concurrency:
 jobs:
   check-windows:
     runs-on: windows-latest
+    # Two packages × two shards: the only packages whose Windows suite is long
+    # enough to be this workflow's wall clock on its own (sdk ≈138s, code ≈78s).
+    # Every leg pays ≈57s of fixed setup (checkout 7s + node 22s + install 13s +
+    # build 5s), so sharding is the only thing left that shortens them — ≈69s and
+    # ≈39s of tests per shard, ≈126s and ≈96s per leg, both under the Linux
+    # ceiling.
+    #
+    # The two small packages are deliberately NOT in this matrix: neither can
+    # reach the ceiling, so check-windows-small below carries both on one runner
+    # instead of two runners paying ~57s each for a ~42s and a ~3s suite.
+    #
+    # fail-fast: false — one red leg must not throw away the other four results;
+    # with five legs the page should say which platforms failed, all at once.
+    strategy:
+      fail-fast: false
+      matrix:
+        pkg: [agent-sdk, code]
+        shard: [1, 2]
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+
+      - name: Detect Windows-relevant changes
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            win:
+              - 'packages/agent-sdk/**'
+              - 'packages/code/**'
+              - 'packages/vscode/**'
+              - 'packages/desktop/**'
+              - 'packages/webview-fixtures/**'
+              - 'pnpm-lock.yaml'
+              - 'package.json'
+              - '.github/workflows/ci-windows.yml'
+              - '!**/*.md'
 
       # Cache pnpm/action-setup's install dir so jobs skip re-downloading the
       # action tarball from codeload (429 rate limits, pnpm/action-setup#177).
@@ -61,6 +91,7 @@ jobs:
       # The key pins the pnpm version — keep it in sync with the `version`
       # input below (package.json "packageManager").
       - name: Cache pnpm install
+        if: steps.filter.outputs.win == 'true'
         id: pnpm-cache
         uses: actions/cache@v6
         with:
@@ -68,7 +99,7 @@ jobs:
           key: pnpm-setup-v5-${{ runner.os }}-${{ runner.arch }}-12.18.0
 
       - name: Add cached pnpm to PATH
-        if: steps.pnpm-cache.outputs.cache-hit == 'true'
+        if: steps.filter.outputs.win == 'true' && steps.pnpm-cache.outputs.cache-hit == 'true'
         shell: bash
         run: |
           # Mirror pnpm/action-setup's env: node_modules/.bin/bin holds the
@@ -86,7 +117,7 @@ jobs:
           echo "PNPM_HOME=$PNPM_HOME" >> "$GITHUB_ENV"
 
       - name: Setup pnpm (cache miss)
-        if: steps.pnpm-cache.outputs.cache-hit != 'true'
+        if: steps.filter.outputs.win == 'true' && steps.pnpm-cache.outputs.cache-hit != 'true'
         uses: pnpm/action-setup@v5
         with:
           version: 12.18.0
@@ -94,53 +125,138 @@ jobs:
           run_install: false
 
       - name: Setup Node.js
+        if: steps.filter.outputs.win == 'true'
         uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
 
       - name: Install dependencies
+        if: steps.filter.outputs.win == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Build
+        if: steps.filter.outputs.win == 'true'
         run: pnpm build
 
-      # Run tests WITHOUT type-check or lint on Windows.
-      # Type-check & lint are platform-agnostic (identical result on Linux) and
-      # already enforced by the blocking Linux CI. Skipping them here saves ~40s
-      # of redundant work — the only purpose of this Windows workflow is to
-      # verify the tests themselves pass cross-platform.
+      # Run tests WITHOUT type-check or lint on Windows: both are
+      # platform-agnostic (identical result on Linux) and already enforced by the
+      # blocking Linux CI, so they would add ~40s of redundant work per leg. The
+      # only purpose of this workflow is whether the tests themselves pass
+      # cross-platform.
       #
-      # Tests are invoked per-package via `pnpm --filter <pkg> exec vitest run`
-      # rather than `pnpm -r test`, so the list below selects exactly the
-      # platform-sensitive packages described in the two paragraphs that follow.
+      # `pnpm --filter <pkg> exec vitest run` rather than `pnpm -r test` so each
+      # leg selects exactly the platform-sensitive package it was cut for.
       #
-      # Only packages with platform-specific code paths (subprocess spawning,
-      # fs, .cmd/.exe resolution) are run here — these are the paths that can
-      # actually regress on Windows. wave-webview is omitted: its suite is React
-      # component + reducer logic with no OS contact (no process.platform / fs /
+      # Only packages with platform-specific code paths (subprocess spawning, fs,
+      # .cmd/.exe resolution) run here — these are the paths that can actually
+      # regress on Windows. wave-webview is omitted: its suite is React component
+      # + reducer logic with no OS contact (no process.platform / fs /
       # child_process anywhere in tests/ or src/), so it produces identical
-      # results on both platforms. It does run in a real Chromium (vitest
-      # browser mode) now, but the blocking Linux `check` job installs that
-      # browser and covers the suite — re-downloading it here would buy no
-      # platform-specific coverage.
+      # results on both platforms. It does run in a real Chromium (vitest browser
+      # mode) now, but the blocking Linux check job installs that browser and
+      # covers the suite — re-downloading it here would buy no platform-specific
+      # coverage.
       #
-      # wave-desktop IS included — it is the most platform-sensitive package in
-      # the repo: its main process spawns the CLI child process and resolves
-      # .cmd/.exe shims, which is exactly the surface that differs on Windows.
-      # (check-extras runs this same suite on Linux; here it gets the Windows
-      # half of the matrix.)
-      #
-      # `vitest run` in wave-desktop covers BOTH of its projects: the mocked
-      # unit layer and the real-host layer — real DesktopHost + real
-      # `wave --stdio` child process + a throwaway local model server (no LLM,
-      # no display: the Electron shell is stubbed by the suite). The real-host
-      # layer needs the full build above, since it drives the workspace CLI from
-      # packages/code/dist. It used to be a second step here; one invocation of
-      # `vitest run` replaces it without changing what runs.
-      - name: Tests
+      # Shards are split by file, so 1/2 + 2/2 together are the same suite as one
+      # leg at half the wall clock.
+      - name: Tests (${{ matrix.pkg }}, shard ${{ matrix.shard }}/2)
+        if: steps.filter.outputs.win == 'true'
+        run: pnpm --filter wave-${{ matrix.pkg }} exec vitest run --shard=${{ matrix.shard }}/2
+
+  check-windows-small:
+    runs-on: windows-latest
+    # desktop + vscode on one runner: ≈42s and ≈3s, neither anywhere near the
+    # ~126s ceiling the sharded legs set, so this leg never becomes the wall
+    # clock — it only has to exist. Two runners would pay ~57s of setup each for
+    # ~45s of tests.
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Detect Windows-relevant changes
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            win:
+              - 'packages/agent-sdk/**'
+              - 'packages/code/**'
+              - 'packages/vscode/**'
+              - 'packages/desktop/**'
+              - 'packages/webview-fixtures/**'
+              - 'pnpm-lock.yaml'
+              - 'package.json'
+              - '.github/workflows/ci-windows.yml'
+              - '!**/*.md'
+
+      # Cache pnpm/action-setup's install dir so jobs skip re-downloading the
+      # action tarball from codeload (429 rate limits, pnpm/action-setup#177).
+      # On hit we skip the action and prepend its bin dirs to PATH ourselves.
+      # The key pins the pnpm version — keep it in sync with the `version`
+      # input below (package.json "packageManager").
+      - name: Cache pnpm install
+        if: steps.filter.outputs.win == 'true'
+        id: pnpm-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/setup-pnpm
+          key: pnpm-setup-v5-${{ runner.os }}-${{ runner.arch }}-12.18.0
+
+      - name: Add cached pnpm to PATH
+        if: steps.filter.outputs.win == 'true' && steps.pnpm-cache.outputs.cache-hit == 'true'
+        shell: bash
         run: |
-          pnpm --filter wave-agent-sdk exec vitest run &&
-          pnpm --filter wave-code exec vitest run &&
-          pnpm --filter wave-vscode exec vitest run &&
-          pnpm --filter wave-desktop exec vitest run
+          # Mirror pnpm/action-setup's env: node_modules/.bin/bin holds the
+          # self-updated target version (higher precedence), node_modules/.bin
+          # the bootstrap symlink. GITHUB_PATH is used verbatim, so write
+          # native Windows paths on Windows runners.
+          PNPM_HOME="${USERPROFILE:-$HOME}/.cache/setup-pnpm/node_modules/.bin"
+          PNPM_BIN="$PNPM_HOME/bin"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            PNPM_HOME="${PNPM_HOME//\//\\}"
+            PNPM_BIN="${PNPM_BIN//\//\\}"
+          fi
+          echo "$PNPM_HOME" >> "$GITHUB_PATH"
+          echo "$PNPM_BIN" >> "$GITHUB_PATH"
+          echo "PNPM_HOME=$PNPM_HOME" >> "$GITHUB_ENV"
+
+      - name: Setup pnpm (cache miss)
+        if: steps.filter.outputs.win == 'true' && steps.pnpm-cache.outputs.cache-hit != 'true'
+        uses: pnpm/action-setup@v5
+        with:
+          version: 12.18.0
+          dest: ~/.cache/setup-pnpm
+          run_install: false
+
+      - name: Setup Node.js
+        if: steps.filter.outputs.win == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        if: steps.filter.outputs.win == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        if: steps.filter.outputs.win == 'true'
+        run: pnpm build
+
+      # wave-desktop IS the most platform-sensitive package in the repo: its main
+      # process spawns the CLI child process and resolves .cmd/.exe shims, which
+      # is exactly the surface that differs on Windows. Its `vitest run` covers
+      # BOTH of its projects: the mocked unit layer and the real-host layer (real
+      # DesktopHost + real `wave --stdio` child process + a throwaway local model
+      # server; no LLM, no display — the Electron shell is stubbed by the suite).
+      # The real-host layer needs the full build above, since it drives the
+      # workspace CLI from packages/code/dist.
+      #
+      # --workspace-concurrency=1 is what keeps the two packages sequential:
+      # `pnpm --filter A --filter B exec` runs them in parallel by default, and
+      # racing vscode's ~20 files against real `wave --stdio` children for the
+      # runner's 4 vCPUs to save ~3s is a bad trade.
+      - name: Tests (desktop + vscode)
+        if: steps.filter.outputs.win == 'true'
+        run: pnpm --filter wave-desktop --filter wave-vscode --workspace-concurrency=1 exec vitest run
