@@ -110,7 +110,12 @@ export interface NotificationLike {
 export interface NotificationOptions {
   title: string;
   body: string;
-  icon: string;
+  /**
+   * 通知图标。**macOS 上不给**（理由见 `post`）：那边系统按 app bundle 自己画
+   * app icon，传进来的这张只会被包成附件塞进内容，屏幕上出现两个 logo。其余
+   * 平台照传 —— 那里它才是横幅上真正的图标。
+   */
+  icon?: string;
   /** 提示音关着时静音（spec 故事 3 场景 5；Electron `silent`）。 */
   silent: boolean;
 }
@@ -365,27 +370,32 @@ export class NotificationService {
     // 「后到者更新内容」只能撤掉旧的再建一条，屏幕上始终只有一条。
     this.retract(request.session);
     const key = sessionKey(request.session);
+    const options: NotificationOptions = {
+      title: request.title,
+      body: request.body,
+      silent: !this.deps.getSound(),
+    };
+    // macOS 上不传 icon。Electron 在 macOS 不把 `icon` 当 app icon：它把图写成
+    // 临时 PNG、包成 `UNNotificationAttachment` 塞进 `content.attachments`
+    // （`shell/browser/notifications/mac/cocoa_notification.mm`），左边那个 app
+    // icon 另由系统按 bundle 画 —— 于是同一张图在横幅里出现两次。win32 / linux
+    // 的 icon 就是横幅图标本身，行为不变。
+    if (process.platform !== "darwin") {
+      options.icon = this.deps.iconPath ?? defaultIconPath();
+    }
     const notification = (
       this.deps.createNotification ?? defaultCreateNotification
-    )(
-      {
-        title: request.title,
-        body: request.body,
-        icon: this.deps.iconPath ?? defaultIconPath(),
-        silent: !this.deps.getSound(),
-      },
-      () => {
-        // 点击：通知的使命已经完成（用户回来了），先撤掉自己再唤起窗口；
-        // 定位会话交给调用方（既有 focusSession 链路）。只撤自己 —— 同一
-        // 会话可能已经换成后到的那条，别把别人的通知关掉。只撤屏上这条、
-        // 不动角标：点击只是把人叫回来，确认还没答。
-        if (this.active.get(key)?.notification === notification) {
-          this.retract(request.session);
-        }
-        revealWindow(this.deps.getWindow());
-        request.onClick?.();
-      },
-    );
+    )(options, () => {
+      // 点击：通知的使命已经完成（用户回来了），先撤掉自己再唤起窗口；
+      // 定位会话交给调用方（既有 focusSession 链路）。只撤自己 —— 同一
+      // 会话可能已经换成后到的那条，别把别人的通知关掉。只撤屏上这条、
+      // 不动角标：点击只是把人叫回来，确认还没答。
+      if (this.active.get(key)?.notification === notification) {
+        this.retract(request.session);
+      }
+      revealWindow(this.deps.getWindow());
+      request.onClick?.();
+    });
     this.active.set(key, { session: request.session, channel, notification });
     notification.show();
     return true;

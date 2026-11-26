@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, type Mock } from "vitest";
+import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import * as path from "path";
 import { Notification } from "electron";
 import {
@@ -241,6 +241,70 @@ describe("NotificationService", () => {
       });
       expect(service.notifyConfirmation(request())).toBe(false);
       expect(notificationMock.__instances()).toHaveLength(0);
+    });
+  });
+
+  // macOS 上系统按 app bundle 自己画横幅左边那个 app icon，而 Electron 的
+  // `icon` 在那边不是 app icon —— 它被写成临时 PNG 包成 `UNNotificationAttachment`
+  // 塞进内容，于是同一张图出现两次。所以 darwin 不传 icon，其余平台照传。
+  // 用例成对：先证明源里本来带 icon，再证明 darwin 分支把它拿掉了（只测「没有
+  // icon」是空转，拿掉平台判断也不会红）。
+  describe("notification icon (macOS draws its own app icon)", () => {
+    const realPlatform = process.platform;
+    /** 钉住 `process.platform`：`post()` 现读它，所以钉在发通知之前即可。 */
+    const pinPlatform = (value: NodeJS.Platform) =>
+      Object.defineProperty(process, "platform", {
+        value,
+        configurable: true,
+      });
+    afterEach(() =>
+      Object.defineProperty(process, "platform", {
+        value: realPlatform,
+        configurable: true,
+      }),
+    );
+
+    it("passes the icon on win32 / linux (the banner shows it)", () => {
+      for (const platform of ["win32", "linux"] as const) {
+        pinPlatform(platform);
+        const { service, factory } = makeService({
+          window: { focused: false },
+        });
+        expect(service.notifyConfirmation(request())).toBe(true);
+        expect(factory.created[0].options.icon).toBe("/fake/icon.png");
+      }
+    });
+
+    it("omits the icon on darwin, and only the icon", () => {
+      pinPlatform("darwin");
+      const { service, factory } = makeService({ window: { focused: false } });
+      expect(service.notifyConfirmation(request())).toBe(true);
+      // title / body / silent 一个不动 —— 少的只能是 icon 这一个字段。
+      expect(factory.created[0].options).toEqual({
+        title: "任务A",
+        body: "命令执行待确认：pnpm test",
+        silent: false,
+      });
+      expect(factory.created[0].options).not.toHaveProperty("icon");
+    });
+
+    it("does not fall back to the shipped icon on darwin either", () => {
+      pinPlatform("darwin");
+      // 没有 iconPath 覆盖时走 `defaultIconPath()`：那条路在 darwin 上一并不走，
+      // 别只把「覆盖值」拦掉、默认值又溜进来。
+      const { service, factory } = makeService({
+        window: { focused: false },
+        deps: { iconPath: undefined },
+      });
+      expect(service.notifyConfirmation(request())).toBe(true);
+      expect(factory.created[0].options).not.toHaveProperty("icon");
+    });
+
+    it("omits it for a finished-turn notification too (same post path)", () => {
+      pinPlatform("darwin");
+      const { service, factory } = makeService({ window: { focused: false } });
+      expect(service.notifyTurnEnd(turnEnd())).toBe(true);
+      expect(factory.created[0].options).not.toHaveProperty("icon");
     });
   });
 
