@@ -592,6 +592,34 @@ export function sliceFromLastCompact(messages: Message[]): Message[] {
 }
 
 /**
+ * 剥掉「压缩前那批响应」留在上下文里的 `usage`（摘要块自己的保留）。
+ *
+ * 折表后列表是 `[摘要, ...保留轮次]`，那些保留轮次是压缩前发出的请求产出的，
+ * 它们的 `usage.total_tokens` 量的是**已经折掉的历史**。留在列表上，请求前估算
+ * （`estimateContextTokens`）、用量环（`latestTotalTokens`）与会话列表都会把它
+ * 当成「现在的上下文有多大」——真机上压缩完环仍是 100%，下一次输入又触发一次
+ * 自动压缩（spec `core/message-compact.md` 场景 6）。
+ *
+ * 折表（`compactMessagesAndUpdateSession`）与恢复（`initializeFromSession`）都要
+ * 过一遍：恢复时这些 usage 还在转录里，切片切得掉消息、切不掉数字。摘要块自身
+ * 的 usage 保留 —— 那是「压缩这次调用」的记账，扫描规则（只认边界之后）已经把它
+ * 排除在上下文口径之外。
+ */
+export function withoutPreCompactionUsage(messages: Message[]): Message[] {
+  return messages.map((message) => {
+    if (
+      !message.usage ||
+      message.blocks?.some((block) => block.type === "compact")
+    ) {
+      return message;
+    }
+    const copy = { ...message };
+    delete copy.usage;
+    return copy;
+  });
+}
+
+/**
  * Extracts displayable text from a Message object, handling various block types.
  * Returns the first available content block.
  */

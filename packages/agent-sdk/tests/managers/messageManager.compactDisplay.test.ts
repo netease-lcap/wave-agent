@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { MessageManager } from "../../src/managers/messageManager.js";
 import { Container } from "../../src/utils/container.js";
-import { Message } from "../../src/types/index.js";
+import { estimateContextTokens } from "../../src/utils/tokenCalculation.js";
+import { Message, Usage } from "../../src/types/index.js";
 
 vi.mock("fs/promises", () => ({
   writeFile: vi.fn().mockResolvedValue(undefined),
@@ -210,6 +211,90 @@ describe("MessageManager compaction list", () => {
     expect(
       updated.blocks.some((b) => b.type === "tool" && b.name === "Write"),
     ).toBe(true);
+  });
+
+  // 压缩前的 usage 描述的是已经折掉的历史：留在折表后的列表上，请求前估算与
+  // 用量环都会读成「压缩前有多大」（真机：压缩完环仍 100%，下一次输入又触发
+  // 一次自动压缩，spec core/message-compact.md 场景 6）。
+  it("压缩折表后保留轮次不再带压缩前的 usage，用量环归零", async () => {
+    const preCompactUsage: Usage = {
+      prompt_tokens: 166_000,
+      completion_tokens: 2_000,
+      total_tokens: 168_000,
+    };
+    messageManager.addUserMessage({ content: "q1" });
+    messageManager.addAssistantMessage("a1");
+    messageManager.addUserMessage({ content: "q2" });
+    messageManager.addAssistantMessage("a2");
+    messageManager.addUserMessage({ content: "q3" });
+    messageManager.addAssistantMessage("a3");
+    // 主循环收到响应时就是这么写 usage 的，压缩前那两轮都带着它。
+    messageManager.setMessages(
+      messageManager
+        .getMessages()
+        .map((m) =>
+          m.role === "assistant" ? { ...m, usage: preCompactUsage } : m,
+        ),
+      { countLifetime: false },
+    );
+    messageManager.setlatestTotalTokens(preCompactUsage.total_tokens);
+
+    await messageManager.compactMessagesAndUpdateSession("summary");
+
+    const folded = messageManager.getMessages();
+    expect(
+      folded.map((m) => (m.blocks[0] as { content: string }).content),
+    ).toEqual(["summary", "q2", "a2", "q3", "a3"]);
+    // 保留轮次的 usage 被剥掉（摘要块没有传 usage，本来就不带）
+    expect(folded.every((m) => m.usage === undefined)).toBe(true);
+    // 环归零：压缩后的新上下文还没有任何实测值，等下一次真实响应填回来
+    expect(messageManager.getLatestTotalTokens()).toBe(0);
+    // 估算也不再是压缩前的 168_000
+    expect(estimateContextTokens(folded)).toBeLessThan(1_000);
+  });
+
+  it("恢复压缩过的会话时保留轮次同样剥掉压缩前的 usage", () => {
+    const preCompactUsage: Usage = {
+      prompt_tokens: 166_000,
+      completion_tokens: 2_000,
+      total_tokens: 168_000,
+    };
+    const timestamp = "2026-01-01T00:00:00.000Z";
+    const sessionData = {
+      id: "sess-compacted",
+      messages: [
+        {
+          id: "c1",
+          role: "assistant",
+          blocks: [{ type: "compact", content: "summary" }],
+          timestamp,
+          usage: preCompactUsage,
+        },
+        {
+          id: "u1",
+          role: "user",
+          blocks: [{ type: "text", content: "new q" }],
+          timestamp,
+        },
+        {
+          id: "a1",
+          role: "assistant",
+          blocks: [{ type: "text", content: "new a" }],
+          timestamp,
+          usage: preCompactUsage,
+        },
+      ],
+      metadata: { workdir, lastActiveAt: timestamp, latestTotalTokens: 0 },
+    } as unknown as Parameters<MessageManager["initializeFromSession"]>[0];
+
+    messageManager.initializeFromSession(sessionData);
+
+    const restored = messageManager.getMessages();
+    // 转录里切得掉消息、切不掉数字：恢复后它们是上下文，旧 usage 必须剥掉，
+    // 摘要块自己的保留（那是压缩这次调用的记账）。
+    expect(restored[0].usage).toEqual(preCompactUsage);
+    expect(restored.slice(1).every((m) => m.usage === undefined)).toBe(true);
+    expect(estimateContextTokens(restored)).toBeLessThan(1_000);
   });
 
   it("clearMessages after compaction empties the list", async () => {

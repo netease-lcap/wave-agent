@@ -1,27 +1,55 @@
 import type { Message, Usage } from "../types/index.js";
 import { estimateTokens } from "./tokenEstimate.js";
 
+/** 用量扫描看得见的形状：`usage` 加上足够认出压缩块的 `blocks`。 */
+type UsageScanMessage = {
+  usage?: Usage;
+  blocks?: ReadonlyArray<{ type: string }>;
+};
+
+/**
+ * 最后一条带 `compact` 块的消息的下标，也就是这份列表的压缩边界（没压过是
+ * `-1`）。
+ */
+export function lastCompactBoundaryIndex(
+  messages: ReadonlyArray<UsageScanMessage>,
+): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].blocks?.some((block) => block.type === "compact")) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 /**
  * Extract the latest total tokens from the last message with usage data.
  * Uses only `total_tokens` — OpenAI-compatible usage already includes cache
  * hits there, so adding cache fields would double-count (same semantics as
  * the auto-compaction threshold; keeps UI usage display aligned with it).
  *
+ * 压缩边界及其之前一律不算：压缩是**追加**在它折掉的历史之后的，那串 usage 量的
+ * 就是压缩前的上下文。压缩完还报它，正是用量环卡在 100% 不下来（会话列表也一直
+ * 显示压缩前的总量）的来源 —— spec `core/message-compact.md` 场景 6 要求
+ * 「压缩完成后…不能沿用压缩前百分比」。
+ *
  * @param messages - Array of messages to search
  * @returns Total tokens from the most recent usage data, or 0 if none found
  */
 export function extractLatestTotalTokens(
-  messages: Array<{ usage?: Usage }>,
+  messages: Array<UsageScanMessage>,
 ): number {
-  // Find the last message with usage data (iterate backwards for efficiency)
-  for (let i = messages.length - 1; i >= 0; i--) {
+  // 压缩块所在的那条消息就是边界本身：它连同之前的一切都早于折叠（它自己的
+  // usage 是压缩这次调用量到的数）。
+  const boundary = lastCompactBoundaryIndex(messages);
+  for (let i = messages.length - 1; i > boundary; i--) {
     const message = messages[i];
     if (message.usage) {
       return message.usage.total_tokens;
     }
   }
 
-  return 0; // No usage data found
+  return 0; // No usage data found after the boundary
 }
 
 /**
@@ -36,10 +64,17 @@ export function extractLatestTotalTokens(
  * again as a fixed request overhead — doing so counts the same tokens twice
  * and triggers compaction well before the usage indicator reaches 100%.
  * Falls back to a pure character estimate when no usage anchor exists yet
- * (e.g. the first request of a session).
+ * (e.g. the first request of a session, or straight after a compaction).
+ *
+ * 锚点只在**最后压缩边界之后**找：压缩折表会把「压缩前那批响应」的轮次留在列表
+ * 里（`[摘要, ...保留轮次]`），它们的 usage 量的是折掉的历史，拿来当锚点会让
+ * 压缩后估算原样等于压缩前（真机实测 before 与 after 完全相等），于是下一次
+ * 请求前检查又超阈值、再压一遍 —— spec `core/message-compact.md` 场景 6 与
+ * 「压缩后估算基准」都要求以边界之后的上下文为准。
  */
 export function estimateContextTokens(messages: Message[]): number {
-  for (let i = messages.length - 1; i >= 0; i--) {
+  const boundary = lastCompactBoundaryIndex(messages);
+  for (let i = messages.length - 1; i > boundary; i--) {
     const usage = messages[i].usage;
     if (usage) {
       return (
@@ -47,7 +82,7 @@ export function estimateContextTokens(messages: Message[]): number {
       );
     }
   }
-  return roughTokenCountForMessages(messages);
+  return roughTokenCountForMessages(messages.slice(boundary + 1));
 }
 
 /**
