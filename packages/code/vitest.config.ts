@@ -1,7 +1,9 @@
-import { defineConfig } from "vitest/config";
+import { defineConfig, type ViteUserConfig } from "vitest/config";
 import { resolve } from "path";
 
-export default defineConfig(() => {
+// Annotated because the callback form widens `silent` to `string`, which
+// type-check rejects.
+export default defineConfig((): ViteUserConfig => {
   return {
     test: {
       globals: true,
@@ -9,16 +11,9 @@ export default defineConfig(() => {
       setupFiles: ["./tests/setup.ts"],
       include: ["tests/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
       exclude: ["node_modules", "dist"],
+      // 通过的用例不打印 console 输出；失败的用例照打（vitest 会把它的日志重放出来）。
+      silent: "passed-only",
       // Test environment variables: disable logger I/O operations by default to improve performance
-      onConsoleLog(log: string, type: "stdout" | "stderr"): boolean | void {
-        if (type === "stderr") {
-          // Allow known expected stderr from print-cli tests
-          if (log.includes("Print mode requires a message")) {
-            return false;
-          }
-          throw new Error(`Unexpected stderr: ${log}`);
-        }
-      },
       env: {
         DISABLE_LOGGER_IO: "true",
         // Set shorter debounce time to accelerate tests
