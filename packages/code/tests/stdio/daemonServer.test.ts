@@ -13,11 +13,6 @@ import { daemonTestSocketPath } from "../helpers/daemonSocket.js";
 // Mock the Agent SDK
 vi.mock("wave-agent-sdk");
 
-// Mock process.stderr.write to suppress noise
-const stderrWriteSpy = vi
-  .spyOn(process.stderr, "write")
-  .mockImplementation(() => true);
-
 // Keep the test process alive if a daemon shutdown path ever calls process.exit(0).
 const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
   return undefined as never;
@@ -117,7 +112,6 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  stderrWriteSpy.mockRestore();
   await server.stop();
   // A pipe name disappears with its listener; only a file socket leaves a path.
   if (!isWindowsPipeName(socketPath)) {

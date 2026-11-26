@@ -1,4 +1,4 @@
-import { test, expect, vi, beforeEach, afterEach } from "vitest";
+import { test, expect, vi, beforeEach } from "vitest";
 import { PassThrough } from "stream";
 import * as fsPromises from "node:fs/promises";
 import { Agent, loadUserConfigEnv } from "wave-agent-sdk";
@@ -13,11 +13,6 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
   return { ...actual, readFile: vi.fn() };
 });
-
-// Mock process.stderr.write to suppress noise
-const stderrWriteSpy = vi
-  .spyOn(process.stderr, "write")
-  .mockImplementation(() => true);
 
 import {
   StdioServer,
@@ -102,10 +97,6 @@ beforeEach(() => {
   vi.mocked(fsPromises.readFile).mockReset();
   vi.mocked(loadUserConfigEnv).mockReturnValue({});
   vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
-});
-
-afterEach(() => {
-  stderrWriteSpy.mockRestore();
 });
 
 // ── Basic request/response ───────────────────────────────────────

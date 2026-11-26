@@ -72,6 +72,8 @@ const BROWSER_MAX_WORKERS = Math.min(
 export default defineConfig({
   test: {
     globals: true,
+    // 通过的用例不打印 console 输出；失败的用例照打（vitest 会把它的日志重放出来）。
+    silent: "passed-only",
     projects: [
       {
         test: {

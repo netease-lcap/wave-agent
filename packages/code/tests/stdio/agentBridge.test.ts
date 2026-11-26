@@ -105,11 +105,6 @@ vi.mock("node:os", async (importOriginal) => {
   };
 });
 
-// Mock process.stderr.write to suppress noise
-const stderrWriteSpy = vi
-  .spyOn(process.stderr, "write")
-  .mockImplementation(() => true);
-
 import { AgentBridge, RpcError } from "../../src/stdio/agentBridge.js";
 import { INVALID_PARAMS } from "../../src/stdio/protocol.js";
 import {
@@ -224,7 +219,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  stderrWriteSpy.mockRestore();
   // 用户级记忆用例把 `~` 指到临时目录（那里会真的落盘），这里复位。
   vi.mocked(homedir).mockReturnValue(REAL_HOME);
   delete process.env.WAVE_SERVER_URL;

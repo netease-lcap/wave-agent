@@ -10,11 +10,6 @@ import { createInterface } from "readline";
 import type { RequestMethod } from "wave-agent-sdk/host";
 import { SocketClient } from "../src/main/stdio/socketClient";
 
-// Mock process.stderr.write to suppress noise
-const stderrWriteSpy = vi
-  .spyOn(process.stderr, "write")
-  .mockImplementation(() => true);
-
 /**
  * Minimal JSON-RPC server; replies result:params unless `reply` is given.
  *
@@ -100,7 +95,6 @@ async function connectClient(port: number): Promise<SocketClient> {
 let server: Awaited<ReturnType<typeof startServer>>;
 
 afterEach(() => {
-  stderrWriteSpy.mockRestore();
   server?.close();
 });
 
