@@ -336,6 +336,15 @@ describe("findDangerousRemoval — Windows spellings", () => {
     expect(windowsRuleOf("rm -rf E:/code/myrepo\\")).toBe("unplaceable");
   });
 
+  it("refuses an escaped slash, which is the root", () => {
+    // `rm -rf \/` is `rm -rf /` — the root, on each platform's own reading of
+    // a bare slash — so it stays a stop. The verdict it carries is the "cannot
+    // place it" one rather than `root`: the spelling as written resolves as the
+    // `//` that `rm -rf //` already gets that verdict for.
+    expect(windowsRuleOf("rm -rf \\/")).toBe("unplaceable");
+    expect(windowsRuleOf("rm -rf /")).toBe("root");
+  });
+
   it("reads a trailing backslash as the literal the shell passes on", () => {
     // `bash -c 'ls C:\'` lists `C:\`: bash hands the command a literal backslash,
     // so only the guard's own parser has to be taught the spelling. Judging the
@@ -382,6 +391,25 @@ describe("findDangerousRemoval — Windows spellings", () => {
     // Unescaped, the same word is a variable, and \`$DIR/\` with \`DIR\` empty is the
     // root: unchanged, that one is this gate's business.
     expect(cDriveRuleOf('rm -rf "$DIR/"')).toBe("unresolvable");
+  });
+
+  it("reads an escaped dollar outside quotes as a literal name too", () => {
+    // The same mistake with the quotes off: `\$` is a literal `$`, so the
+    // command removes the directory `$DIR` inside the session directory. Read
+    // as written — backslash kept — it is `\$DIR`, a first-level directory of
+    // the drive, and that reading stopped an ordinary deletion as a `system` one.
+    expect(cDriveRuleOf("rm -rf \\$DIR/")).toBeNull();
+    expect(cDriveRuleOf("rm -rf \\$DIR")).toBeNull();
+    // An escaped `$` is a character, not an expansion: `\$HOME` names a
+    // directory called `$HOME`, while the unescaped `$HOME` is the home
+    // directory — the gate must not read one as the other.
+    expect(cDriveRuleOf("rm -rf \\$HOME")).toBeNull();
+    expect(cDriveRuleOf("rm -rf $HOME")).toBe("unresolvable");
+    // Quoted or not, the same escape is the same literal.
+    expect(cDriveRuleOf('rm -rf "a\\$b"')).toBeNull();
+    // Only the spelling is dropped. The word still walks, so climbing out of it
+    // into a system directory is refused as the place it names.
+    expect(cDriveRuleOf("rm -rf \\$DIR/../../../../../Windows")).toBe("system");
   });
 
   it("keeps refusing the quoted spellings that do name a system directory", () => {

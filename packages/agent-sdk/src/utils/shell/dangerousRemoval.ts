@@ -570,10 +570,20 @@ function removalTargets(
  * backslash that precedes anything but `$`, a backtick, `"` or `\`, which is why
  * `"C:\Users\x"` arrives with its separators while the same word unquoted
  * reaches the command as the drive-relative `C:Usersx`.
+ *
+ * `escapedDollar` says a `\$` was resolved into a literal `$` on the way. It is not
+ * `dynamic` — the command receives a character, not an expansion — but a caller
+ * that also judges the spelling as written has to know the difference (see
+ * {@link judgeTarget}).
  */
-function scanWord(raw: string): { text: string; dynamic: boolean } {
+function scanWord(raw: string): {
+  text: string;
+  dynamic: boolean;
+  escapedDollar: boolean;
+} {
   let text = "";
   let dynamic = false;
+  let escapedDollar = false;
   let quote: '"' | "'" | null = null;
 
   for (let i = 0; i < raw.length; i++) {
@@ -604,6 +614,9 @@ function scanWord(raw: string): { text: string; dynamic: boolean } {
       }
       // One character is consumed either way, so an escaped `$` never falls
       // through to the expansion check below: `"a\$b"` is the literal `a$b`.
+      // Noted separately because the spelling as written still says `$`,
+      // which is not what the command is handed.
+      if (next === "$") escapedDollar = true;
       text += next;
       i++;
       continue;
@@ -627,7 +640,7 @@ function scanWord(raw: string): { text: string; dynamic: boolean } {
     text += char;
   }
 
-  return { text, dynamic };
+  return { text, dynamic, escapedDollar };
 }
 
 const LEADING_VARIABLE =
@@ -836,9 +849,17 @@ function judgeTarget(
   // reads as `\$DIR` — the drive's own top-level directory, and a `system` card
   // for a directory the command never names. Judged in that order so the message
   // names the one that is actually deleted.
-  const writtenSpelling = UNQUOTED_WORD.test(rawTarget)
-    ? (expandHome(written) ?? written)
-    : null;
+  //
+  // An escaped `\$` is the same mistake without the quotes, so the spelling is
+  // dropped there too: `rm -rf \$DIR/` passes the ordinary name `$DIR/`,
+  // while the spelling resolves as `\$DIR`, the drive's top-level directory. A
+  // word that is still dynamic keeps both readings — `\$X$Y` has an
+  // expansion of its own, and the arithmetic above is about that one.
+  const literalDollar = scanned.escapedDollar && !scanned.dynamic;
+  const writtenSpelling =
+    !literalDollar && UNQUOTED_WORD.test(rawTarget)
+      ? (expandHome(written) ?? written)
+      : null;
   const spellings = [
     verbatim ?? writtenSpelling ?? scanned.text,
     expanded,
