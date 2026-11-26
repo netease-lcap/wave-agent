@@ -506,7 +506,7 @@ describe("Bash 的 data → 文本 golden", () => {
     const result = await promise;
 
     expect(result.content).toBe(
-      "Command was manually backgrounded by user with ID: task_adopted. Output is being written to: /tmp/test.log",
+      "Command was manually backgrounded by user with ID: task_adopted. It is still running — you will be notified when it completes. Do not start it again. Output is being written to: /tmp/test.log",
     );
     expect(result.data).toEqual({
       stdout: "",

@@ -3571,25 +3571,11 @@ ${question}`;
                 abortController.signal.aborted ||
                 toolAbortController.signal.aborted;
 
-              // Check if all tools were manually backgrounded
-              const lastMessage =
-                this.messageManager.getMessages()[
-                  this.messageManager.getMessages().length - 1
-                ];
-              const toolBlocks =
-                lastMessage?.blocks.filter(
-                  (block): block is import("../types/messaging.js").ToolBlock =>
-                    block.type === "tool",
-                ) || [];
-              const hasBackgrounded =
-                toolBlocks.length > 0 &&
-                toolBlocks.some((block) => block.backgroundedByUser);
-
-              if (hasBackgrounded) {
-                logger?.info(
-                  "Some tools were manually backgrounded, stopping.",
-                );
-              } else if (!isCurrentlyAborted) {
+              // 手动转后台（Ctrl+B）不结束本轮：那条命令继续在后台跑，
+              // 模型看到的回执里带着 backgroundTaskId，照常推进下一次调用
+              // （与 Claude Code 一致——它唯一的转后台语义就是让前台等待
+              // 立即返回）。
+              if (!isCurrentlyAborted) {
                 // If the response was truncated WITHOUT any tool calls,
                 // enforce the consecutive recovery limit (aligned with Claude
                 // Code's MAX_OUTPUT_TOKENS_RECOVERY_LIMIT = 3). Re-planning

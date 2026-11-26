@@ -139,9 +139,9 @@ order: 20
 2. **假设** 用户通过 Ctrl+B 手动将命令转为后台，**当** Bash 工具返回结果时，**则** 结果必须包含 `backgroundTaskId` 与 `backgroundedByUser: true`。
 3. **假设** 命令通过 `run_in_background: true` 显式启动，**当** Bash 工具返回结果时，**则** 结果必须包含 `backgroundTaskId`，且 `backgroundedByUser` 与 `assistantAutoBackgrounded` 为 false 或省略。
 4. **假设** 命令超时被自动转为后台，**当** 返回结果时，**则** 文本内容必须为（与 Claude Code 对齐，其中 X 为任务 ID、Y 为输出路径）：`Command exceeded the timeout (Xs) and was moved to the background with ID: X. It is still running — you will be notified when it completes. Output is being written to: Y`。
-5. **假设** 命令通过 Ctrl+B 手动转为后台，**当** 返回结果时，**则** 文本内容必须为：`Command was manually backgrounded by user with ID: X. Output is being written to: Y`。
+5. **假设** 命令通过 Ctrl+B 手动转为后台，**当** 返回结果时，**则** 文本内容必须为（与 Claude Code 同义：明说「仍在跑、会收到完成通知、别再起一次」，因为本轮不会因此结束）：`Command was manually backgrounded by user with ID: X. It is still running — you will be notified when it completes. Do not start it again. Output is being written to: Y`。
 6. **假设** 命令通过 `run_in_background: true` 启动，**当** 返回结果时，**则** 文本内容必须为：`Command running in background with ID: X. Output is being written to: Y`。
-7. **假设** 命令超时被自动转为后台，**则** 该结果不得中断代理当前运行循环——只有用户手动转后台（`backgroundedByUser`）才停止循环。
+7. **假设** 命令以任何方式转到后台（超时自动转、用户手动转），**则** 该结果都不得中断代理当前运行循环——转后台只改变「谁在等这条命令」（变成后台任务 + 完成通知），本轮照常推进到下一次模型调用；与 Claude Code 一致，它的 `backgroundedByUser` 只落在结果字段、回执文案与遥测上，从不参与「本轮是否继续」的判定。
 
 ---
 

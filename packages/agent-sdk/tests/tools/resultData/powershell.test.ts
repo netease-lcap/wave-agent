@@ -386,7 +386,7 @@ describe("PowerShell 的 data → 文本 golden", () => {
     const result = await pending;
 
     expect(result.content).toBe(
-      "Command was manually backgrounded by user with ID: task_9_9. Output is being written to: C:\\temp\\wave-task-9.log",
+      "Command was manually backgrounded by user with ID: task_9_9. It is still running — you will be notified when it completes. Do not start it again. Output is being written to: C:\\temp\\wave-task-9.log",
     );
     expect(result.data).toEqual({
       stdout: "",
@@ -426,7 +426,7 @@ describe("PowerShell 的 data → 文本 golden", () => {
     const result = await pending;
 
     expect(result.content).toBe(
-      "Command was manually backgrounded by user with ID: task_9_9.",
+      "Command was manually backgrounded by user with ID: task_9_9. It is still running — you will be notified when it completes. Do not start it again.",
     );
     expect(result.data).toEqual({
       stdout: "",
