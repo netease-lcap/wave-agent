@@ -56,6 +56,17 @@
   --cc-fill: #f0f2f5; /* 用户气泡 */
   --cc-fill-hover: #eef0f3; /* hover 面 */
   --cc-fill-pressed: #e7e9ed; /* 按下/选中 */
+  /* 导航面（--cc-bg-navigation #F7F8FB）上的两档专用灰。fill 那套档位按白底设计，
+     叠到导航底上被压平（hover #EEF0F3 对底 ΔE76 仅 2.9）。
+     1126 设计师裁决（选 A）：不在别处插自造色，而是把这两档补进 token 体系 ——
+     `--cc-fill-nav-selected` = 行/入口的选中面，`--cc-fill-strong` = 叠在已 hover 或
+     已选中面上的小按钮（侧栏「⋯」），保证按钮面永远比它所在的行面深一档。
+     导航面上的 hover 一律取 --cc-fill-pressed（不是 --cc-fill-hover）。
+     ⚠️ 命名注意：不能用 `--cc-fill-selected` —— skill tokens/tokens.css:78 那一枚是
+     「浅品牌色选中」（var(--cc-color-primary-soft)），references/dark-theme.md:20 明确
+     写着「不要把它全局重定义成中性选中」。故这里用 nav- 前缀另立一枚。 */
+  --cc-fill-nav-selected: #e0e3e8; /* 导航面选中 */
+  --cc-fill-strong: #d3d7de; /* 叠在选中/悬停面上的按钮 */
   /* 禁用态实底。契约 dark-theme.md:56「Disabled action = fill-light + text-disabled
      + border-lighter」把这一枚点名为禁用键的底；skill theme/desktop-colors.css:51
      （浅 #F5F7FA）/ :167（深 #1B1D1E）。仓库此前没有它，禁用键只能整颗 opacity 混色。
@@ -201,6 +212,12 @@
   --cc-fill: #25292b; /* derived：气泡面（codex 效果 = 浮层面一档） */
   --cc-fill-hover: #303436;
   --cc-fill-pressed: #393e41;
+  /* 导航面两档（浅色块注记见 :59）。深色侧**未做面阶提档**（半透明白 8% / 12%
+     合成后本来分得开，1126 只改浅色），故这两枚按现值登记，零视觉变化：
+     selected = 会话行选中 12% 白；strong = 会话行「⋯」按钮 hover 12% 白
+     （它叠在 8% 的行 hover 面之上，合成后自然更深，不需要第三档）。 */
+  --cc-fill-nav-selected: rgba(255, 255, 255, 0.12);
+  --cc-fill-strong: rgba(255, 255, 255, 0.12);
   --cc-fill-light: #1b1d1e; /* 禁用态实底，见浅色块注记（skill :167） */
   /* 主按钮 —— user-approved：浅灰底 + 深字（dark 反转浅色炭黑钮） */
   --cc-action-primary: #e0e3e5;
@@ -853,7 +870,10 @@
 }
 [data-host="desktop"] .desktop-host-trigger:hover,
 [data-host="desktop"] .desktop-workdir-trigger:hover {
-  background: #eef0f3;
+  /* 1126 评论（点 `div.desktop-host-trigger`「本地」）：「带背景色的 hover 色都要改成
+     这个颜色」。这两颗都在侧栏底部的灰条上（导航面 #F7F8FB），随侧栏 hover 统一到
+     --cc-fill-pressed（对底 ΔE 5.3，原 fill-hover 只有 2.9）。深色由下方 8% 白覆盖。 */
+  background: var(--cc-fill-pressed, #e7e9ed);
   color: #1f2329;
 }
 [data-host="desktop"][data-theme="dark"] .desktop-host-trigger,
@@ -943,35 +963,47 @@
 }
 
 /* hover：codechat --cc-fill-hover #eef0f3（浅色）；深色用中性 8% 白
-   （替换 VS Code list-hoverBackground 的蓝灰调） */
+   （替换 VS Code list-hoverBackground 的蓝灰调）。
+
+   1126 评论（点 `.desktop-session-tree`）：「浅色模式下的 hover 和选中色，在灰色背景
+   上的时候太浅了，看看怎么优化」。侧栏底是 `--cc-bg-navigation` #F7F8FB，而 fill 这
+   一套档位是按白底设计的：hover #EEF0F3 叠上去对底 ΔE76 只有 2.9、选中 #EBEDF0 对底
+   3.9，两态之间更只差 1.0 —— 悬停和选中在灰底上基本分不开。
+   ⇒ 导航底上各提一档：hover 取 `--cc-fill-pressed` #E7E9ED（对底 5.3），选中取
+   `--cc-fill-nav-selected` #E0E3E8（对底 7.5），两态差 2.2。这两档的归属见文件头 token
+   块（1126 方案 A：把导航面的选中 / 叠层按钮两档补进 token 体系，不再写散值）。
+   深色不动：半透明白 8% / 12% 合成后对底本来就分得开。 */
 [data-host="desktop"][data-theme="light"] .desktop-session-group-header:hover,
 [data-host="desktop"][data-theme="light"] .desktop-session-item:hover {
-  background: #eef0f3;
+  background: var(--cc-fill-pressed, #e7e9ed);
 }
 [data-host="desktop"][data-theme="dark"] .desktop-session-group-header:hover,
 [data-host="desktop"][data-theme="dark"] .desktop-session-item:hover {
   background: rgba(255, 255, 255, 0.08);
 }
 
-/* 选中态：浅色 Figma 13656:5470「对话-选中」底 #EBEDF0（此前 codechat
-   --cc-fill-pressed #e7e9ed 已由新帧取代）。深色中性 12% 白。
+/* 选中态：浅色原为 Figma 13656:5470「对话-选中」底 #EBEDF0（此前 codechat
+   --cc-fill-pressed #e7e9ed 已由新帧取代）；1126 她判「灰色背景上太浅」⇒ 浅色提到
+   #E0E3E8，与上面 hover 拉开一档。⚠️ 这是偏离 Figma 帧值的**有意识改动**（她的评论
+   优先于帧），帧若再出版本需重新核。深色中性 12% 白、未动。
    --visible（同一会话在非聚焦 pane 的弱化态）：同族中性灰，比选中更浅 ——
-   替换 VS Code 蓝灰 inactiveSelectionBackground（light #E4E6F1 / dark #37373d）。 */
+   替换 VS Code 蓝灰 inactiveSelectionBackground（light #E4E6F1 / dark #37373d），
+   浅色随 hover 一起提到 #E7E9ED，保持「visible 比 current 浅一档」的关系不变。 */
 [data-host="desktop"][data-theme="light"] .desktop-session-item--current {
-  background: #ebedf0;
+  background: var(--cc-fill-nav-selected, #e0e3e8);
 }
 [data-host="desktop"][data-theme="dark"] .desktop-session-item--current {
   background: rgba(255, 255, 255, 0.12);
 }
 [data-host="desktop"][data-theme="light"] .desktop-session-item--visible {
-  background: #eef0f3;
+  background: var(--cc-fill-pressed, #e7e9ed);
 }
 [data-host="desktop"][data-theme="dark"] .desktop-session-item--visible {
   background: rgba(255, 255, 255, 0.06);
 }
 /* 选中项 hover 保持选中底（不回落 hover 色） */
 [data-host="desktop"][data-theme="light"] .desktop-session-item--current:hover {
-  background: #ebedf0;
+  background: var(--cc-fill-nav-selected, #e0e3e8);
 }
 [data-host="desktop"][data-theme="dark"] .desktop-session-item--current:hover {
   background: rgba(255, 255, 255, 0.12);
@@ -1025,7 +1057,10 @@
    hover 底色——这条宿主规则的权重高于 `.is-active`，不排除会把淡红底盖掉。 */
 [data-host="desktop"][data-theme="light"]
   .desktop-sidebar-new-chat:hover:not(.is-active):not(:disabled) {
-  background: #eef0f3;
+  /* 1126 评论：「新对话、插件市场、创作集的 hover、选中色也同步」。三个入口共用
+     本类，选中态已由下方 `.is-active` 那条与会话行选中对齐；hover 这里从
+     #EEF0F3 提到与会话行 hover 同值（`--cc-fill-pressed` #E7E9ED）。 */
+  background: var(--cc-fill-pressed, #e7e9ed);
 }
 [data-host="desktop"][data-theme="dark"]
   .desktop-sidebar-new-chat:hover:not(.is-active):not(:disabled) {
@@ -1048,7 +1083,8 @@
    dark-theme.md「State backgrounds are opaque…」（侧栏 α 阶梯为已裁决的
    面级例外，待 codex 回写契约）。 */
 [data-host="desktop"][data-theme="light"] .account-card-hotzone:hover {
-  background: var(--cc-fill-hover, #eef0f3);
+  /* 1126：侧栏导航面上的 hover 统一到 --cc-fill-pressed（见会话行那条的注记）。 */
+  background: var(--cc-fill-pressed, #e7e9ed);
 }
 [data-host="desktop"][data-theme="dark"] .account-card-hotzone:hover {
   background: rgba(255, 255, 255, 0.08);
@@ -1063,7 +1099,14 @@
   border-radius: 6px;
 }
 [data-host="desktop"][data-theme="light"] .account-card-more-btn:hover {
-  background: var(--cc-fill-hover, #eef0f3);
+  /* 1126：同热区，hover 统一到 --cc-fill-pressed。 */
+  background: var(--cc-fill-pressed, #e7e9ed);
+}
+
+/* 账户卡里的「用量」按钮（`.account-card-usage-btn`，base 走
+   --vscode-list-hoverBackground）—— 同属侧栏导航面，1126 一并统一。 */
+[data-host="desktop"][data-theme="light"] .account-card-usage-btn:hover {
+  background: var(--cc-fill-pressed, #e7e9ed);
 }
 [data-host="desktop"][data-theme="dark"] .account-card-more-btn:hover {
   background: rgba(255, 255, 255, 0.08);
@@ -2868,7 +2911,13 @@
   height: 16px;
 }
 [data-host="desktop"][data-theme="light"] .desktop-session-more-btn:hover {
-  background: #e7e9ed;
+  /* 1126 评论（点 `button.desktop-session-more-btn`）：「选中时 hover 应该比选中色更深
+     吧，现在更浅有点反常识」。这个按钮只在行 hover / 行选中时才淡入，所以它的 hover
+     面永远叠在「行 hover 面 #E7E9ED」或「行选中面 #E0E3E8」之上 —— 原值 #E7E9ED
+     与前者同色（ΔE 0，按钮面直接看不见）、比后者浅一档（ΔE 2.2，反常识）。
+     ⇒ 取一档比两种行面都深的灰：对行 hover 面 ΔE 6.7、对行选中面 ΔE 4.4，两个语境
+     下都读得出「指着这颗按钮」。 */
+  background: var(--cc-fill-strong, #d3d7de);
 }
 [data-host="desktop"][data-theme="dark"] .desktop-session-more-btn:hover {
   background: rgba(255, 255, 255, 0.12);
@@ -3006,7 +3055,9 @@
   border-radius: var(--cc-radius-md, 8px);
 }
 [data-host="desktop"] .header-collapsed-leading .header-button:hover {
-  background-color: #eef0f3;
+  /* 1126 评论（点 `svg.header-icon`）：「带背景色的 hover 色都要改成这个颜色」。
+     收起态头部的图标按钮同样落在导航灰底上，跟侧栏 hover 同档。 */
+  background-color: var(--cc-fill-pressed, #e7e9ed);
 }
 [data-host="desktop"][data-theme="dark"]
   .header-collapsed-leading
@@ -4158,16 +4209,21 @@
   color: var(--cc-text-primary);
 }
 
-/* 交互底/文字对齐 codechat settings.css（--cc-fill-hover #EEF0F3 悬停、
-   --cc-fill-pressed #E7E9ED 选中、--cc-text-primary #1F2329 选中文字）；
-   base 用 vscode token（hover 半透明黑、选中 VS Code 蓝）在桌面端违和 */
+/* 交互底/文字对齐 codechat settings.css（--cc-text-primary #1F2329 选中文字）；
+   base 用 vscode token（hover 半透明黑、选中 VS Code 蓝）在桌面端违和。
+   1126 评论（点 `nav.settings-navigation`「这里」+ `button.settings-back`「返回」）：
+   「带背景色的 hover 统一」—— 设置左栏在导航面（--cc-bg-navigation #F7F8FB）上，
+   原 hover #EEF0F3 对底 ΔE76 只有 2.9、几乎看不出，提到 --cc-fill-pressed #E7E9ED
+   （对底 5.3），与侧栏会话行/入口/顶栏按钮同档。
+   ⚠️ 选中态必须同步提档：原选中 #E7E9ED 与新 hover 同值，hover 会完全消失，
+   故选中提到新立的 --cc-fill-nav-selected #E0E3E8（对底 7.5，与 hover 差 2.2）。 */
 [data-host="desktop"] .settings-nav-item:hover,
 [data-host="desktop"] .settings-back:hover {
-  background: #eef0f3;
+  background: var(--cc-fill-pressed, #e7e9ed);
 }
 [data-host="desktop"] .settings-nav-item.is-active {
   color: var(--cc-text-primary);
-  background: #e7e9ed;
+  background: var(--cc-fill-nav-selected, #e0e3e8);
 }
 [data-host="desktop"][data-theme="dark"] .settings-nav-item:hover,
 [data-host="desktop"][data-theme="dark"] .settings-back:hover {
@@ -4248,7 +4304,16 @@
   font-weight: var(--cc-font-weight-medium, 500);
 }
 [data-host="desktop"] .session-board-back:hover {
-  background: #eef0f3;
+  /* 1126 评论（点 `button.session-board-back`「返回当前会话」）：「这里」= 带背景的 hover
+     统一。原值 #EEF0F3 是 0923「与设置页返回键对齐」时定的；1126 她把这批 hover 统一
+     提到 --cc-fill-pressed（设置页那颗同步改了，见下方 settings 那组），两颗仍逐值相同。 */
+  background: var(--cc-fill-pressed, #e7e9ed);
+}
+
+/* 同一工具条上的「功能」图标键（base #F0F2F5）：与返回键并列、同一底面，1126 一并收口，
+   否则同一行里两颗按钮 hover 深浅不一。 */
+[data-host="desktop"][data-theme="light"] .session-board-icon-btn:hover {
+  background: var(--cc-fill-pressed, #e7e9ed);
 }
 /* 图标（codicon 左箭头）单列：globals.css:35 的 `.codicon { color:
    var(--vscode-icon-foreground) }` 是**直接声明**，会盖掉从按钮继承来的颜色，
@@ -4336,6 +4401,13 @@
    文字仍由下面 `.desktop-sidebar-new-chat span` 定为 1 级。 */
 [data-host="desktop"] .desktop-sidebar-new-chat.is-active {
   color: #1f2329;
+}
+/* 底色跟会话行选中态逐值相同（0921 裁决）：1126 把桌面端选中灰提到了 #E0E3E8
+   （见上方「hover：…1126 评论」那段），这里必须同值跟进，否则入口与会话行又分叉。
+   只落在桌面作用域 —— base 那支（DesktopApp.css `.is-active` #EBEDF0）服务 IDE /
+   插件端，那边的会话行选中仍是 #EBEDF0。 */
+[data-host="desktop"][data-theme="light"] .desktop-sidebar-new-chat.is-active {
+  background-color: var(--cc-fill-nav-selected, #e0e3e8);
 }
 [data-host="desktop"][data-theme="dark"] .desktop-sidebar-new-chat.is-active {
   color: #ffffff;
@@ -5603,7 +5675,11 @@
 [data-host="desktop"] .header-button:hover,
 [data-host="desktop"] .desktop-pane-close:hover,
 [data-host="desktop"] .desktop-sidebar-more-btn:not(.is-active):hover {
-  background-color: var(--cc-fill-hover, #eef0f3);
+  /* 1126 评论（点 `svg.header-icon` 与 `div.desktop-sidebar-actions`「活动 / 收起侧边栏」）：
+     「带背景色的 hover 色都要改成这个颜色」= 与侧栏 hover 同档 --cc-fill-pressed。
+     这里三颗是同一族（顶栏 / 面板头 / 品牌行图标按钮），此前共用 --cc-fill-hover，
+     拆分会让同族读数分岔，故整条一起提档。 */
+  background-color: var(--cc-fill-pressed, #e7e9ed);
 }
 [data-host="desktop"][data-theme="dark"] .header-button:hover,
 [data-host="desktop"][data-theme="dark"] .desktop-pane-close:hover,
