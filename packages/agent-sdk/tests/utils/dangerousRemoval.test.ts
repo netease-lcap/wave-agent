@@ -16,6 +16,25 @@ const PROTECTED = [WORKDIR];
 const WINDOWS = process.platform === "win32";
 
 /**
+ * The same session shape, named on drive C.
+ *
+ * `WORKDIR` above is `path.resolve(path.sep, …)`, which takes its drive from
+ * wherever the test process happens to run: C: on a developer machine, D: on the
+ * GitHub Windows runner (`D:\a\wave-agent\…`). The Windows-only cases below ask
+ * *which drive a spelling names* (`/c/…`, `\\?\D:\x`), so they cannot be written
+ * against a workdir whose drive moves with the host: on the runner the D:
+ * spelling would name the session's own drive and the C: one nothing at all,
+ * which is the same command judged two different ways.
+ */
+const C_DRIVE_WORKDIR = path.win32.join(
+  "C:\\",
+  "fake",
+  "worktree",
+  "repo",
+  "sub",
+);
+
+/**
  * Spell a path the way a POSIX shell will hand it back. A literal `D:\x` in a
  * command line loses its backslashes to the parser (each one escapes the next
  * character), so the only faithful way to say "this very directory" is the
@@ -47,6 +66,20 @@ function ruleOf(
 /** Judge the command as Windows Git Bash would read it, on any host. */
 function windowsRuleOf(command: string): string | null {
   return ruleOf(command, "win32");
+}
+
+/** The same, judged against the C: session rather than the host's own drive. */
+function judgeOnC(command: string): DangerousRemoval | null {
+  return findDangerousRemoval({
+    command,
+    workdir: C_DRIVE_WORKDIR,
+    protectedRoots: [C_DRIVE_WORKDIR],
+    platform: "win32",
+  });
+}
+
+function cDriveRuleOf(command: string): string | null {
+  return judgeOnC(command)?.rule ?? null;
 }
 
 beforeEach(() => {
@@ -244,22 +277,26 @@ describe("findDangerousRemoval — Windows spellings", () => {
 
   // The restore direction is host-bound (`path.resolve` follows the host, and
   // `restoreWindowsPath` returns the path untouched off Windows), so the drive
-  // it lands on only means something on Windows.
+  // it lands on only means something on Windows. The session is pinned to C: so
+  // each case judges the drive the command names, whatever drive this process
+  // runs from.
   it.runIf(WINDOWS)(
     "reads the MSYS spellings as the drive path they name",
     () => {
-      expect(ruleOf("rm -rf /c/fake/worktree/repo", "win32")).toBe(
+      expect(cDriveRuleOf("rm -rf /c/fake/worktree/repo")).toBe(
         "working_directory",
       );
-      expect(ruleOf("rm -rf /cygdrive/d/fake", "win32")).toBe("system");
-      expect(
-        ruleOf("rm -rf '//localhost/C$/fake/worktree/repo'", "win32"),
-      ).toBe("working_directory");
+      // `D:\fake` is a first-level directory of its own drive, and no ancestor of
+      // the C: session above.
+      expect(cDriveRuleOf("rm -rf /cygdrive/d/fake")).toBe("system");
+      expect(cDriveRuleOf("rm -rf '//localhost/C$/fake/worktree/repo'")).toBe(
+        "working_directory",
+      );
     },
   );
 
   it.runIf(WINDOWS)("reads \\\\?\\D:\\x as D:\\x", () => {
-    const hit = judge('rm -rf "\\\\?\\D:\\fake"', "win32");
+    const hit = judgeOnC('rm -rf "\\\\?\\D:\\fake"');
     expect(hit?.rule).toBe("system");
     expect(hit?.resolved).toBe("D:\\fake");
   });
