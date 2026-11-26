@@ -19,7 +19,7 @@ import {
 import { join } from "path";
 import { tmpdir } from "os";
 import {
-  SKILL_BASH_MAX_OUTPUT_CHARS,
+  SKILL_BASH_MAX_OUTPUT_BYTES,
   PREVIEW_SIZE_BYTES,
 } from "../../src/constants/toolLimits.js";
 
@@ -334,7 +334,7 @@ describe("markdownParser", () => {
     });
 
     it("should truncate and save to file when output exceeds limit", () => {
-      const output = "x".repeat(SKILL_BASH_MAX_OUTPUT_CHARS + 100);
+      const output = "x".repeat(SKILL_BASH_MAX_OUTPUT_BYTES + 100);
       const result = truncateOutput(output);
 
       expect(result.length).toBeLessThan(output.length);
@@ -351,7 +351,7 @@ describe("markdownParser", () => {
     });
 
     it("should include preview of truncated output", () => {
-      const output = "x".repeat(SKILL_BASH_MAX_OUTPUT_CHARS + 100);
+      const output = "x".repeat(SKILL_BASH_MAX_OUTPUT_BYTES + 100);
       const result = truncateOutput(output);
 
       expect(result).toContain(

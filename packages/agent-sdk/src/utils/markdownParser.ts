@@ -3,9 +3,10 @@ import { join } from "path";
 import { tmpdir } from "os";
 import type { CustomSlashCommandConfig } from "../types/index.js";
 import {
-  SKILL_BASH_MAX_OUTPUT_CHARS,
+  SKILL_BASH_MAX_OUTPUT_BYTES,
   PREVIEW_SIZE_BYTES,
 } from "../constants/toolLimits.js";
+import { exceedsUtf8Bytes } from "./utf8Bytes.js";
 import { logger } from "./globalLogger.js";
 import { execFileAsyncHidden } from "./execFileHidden.js";
 import { parseFrontmatterYaml, splitFrontmatter } from "./frontmatterYaml.js";
@@ -178,7 +179,7 @@ export function parseBashCommands(content: string): {
  * Writes to a temp file and returns a preview + file path if truncated.
  */
 export function truncateOutput(output: string): string {
-  if (output.length <= SKILL_BASH_MAX_OUTPUT_CHARS) {
+  if (!exceedsUtf8Bytes(output, SKILL_BASH_MAX_OUTPUT_BYTES)) {
     return output;
   }
 

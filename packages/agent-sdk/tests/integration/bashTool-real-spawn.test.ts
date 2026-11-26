@@ -12,6 +12,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 
+import { BASH_MAX_OUTPUT_BYTES } from "../../src/constants/toolLimits.js";
 import { bashTool } from "../../src/tools/bashTool.js";
 import type { ToolContext } from "../../src/tools/types.js";
 import { createBashProvider } from "../../src/utils/shell/bashProvider.js";
@@ -153,12 +154,27 @@ describe("bashTool with real shell spawn", () => {
     );
 
     expect(result.content.match(/\uFFFD/g) ?? []).toHaveLength(0);
-    expect(result.content).toHaveLength(expectedChars);
+
+    // 70 KB 的中文早就超过了 3 万字节的输出预算，所以模型看到的是预览、全文
+    // 在盘上。跨读完好的判定要针对全文——它是这条用例真正要证的东西；预览
+    // 那一侧只保证按字节截断、不留半个字。
+    const data = result.data as {
+      persistedOutputPath?: string;
+      stdout?: string;
+    };
+    expect(data.persistedOutputPath).toBeTruthy();
+    const full = fs.readFileSync(data.persistedOutputPath!, "utf8");
+    expect(full.match(/\uFFFD/g) ?? []).toHaveLength(0);
+    expect(full).toHaveLength(expectedChars);
+
+    expect(Buffer.byteLength(data.stdout ?? "", "utf8")).toBeLessThanOrEqual(
+      BASH_MAX_OUTPUT_BYTES,
+    );
   });
 
   it("receives a native program's localized text as UTF-8", async () => {
     // The provider puts the console's code page at 65001 before the command
-    // runs (bashProvider's CONSOLE_CODE_PAGE_PROLOGUE), so a localized message
+    // runs (bashProvider's consoleCodePagePrologue), so a localized message
     // from a native exe arrives as UTF-8. At the console default of 936
     // `taskkill` writes GBK and this string would hold U+FFFD instead.
     const result = await bashTool.execute(

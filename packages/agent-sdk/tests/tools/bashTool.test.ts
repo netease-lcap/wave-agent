@@ -114,11 +114,17 @@ const mockTerminateTree = vi.mocked(terminateChildProcessTree);
 
 /**
  * The spawn string minus the console code page switch Windows puts in front of
- * it (see CONSOLE_CODE_PAGE_PROLOGUE in bashProvider). The wrapper assertions
+ * it (see `consoleCodePagePrologue` in bashProvider). The wrapper assertions
  * below are about the CWD wrapper, which always comes after that switch.
+ *
+ * The resolved path is matched either way (absolute under `SYSTEMROOT`, or the
+ * bare name when that is unusable) — `bashProvider.test.ts` owns the shape.
  */
+const CODE_PAGE_PREFIX =
+  /^(?:[A-Za-z]:\/\S*\/chcp\.com|chcp\.com) 65001 >\/dev\/null 2>&1; /;
+
 function withoutCodePage(command: string): string {
-  return command.replace(/^chcp\.com 65001 >\/dev\/null 2>&1; /, "");
+  return command.replace(CODE_PAGE_PREFIX, "");
 }
 
 describe("bashTool", () => {
@@ -185,10 +191,10 @@ describe("bashTool", () => {
 
       // Untracked: nothing is appended to the command, and only the console
       // code page (Windows) comes before it.
-      expect(mockSpawn.mock.calls[0][0]).toBe(
+      expect(mockSpawn.mock.calls[0][0]).toMatch(
         process.platform === "win32"
-          ? "chcp.com 65001 >/dev/null 2>&1; echo hello"
-          : "echo hello",
+          ? /^(?:[A-Za-z]:\/\S*\/chcp\.com|chcp\.com) 65001 >\/dev\/null 2>&1; echo hello$/
+          : /^echo hello$/,
       );
       expect(mockSpawn.mock.calls[0][0]).not.toContain("pwd -P");
       // The result says what broke, what is degraded, and the way out.

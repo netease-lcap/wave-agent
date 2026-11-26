@@ -1726,7 +1726,7 @@ Blocks are processed before inline commands, with results replaced in order of a
 
 ### Output Limits
 
-- Output is capped at **30,000 characters** per command.
+- Output is capped at **30,000 UTF-8 bytes** per command (about 30,000 characters of English, 10,000 of Chinese); the rest is persisted to a file.
 - When truncated, a 2,048-character preview is shown along with a temp file path containing the full output.
 
 ### Safe Replacement

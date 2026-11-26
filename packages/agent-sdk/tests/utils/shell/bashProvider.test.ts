@@ -1,7 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import * as os from "os";
 import * as path from "path";
-import { createBashProvider } from "../../../src/utils/shell/bashProvider.js";
+import {
+  consoleCodePagePrologue,
+  createBashProvider,
+  withConsoleCodePage,
+} from "../../../src/utils/shell/bashProvider.js";
 import { getShellProvider } from "../../../src/utils/shell/resolveProvider.js";
 import { getPowerShellPath } from "../../../src/utils/shell/powershellDetection.js";
 import { getShellSnapshot } from "../../../src/utils/shell/shellSnapshot.js";
@@ -26,11 +30,67 @@ vi.mock("../../../src/utils/shell/powershellDetection.js", () => ({
 
 // Windows only: the console's output code page has to be UTF-8 before anything
 // the command runs, or a native program's localized text reaches the pipe as
-// GBK (see CONSOLE_CODE_PAGE_PROLOGUE in bashProvider). It opens the spawn
+// GBK (see `consoleCodePagePrologue` in bashProvider). It opens the spawn
 // string, in front of the eval wrapper; POSIX has no such code page, so the
-// difference is written into the expectation rather than skipped.
+// difference is written into the expectation rather than skipped. The prologue
+// text itself is asserted separately below.
 const CODE_PAGE_PRELUDE =
-  process.platform === "win32" ? "chcp.com 65001 >/dev/null 2>&1; " : "";
+  process.platform === "win32" ? `${consoleCodePagePrologue()}; ` : "";
+
+describe("console code page", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("switches with the absolute chcp.com path under SYSTEMROOT", () => {
+    vi.stubEnv("SystemRoot", "C:\\Windows");
+
+    expect(consoleCodePagePrologue()).toBe(
+      "C:/Windows/System32/chcp.com 65001 >/dev/null 2>&1",
+    );
+  });
+
+  it("accepts the upper-case env name and windir", () => {
+    vi.stubEnv("SystemRoot", "");
+    vi.stubEnv("SYSTEMROOT", "D:\\WINNT");
+
+    expect(consoleCodePagePrologue()).toBe(
+      "D:/WINNT/System32/chcp.com 65001 >/dev/null 2>&1",
+    );
+  });
+
+  it("falls back to the bare name when the path cannot be quoted safely", () => {
+    // A space (or any shell metacharacter) in the resolved path would break the
+    // launcher string, so the unqualified name is the safer fallback.
+    vi.stubEnv("SystemRoot", "C:\\Program Files\\Windows");
+
+    expect(consoleCodePagePrologue()).toBe("chcp.com 65001 >/dev/null 2>&1");
+  });
+
+  it("falls back to the bare name when SYSTEMROOT is empty", () => {
+    vi.stubEnv("SystemRoot", "");
+    vi.stubEnv("SYSTEMROOT", "");
+    vi.stubEnv("windir", "");
+
+    expect(consoleCodePagePrologue()).toBe("chcp.com 65001 >/dev/null 2>&1");
+  });
+});
+
+describe("withConsoleCodePage", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("only prepends on Windows", () => {
+    vi.stubEnv("SystemRoot", "C:\\Windows");
+
+    expect(withConsoleCodePage("echo hi")).toBe(
+      process.platform === "win32"
+        ? "C:/Windows/System32/chcp.com 65001 >/dev/null 2>&1; echo hi"
+        : "echo hi",
+    );
+  });
+});
 
 const SHELL = "/bin/bash";
 const TEMP_DIR = path.join(os.tmpdir(), "wave-bash-provider-test");

@@ -35,9 +35,18 @@ export const POWERSHELL_SPAWN_FLAGS = [
  * '中文'` and `cmd /c echo 中文` alike). `[Console]::OutputEncoding` is the code
  * page 5.1 uses in both directions, and PowerShell 7 already defaults to UTF-8,
  * so the one statement covers both editions. Claude Code sets the same line.
+ *
+ * The `LanguageMode` guard and the empty `catch` are not decoration. In a
+ * constrained session — AppLocker or WDAC pushing `ConstrainedLanguage`, the
+ * usual hardening on the private deployments this ships to — a .NET property
+ * write like this throws, and a bare statement would fail the **whole command**
+ * on a line the user never wrote, reporting an error that has nothing to do
+ * with what they asked for. Skipping the switch leaves the output mojibake
+ * instead, which is the documented trade-off rather than a broken command.
+ * Same guard, same shape as Claude Code.
  */
 const CONSOLE_UTF8_STATEMENT =
-  "[Console]::OutputEncoding = [Text.Encoding]::UTF8";
+  "if ($ExecutionContext.SessionState.LanguageMode -eq 'FullLanguage') { try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {} }";
 
 /**
  * The statement a **hook** command needs appended, and why it differs from the
