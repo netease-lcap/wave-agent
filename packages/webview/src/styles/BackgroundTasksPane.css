@@ -457,8 +457,7 @@
        + 圆角」。落在白色任务卡上时，底与卡面只差 ΔE76 2.7 ⇒ 浅色几乎看不出块边界
        （深色 #1B1D1E 对 #202224 卡面同样只有 2.6 的差）。⇒ 补同一条 1px 描边
        （桌面端 = `--cc-border` 浅 #DCDFE6 / 12% 白深），与对话流代码块同源同语言。
-       圆角 6 保留：这是面板内的次级块（外层卡已是 r12），与对话流里 r12 的一等块
-       不同档，非本轮授权范围。 */
+   圆角见下面「1126 第二轮」那条桌面档：6 → 12（`--cc-radius-lg`）。 */
 .background-task-command,
 .background-task-output {
   box-sizing: border-box;
@@ -483,4 +482,29 @@
 .background-task-output--error {
   max-height: 150px;
   color: var(--cc-state-failed, #d92d20);
+}
+
+/* ═══ 1126 第二轮评论：详情区「带背景处」的圆角按规范来 ═══
+   她点 `div.background-task-detail`「●[bash_bg_1] shellrunning停止命令:…」「这边
+   带背景处的圆角也按规范来」，随后回「一起补齐」把两条待裁一起落：
+   ① 圆角；② 内衬。先扫了一遍这个详情区（18 条任务逐条点进去，浅/深各一遍）里
+   所有「有底色或有描边」的元素，共 4 类：
+     · `.background-task-stop`「停止」  r8 —— 1111 已按按钮契约收口（compact 28 /
+       r8 / `--cc-border-light` 描边），合规，不动；
+     · `.background-task-command`  r6、`.background-task-output`（含 `--error`）
+       r6 —— 带 1px 描边 + 代码面底，属「带边框有底色的内容块」这一族；
+     · `.workflow-run-logs` 日志块 r6（在 WorkflowRunProgress.css:181，本文件外）。
+   规范给这一族的档位是 12（`--cc-radius-lg`）：对话流里同族的 `.markdown-content
+   pre` / `.write-preview-box` / `.diff-viewer-container` / 表格，1109 起就统一在 12
+   （见 host-desktop.css:7829 那段的收口记录）。⇒ 桌面端圆角 6 → 12。
+   内衬同时 8 → 12：那族参照物本来就是「r12 + 内衬 12」（Message.css:1160），圆角
+   到 12 而内衬仍 8 会让首字贴住弧线；代价是命令块 38 → 46 高、输出块可见行数
+   少约 0.4 行（max-height 200 不变）。
+   base 的 6 与内衬 8 保留给 IDE 与远控宿主（沿用旧密度档，本轮只落桌面）。
+   注：`--cc-radius-*` 在本仓库没有定义处，各处都靠 `var(--cc-radius-lg, 12px)`
+   的兜底取值（与 ConfirmDialog.css:141 等写法一致），故这里同样带兜底。 */
+[data-host="desktop"] .background-task-command,
+[data-host="desktop"] .background-task-output {
+  padding: 12px;
+  border-radius: var(--cc-radius-lg, 12px);
 }

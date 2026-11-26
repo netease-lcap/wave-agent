@@ -176,9 +176,30 @@
   color: var(--vscode-editorWarning-foreground, #d18616);
 }
 
-/* 日志块对齐同面板的 `.background-task-output`：代码 13/20、圆角 6（原 4）。 */
+/* 日志块对齐同面板的 `.background-task-output`：代码 13/20、圆角 6（原 4）。
+   1126 第二轮（她点 `div.background-task-detail`「这边带背景处的圆角也按规范来」，
+   随后回「一起补齐」）：comment 原本只写着「对齐 output」，那只对了一半 —— 桌面端
+   同面板的 `.background-task-command` / `.background-task-output` 早就收口成
+   「1px 描边 + `--cc-bg-code` 底 + r12 + 内衬 12」，本块三样都没跟上。四维一次对齐：
+     · 圆角    6 → 12（`--cc-radius-lg`，「带 1px 描边 + 有底色内容块」这一族的档位）
+     · 描边    裸 → 1px `--vscode-textBlockQuote-border`（与兄弟块同一条变量；浅色
+               解析为 `--cc-border` #DCDFE6，深色 `rgba(255,255,255,.12)`）
+     · 内衬    8 → 12（r12 配内衬 8 会让首行字贴住弧线；对话流 `.markdown-content pre`
+               也是 r12 + 内衬 12）
+     · 底色    直引 `--vscode-textCodeBlock-background` → 先取 `--cc-bg-code`（值等价，
+               桥接 host-desktop.css:113/:256 就是这么映的；显式绑 token 免得后人以为
+               本块另有一套底）
+   只落桌面端：base（IDE 与远控宿主）沿用旧密度档。盒高 3 行日志 76 → 86
+   （内衬 +8、描边 +2），命令块见 BackgroundTasksPane.css 同段注释。 */
 [data-host="desktop"] .background-tasks-pane .workflow-run-logs {
-  border-radius: 6px;
+  box-sizing: border-box;
+  border: 1px solid var(--vscode-textBlockQuote-border, rgba(128, 128, 128, 0.2));
+  border-radius: var(--cc-radius-lg, 12px);
+  padding: 12px;
+  background: var(
+    --cc-bg-code,
+    var(--vscode-textCodeBlock-background, rgba(0, 0, 0, 0.15))
+  );
   font-size: var(--vscode-editor-font-size, 13px);
   line-height: var(--cc-line-height-sm, 20px);
 }
