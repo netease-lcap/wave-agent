@@ -35,6 +35,7 @@ import type { Plugin } from "../../src/types/plugins.js";
 const probe = vi.hoisted(() => ({
   esbuild: undefined as unknown,
   files: new Map<string, string>(),
+  released: 0,
 }));
 
 vi.mock("../../src/utils/globalLogger.js", () => ({
@@ -43,6 +44,9 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
 
 vi.mock("../../src/utils/esbuild.js", () => ({
   getEsbuild: () => probe.esbuild,
+  releaseEsbuild: () => {
+    probe.released += 1;
+  },
 }));
 
 vi.mock("../../src/utils/atomicWrite.js", () => ({
@@ -5311,5 +5315,53 @@ exports.register = function ($, on) {
     expect(
       (await panesSeenByMod(manager)).map((pane) => pane.isPlaced),
     ).toEqual([false, false]);
+  });
+});
+
+describe("编译器的生命周期", () => {
+  /**
+   * 编译是一次性的：跑起来的是编出来的 CJS，运行期不需要编译器。而
+   * esbuild 的常驻服务会把 cwd 钉在加载那一刻的 `process.cwd()` 上 ——
+   * 会话在 worktree 里时那正是 worktree 目录，Windows 下会让退出删除
+   * 失败（`RemoveDirectoryW` → `EBUSY`）。
+   */
+  it("带 mod 的插件编译完就释放编译器", async () => {
+    const { manager } = createManager({ [MOD_PATH]: COUNTER_MOD });
+    probe.released = 0;
+
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+
+    expect(probe.released).toBe(1);
+  });
+
+  it("编译失败也释放，不把服务留在那里", async () => {
+    const { manager } = createManager({ [MOD_PATH]: COUNTER_MOD });
+    probe.released = 0;
+    const broken = {
+      transform: vi.fn(async () => {
+        throw new Error("boom");
+      }),
+    };
+    probe.esbuild = broken;
+    try {
+      await manager.loadFromPlugins([
+        plugin([{ id: "todo:panel", path: MOD_PATH }]),
+      ]);
+    } finally {
+      probe.esbuild = fakeEsbuild;
+    }
+
+    expect(probe.released).toBe(1);
+  });
+
+  it("没有 mod 的插件压根不碰编译器", async () => {
+    const { manager } = createManager({});
+    probe.released = 0;
+
+    await manager.loadFromPlugins([plugin([])]);
+
+    expect(probe.released).toBe(0);
   });
 });

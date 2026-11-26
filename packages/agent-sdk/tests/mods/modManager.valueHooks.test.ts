@@ -29,6 +29,7 @@ vi.mock("../../src/utils/esbuild.js", () => ({
   getEsbuild: () => ({
     transform: vi.fn(async (source: string) => ({ code: source })),
   }),
+  releaseEsbuild: () => {},
 }));
 
 vi.mock("../../src/utils/atomicWrite.js", () => ({

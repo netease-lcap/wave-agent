@@ -67,6 +67,7 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 - **入口的相对 import 会被递归收进编译集**：`mods/` 目录本身全收，`hooks/hooks.json` 声明的入口只收声明的那些，所以入口 `import "./lib/format.js"` 的兄弟文件要顺着 import 图找出来一起编译 —— 只收入口会让社区的多文件 mod 报「文件未编译」，而它们确实是同一个 mod。收进来的兄弟文件仍然要过插件目录与限额检查；**只有导出 `register` 的才算一个 mod**，没有的（纯工具模块）只参与编译、不注册钩子、不占 mod 名额。
 - **JSX 用 classic pragma**：`esbuild.transform` 传 `jsx: "transform"` + `jsxFactory: "__wave.h"` + `jsxFragment: "__wave.Fragment"`，与 TSX 里的 `<Box>` 对应到 runtime 注入的全局 `__wave`。
 - **编译器是 esbuild 的 `transform`**。选型依据：单文件 5KB 热态 0.8ms、冷启动 7ms；比 `esbuild-wasm`（170ms / 5ms）和 `@swc/wasm`（89ms / 1.3ms）快一个量级，且不需要在 webview/renderer 侧执行。逐文件 `transform` 而不是一次 `build` 的理由：两者都不打包（相对 import 由沙箱的 `require` 解析），差别只在批量开销（60 个 5KB 文件 11.5ms vs 48ms，一次性），而 `transform` 的报错天然带 `sourcefile`。
+- **编译完就把编译器收掉，不常驻**。`transform` 的 async API 会起一个 `--service` 常驻进程（`<platform> esbuild.exe --service`），而它的工作目录是 **esbuild 模块被加载那一刻的 `process.cwd()`**；会话在 worktree 里时（`-w` 起会话、桌面端在 worktree 内起会话）那就是 worktree 目录本身。Windows 上「某个进程的 cwd 在这个目录里」会让 `RemoveDirectoryW` 直接失败（`ERROR_SHARING_VIOLATION` → node `EBUSY`），于是一批 mod 编译完之后，退出时删 worktree 只能删成一个空壳、再提示用户手动清理。编译是一次性的 —— 跑起来的是编出来的 CJS，运行期不需要编译器 —— 所以一批 mod 编译完就 `stop()`，下一批再重起（实测重起 23ms、冷启 41ms、60 个文件热态 22ms）。语义与 Claude Code 一致：它用 `Bun.Transpiler` 在进程内同步转译，同样不留进程。
 - **esbuild 走仓库既有的「运行时按需依赖」范式**：与 `@vscode/ripgrep` / `sharp` / `wave-search-tools` 同一张表（`packages/agent-sdk/src/utils/runtimeDeps.ts` 的 `RuntimeDependency`），**不进 bundle、不进安装包**。esbuild 的 JS API 不能被打包进单文件产物（实测抛 `The esbuild JavaScript API cannot be bundled`），走这条范式天然绕开：`__filename` 是真实的 `esbuild/lib/main.js`，`generateBinPath()` 的 `require.resolve("@esbuild/<platform>-<arch>/bin/esbuild")` 相对它解析，与 rg 是同一条「Node 往上找」机制。
   - 表项：`sharedPackages` = `esbuild` 本身，`platformPackages` = `@esbuild/<platform>-<arch>`（版本取 `entry.optionalDependencies`），`libcAwarePlatformKey: false` —— esbuild 是 Go 静态二进制，平台包里没有 musl 变体，且 `<platform>-<arch>` 与现成的 `runtimePlatformKey()` 输出格式一致。
   - 加入**默认批次**：随 CLI 启动后的 `void ensureRuntimeDeps()` 一起下载，落在共享的 `~/.wave/cli/node_modules`，升级不重下。首次约 4.5 MB（`@esbuild/linux-x64` 4.52 + `esbuild` 0.03，0.28.x 实测），桌面端随包的 CLI（`resources/wave-cli`）**不带任何 esbuild 文件**。
@@ -1728,3 +1729,12 @@ Claude Code 的 `$` 有 23 个命名空间，我们覆盖 16 个（`ui` / `sessi
 4. **假设** `$.tool.call` 触发了一次真实调用（钩子调了 `next(e)`），**当**链走到尾，**则**链尾是空对象 —— 方法**不执行**工具，返回里没有 `{ result }`。
 5. **假设**钩子的 matcher 是 `{ tool: "Bash" }`，**当** mod 调 `$.tool.check({ tool: "Read" })`，**则**那条钩子不被调用（与真实调用同一个匹配规则）。
 6. **假设** mod 在自己的 `tool.check` 钩子内部调 `$.tool.check`（同一个 mod 的同名事件重入），**当**调用发生，**则**当场 reject 并说明「不能在钩子里重入同名事件」；`$.tool.call` 同理。
+
+### 用户故事：退出时能把 worktree 删干净（优先级：P1）
+
+作为在 worktree 里干活的使用者，我希望退出并选择「删除」之后目录真的消失，而不是留下一个只有 `.git` 的空壳和一条「手动清理」提示 —— 只要插件带的 mods 编译过，这个目录就删不掉了。
+
+**验收场景**：
+
+1. **假设** 我用 `wave -w demo` 起了一个会话，装载的插件带 TSX mods（编译器起过一次），**当** 我退出并选择删除 worktree，**则** 目录被整个删掉、输出 `Done.`，不出现「Worktree directory survived at …」。
+2. **假设** 同一个进程里随后插件重载又带来新的 mods，**当** 再次编译，**则** 编译器自动重起、编译结果照常，用户不需要做任何事。
