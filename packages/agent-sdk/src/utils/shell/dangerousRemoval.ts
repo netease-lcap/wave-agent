@@ -87,6 +87,10 @@ const REMOVAL_COMMANDS: ReadonlySet<string> = new Set(["rm", "rmdir"]);
  * The value is the set of the wrapper's own flags that consume the next word
  * (`sudo -u root`, `nice -n 5`), so the value is not mistaken for the command.
  *
+ * `timeout` is absent too, but not for the same reason: its wrapped command sits
+ * behind a duration word (`timeout 5 rm -rf ..`), which no set of value-flags can
+ * express, so it is read by {@link timeoutCommandIndex} instead.
+ *
  * `chronic` is deliberately absent: Claude Code peels it nowhere on this
  * question, and every spelling added beyond it is another card that cannot be
  * dismissed or covered by a rule. The command is not lost either way —
@@ -123,7 +127,15 @@ const WRAPPERS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ["stdbuf", new Set(["-i", "-o", "-e"])],
 ]);
 
-/** Shells whose `-c <script>` argument is itself a command line to judge. */
+/**
+ * Shells whose `-c <script>` argument is itself a command line to judge.
+ *
+ * This is Claude Code's list for the same question (its `f5e`), including the
+ * two a session is unlikely to type by hand: `hush` (BusyBox's ash) and
+ * `rbash`. A restricted shell refuses some commands but still runs the script
+ * it is handed, so `rbash -c 'rm -rf ..'` deletes exactly what the plain
+ * spelling does.
+ */
 const INLINE_SHELLS: ReadonlySet<string> = new Set([
   "sh",
   "bash",
@@ -132,8 +144,20 @@ const INLINE_SHELLS: ReadonlySet<string> = new Set([
   "ksh",
   "mksh",
   "ash",
+  "hush",
+  "rbash",
   "busybox",
 ]);
+
+/** A short-flag cluster carrying `c` anywhere (`-c`, `-lc`, `-ce`), as Claude
+ * Code reads it — `bash -ce '…'` runs the script just as `bash -c '…'` does. */
+const INLINE_SCRIPT_FLAG = /^-[A-Za-z]*c[A-Za-z]*$/;
+
+/** A signal name or number `timeout` accepts (`-s KILL`, `--signal=TERM`). */
+const TIMEOUT_SIGNAL = /^[A-Za-z0-9_.+-]+$/;
+
+/** `timeout`'s duration: seconds unless a unit is spelled out (`5`, `2.5m`). */
+const TIMEOUT_DURATION = /^\d+(?:\.\d+)?[smhd]?$/;
 
 /** `sh -c` inside `sh -c` inside …; past this the shape is not worth chasing. */
 const MAX_NESTING = 4;
@@ -323,6 +347,61 @@ function launcherName(word: string): string {
 }
 
 /**
+ * Where `timeout`'s wrapped command starts, or `-1` when the words are not
+ * `timeout <flags> <duration> <command>`.
+ *
+ * `timeout` is the one wrapper a flag table cannot read: the wrapped command is
+ * two words away with a duration in between, so the table would take `5` for the
+ * command name and stop there. This is Claude Code's grammar for the same
+ * question (its `crt`), and it gives up the same way — an unknown flag or a
+ * missing duration means nothing is peeled, so `timeout rm -rf ..` stays a
+ * `timeout` call on both sides.
+ */
+function timeoutCommandIndex(argv: string[], start: number): number {
+  let index = start + 1;
+  while (index < argv.length) {
+    const arg = argv[index]!;
+    const next = argv[index + 1];
+    if (
+      arg === "--foreground" ||
+      arg === "--preserve-status" ||
+      arg === "--verbose"
+    ) {
+      index++;
+    } else if (/^--(?:kill-after|signal)=[A-Za-z0-9_.+-]+$/.test(arg)) {
+      index++;
+    } else if (
+      (arg === "--kill-after" || arg === "--signal") &&
+      next &&
+      TIMEOUT_SIGNAL.test(next)
+    ) {
+      index += 2;
+    } else if (arg === "--") {
+      index++;
+      break;
+    } else if (arg.startsWith("--")) {
+      return -1;
+    } else if (arg === "-v") {
+      index++;
+    } else if (
+      (arg === "-k" || arg === "-s") &&
+      next &&
+      TIMEOUT_SIGNAL.test(next)
+    ) {
+      index += 2;
+    } else if (/^-[ks][A-Za-z0-9_.+-]+$/.test(arg)) {
+      index++;
+    } else if (arg.startsWith("-")) {
+      return -1;
+    } else {
+      break;
+    }
+  }
+  if (index >= argv.length || !TIMEOUT_DURATION.test(argv[index]!)) return -1;
+  return index + 1;
+}
+
+/**
  * Peel environment assignments and wrappers off a leaf: `sudo -u root rm -rf ..`
  * → `{ name: "rm", args: ["-rf", ".."] }`.
  */
@@ -332,6 +411,12 @@ function unwrapLeaf(argv: string[]): { name: string; args: string[] } {
 
   while (index < argv.length) {
     const name = launcherName(argv[index]!);
+    if (name === "timeout") {
+      const wrapped = timeoutCommandIndex(argv, index);
+      if (wrapped < 0) break;
+      index = wrapped;
+      continue;
+    }
     const valueFlags = WRAPPERS.get(name);
     if (!valueFlags) break;
     index++;
@@ -374,9 +459,11 @@ function inlineShellScript(name: string, args: string[]): string | undefined {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
     if (arg === "--") break;
-    // `-c`, `-lc`, `-ec`: a short-flag cluster that ends in `c`.
-    if (!arg.startsWith("-") || !/^-[A-Za-z]*c$/.test(arg)) continue;
-    const script = args[i + 1];
+    if (!arg.startsWith("-") || !INLINE_SCRIPT_FLAG.test(arg)) continue;
+    // `bash -c -- 'rm -rf ..'` means the same thing to bash, and Claude Code
+    // reads the `--` there too — it is not a way around this check.
+    const rest = args.slice(i + 1);
+    const script = rest[0] === "--" ? rest[1] : rest[0];
     return script === undefined ? undefined : scanWord(script).text;
   }
   return undefined;

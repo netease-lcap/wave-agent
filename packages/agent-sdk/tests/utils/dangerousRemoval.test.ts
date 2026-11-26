@@ -202,9 +202,35 @@ describe("findDangerousRemoval — shapes that hide the command", () => {
     expect(ruleOf("X=1 rm -rf ../..")).toBe("working_directory");
   });
 
+  it("reads timeout's flags and duration, which a flag table cannot", () => {
+    expect(ruleOf("timeout 5 rm -rf ../..")).toBe("working_directory");
+    expect(ruleOf("timeout 2.5m rm -rf ../..")).toBe("working_directory");
+    expect(ruleOf("timeout -s KILL 5 rm -rf ../..")).toBe("working_directory");
+    expect(ruleOf("timeout -k 1 5 rm -rf ../..")).toBe("working_directory");
+    expect(ruleOf("timeout --signal=TERM 5 rm -rf ../..")).toBe(
+      "working_directory",
+    );
+    expect(ruleOf("timeout --kill-after=1 5 rm -rf ../..")).toBe(
+      "working_directory",
+    );
+    expect(ruleOf("timeout -v -- 5 rm -rf ../..")).toBe("working_directory");
+    expect(ruleOf("sudo timeout 5 rm -rf ../..")).toBe("working_directory");
+    // Not `timeout <flags> <duration> <command>`: nothing is peeled, so this is
+    // an ordinary confirmation in Claude Code as well.
+    expect(ruleOf("timeout rm -rf ../..")).toBeNull();
+    expect(ruleOf("timeout --nonsense 5 rm -rf ../..")).toBeNull();
+  });
+
   it("looks inside an inline shell script", () => {
     expect(ruleOf("bash -c 'rm -rf ../..'")).toBe("working_directory");
     expect(ruleOf("sh -lc 'rm -rf ../..'")).toBe("working_directory");
+    // `c` anywhere in the cluster, a `--` after it, and the two shells a session
+    // rarely types: Claude Code reads all of these, so they cannot be a way past.
+    expect(ruleOf("bash -ce 'rm -rf ../..'")).toBe("working_directory");
+    expect(ruleOf("sh -ec 'rm -rf ../..'")).toBe("working_directory");
+    expect(ruleOf("bash -c -- 'rm -rf ../..'")).toBe("working_directory");
+    expect(ruleOf("hush -c 'rm -rf ../..'")).toBe("working_directory");
+    expect(ruleOf("rbash -c 'rm -rf ../..'")).toBe("working_directory");
     const elsewhere = path.resolve(path.sep, "fake", "elsewhere");
     expect(
       ruleOf(
