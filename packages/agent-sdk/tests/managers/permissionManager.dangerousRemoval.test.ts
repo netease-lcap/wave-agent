@@ -26,6 +26,7 @@ const PARENT = path.dirname(WORKDIR);
 function createManager(options: {
   allowedRules?: string[];
   additionalDirectories?: string[];
+  configuredPermissionMode?: PermissionMode;
 }): PermissionManager {
   const container = new Container();
   container.register("CurrentWorkdir", WORKDIR);
@@ -36,6 +37,7 @@ function createManager(options: {
   return new PermissionManager(container, {
     allowedRules: options.allowedRules,
     additionalDirectories: options.additionalDirectories,
+    configuredPermissionMode: options.configuredPermissionMode,
   });
 }
 
@@ -73,17 +75,64 @@ describe("removing the session's own working directory", () => {
     expect(result.behavior).toBe("allow");
   });
 
-  it.each<PermissionMode>([
-    "default",
-    "acceptEdits",
-    "plan",
-    "bypassPermissions",
-  ])("asks in %s mode", async (mode) => {
+  it.each<PermissionMode>(["default", "acceptEdits", "plan"])(
+    "asks in %s mode",
+    async (mode) => {
+      const manager = createManager({});
+      const callback = allowOnce();
+
+      await check(manager, "rm -rf ../..", {
+        mode,
+        callback: callback as unknown as PermissionCallback,
+      });
+
+      expect(callback).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("is released by bypassPermissions, as Claude Code does", async () => {
+    // Claude Code marks this check `waivableInBypass`: a mode whose promise is
+    // "do not ask me" answers the card itself. Approving here would mean the
+    // prompt came back in the one mode that exists to suppress it.
     const manager = createManager({});
     const callback = allowOnce();
 
+    const result = await check(manager, "rm -rf ../..", {
+      mode: "bypassPermissions",
+      callback: callback as unknown as PermissionCallback,
+    });
+
+    expect(callback).not.toHaveBeenCalled();
+    expect(result.behavior).toBe("allow");
+  });
+
+  it("is released in plan mode when the session was created with bypass", async () => {
+    const manager = createManager({
+      configuredPermissionMode: "bypassPermissions",
+    });
+    manager.captureBypassAuthorization();
+    const callback = allowOnce();
+
+    const result = await check(manager, "rm -rf ../..", {
+      mode: "plan",
+      callback: callback as unknown as PermissionCallback,
+    });
+
+    expect(callback).not.toHaveBeenCalled();
+    expect(result.behavior).toBe("allow");
+  });
+
+  it("still asks in default mode for a session created with bypass", async () => {
+    // The authorization is frozen for plan mode only; it is not a licence for
+    // every later mode to skip the card.
+    const manager = createManager({
+      configuredPermissionMode: "bypassPermissions",
+    });
+    manager.captureBypassAuthorization();
+    const callback = allowOnce();
+
     await check(manager, "rm -rf ../..", {
-      mode,
+      mode: "default",
       callback: callback as unknown as PermissionCallback,
     });
 
