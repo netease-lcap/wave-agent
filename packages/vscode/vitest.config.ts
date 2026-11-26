@@ -12,7 +12,8 @@ export default defineConfig({
     environment: "node",
     include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
     exclude: ["node_modules"],
-    setupFiles: ["tests/setup.ts"],
+    // 通过的用例不打印 console 输出；失败的用例照打（vitest 会把它的日志重放出来）。
+    silent: "passed-only",
     env: {
       // Keep the file logger out of the user's real ~/.wave/logs during tests.
       DISABLE_LOGGER_IO: "true",
