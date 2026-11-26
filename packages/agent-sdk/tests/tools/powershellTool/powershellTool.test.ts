@@ -798,7 +798,7 @@ describe("powershellTool", () => {
       // Same receipt text the Bash tool returns, so the model reads one contract
       // regardless of which shell ran the command.
       expect(result.content).toBe(
-        "Command was manually backgrounded by user with ID: task_9_9. Output is being written to: C:\\temp\\wave-task-9.log",
+        "Command was manually backgrounded by user with ID: task_9_9. It is still running — you will be notified when it completes. Do not start it again. Output is being written to: C:\\temp\\wave-task-9.log",
       );
       expect(adoptProcess).toHaveBeenCalledWith(
         child,

@@ -121,7 +121,9 @@ function backgroundMessage(data: PowerShellResultData): string {
     return `Command exceeded the timeout (${seconds}s) and was moved to the background with ID: ${taskId}. It is still running — you will be notified when it completes.${written}`;
   }
   if (data.backgroundedByUser) {
-    return `Command was manually backgrounded by user with ID: ${taskId}.${written}`;
+    // 与 CC 对齐：转后台不结束本轮（见 aiManager 的循环判据），回执必须说清
+    // 「仍在跑、会通知、别再起一次」，否则模型会把同一条命令再起一遍。
+    return `Command was manually backgrounded by user with ID: ${taskId}. It is still running — you will be notified when it completes. Do not start it again.${written}`;
   }
   return outputPath
     ? `Command running in background with ID: ${taskId}. Output is being written to: ${outputPath}`
