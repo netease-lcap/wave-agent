@@ -984,7 +984,15 @@ describe("remote page shim", () => {
     expect(settled.isRestoring).toBeUndefined();
   });
 
-  test("a switch whose read fails still takes the overlay down", async () => {
+  /**
+   * 切会话那一拍读失败时，占位**不许揭开**（spec remote-web 场景 10「那一拍读
+   * 失败」）。揭开它的是一份空快照，页面随即认为「这条会话本来就是空的」，落成
+   * 新对话的欢迎页——用户看到的就是「切过去是一条空对话」。
+   *
+   * 这一拍也不自己重读（2026-11-26 定）：占位停在原地、原因在状态条上，自愈交给
+   * 本来就会重跑整份快照的那几条入口——这里验「回前台」那条。
+   */
+  test("a switch whose read fails keeps the overlay instead of painting an empty page", async () => {
     const { page } = await openPage();
 
     page.api.postMessage({ command: "restoreSession", sessionId: "s-old" });
@@ -992,14 +1000,27 @@ describe("remote page shim", () => {
     await page.answer("listDaemonSessions", { sessions: SESSIONS });
     await page.answer("getSessionInfo", { permissionMode: "default" });
     await page.answer("listPendingPermissions", { requests: [] });
+    const reads = page.requests("getMessages");
     await page.refuse("getMessages", "boom");
 
-    // 占位不能永远转：读失败也要收口，原因由状态条说（它是可见的那一半）。
+    // 屏上仍是那层占位（最后一份 setInitialState 就是切会话时挂上的那份），
+    // 原因交给状态条——不是一份「空的首屏」。
     const snapshots = page.posted.filter(
       (posted) => posted.command === "setInitialState",
     );
-    const last = snapshots[snapshots.length - 1];
-    expect(last.isRestoring ?? false).toBe(false);
+    expect(snapshots[snapshots.length - 1]).toMatchObject({
+      isRestoring: true,
+      messages: [],
+    });
+    expect(document.getElementById("remote-status")?.textContent).toContain(
+      "拉取会话失败",
+    );
+
+    // 页面不会自己去问：占位挂着的这段时间里一次重读都没有。这里取 2 秒多一点，
+    // 是以前那档自动重试的第一拍——那一档已经拿掉，用它只证明「没有」。
+    await vi.advanceTimersByTimeAsync(2100);
+    await flush();
+    expect(page.requests("getMessages")).toBe(reads);
   });
 
   /**
