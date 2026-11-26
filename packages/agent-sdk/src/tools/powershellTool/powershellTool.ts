@@ -7,7 +7,8 @@ import { getShellProvider } from "../../utils/shell/resolveProvider.js";
 import { terminateChildProcessTree } from "../../utils/terminateProcessTree.js";
 import { persistToolResult } from "../../utils/toolResultStorage.js";
 import { probeTempDir, resolveTempDir } from "../../utils/tempDir.js";
-import { BASH_MAX_OUTPUT_CHARS } from "../../constants/toolLimits.js";
+import { BASH_MAX_OUTPUT_BYTES } from "../../constants/toolLimits.js";
+import { exceedsUtf8Bytes, truncateUtf8 } from "../../utils/utf8Bytes.js";
 import { POWERSHELL_TOOL_NAME, READ_TOOL_NAME } from "../../constants/tools.js";
 import { resolveToCanonical } from "../../utils/powershellStructure/canonical.js";
 import {
@@ -105,12 +106,13 @@ function oneLineLabel(text: string): string {
  */
 function stashLongOutput(data: PowerShellResultData): void {
   const body = composePowerShellResultText(data);
-  if (body.length <= BASH_MAX_OUTPUT_CHARS) return;
+  if (!exceedsUtf8Bytes(body, BASH_MAX_OUTPUT_BYTES)) return;
   const filePath = persistToolResult(body, "powershell");
   if (!filePath) return;
   data.persistedOutputPath = filePath;
+  // 单位仍是字符：`buildPersistedOutputMessage` 的文案就是按字符报的。
   data.persistedOutputSize = body.length;
-  data.stdout = data.stdout.slice(0, BASH_MAX_OUTPUT_CHARS);
+  data.stdout = truncateUtf8(data.stdout, BASH_MAX_OUTPUT_BYTES);
 }
 
 /**

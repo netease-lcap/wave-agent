@@ -38,10 +38,44 @@ import type {
  * "Active code page: 65001", and the separator is `;` rather than `&&` so a
  * shell that cannot find `chcp.com` still runs the command.
  */
-export const CONSOLE_CODE_PAGE_PROLOGUE = "chcp.com 65001 >/dev/null 2>&1";
 
 /**
- * Put {@link CONSOLE_CODE_PAGE_PROLOGUE} in front of a command string.
+ * `chcp.com` resolved to an absolute path, or the bare name as a last resort.
+ *
+ * Claude Code builds the same path (`join(SYSTEMROOT, "System32", "chcp.com")`)
+ * instead of letting PATH find it, and the reason is the same here: a
+ * `chcp.com` earlier on PATH would run in place of the system one. Git Bash
+ * needs the path with forward slashes — backslashes are escapes there.
+ *
+ * The path is validated before use (drive letter, slash, then nothing a shell
+ * would interpret or a word-splitter would split on: no space, quote, `%`,
+ * `!`, `^`, `&`, `|`, angle brackets, parentheses). Anything unexpected —
+ * no `SYSTEMROOT`/`windir`, a space inside it — falls back to the bare name:
+ * a switch that resolves through PATH is still better than one that never runs.
+ */
+const CHCP_SAFE_PATH = /^[A-Za-z]:\/[^"%!^&<>|()\s\r\n\0]*$/;
+
+function resolveChcpCommand(): string {
+  // Three spellings, and an empty value counts as absent — a launcher that
+  // exports `SYSTEMROOT=` must not beat a real `windir`.
+  const root = [
+    process.env.SystemRoot,
+    process.env.SYSTEMROOT,
+    process.env.windir,
+  ].find((value) => value);
+  if (!root) return "chcp.com";
+  const normalized = root.replace(/[\\/]+$/, "").replace(/\\/g, "/");
+  const candidate = `${normalized}/System32/chcp.com`;
+  return CHCP_SAFE_PATH.test(candidate) ? candidate : "chcp.com";
+}
+
+/** The switch itself: `<resolved chcp.com> 65001`, output discarded. */
+export function consoleCodePagePrologue(): string {
+  return `${resolveChcpCommand()} 65001 >/dev/null 2>&1`;
+}
+
+/**
+ * Put {@link consoleCodePagePrologue} in front of a command string.
  *
  * In front of the *whole* string, not inside the `eval` body: the bytes the
  * model wrote then stay exactly as written (the CWD wrapper quotes them, and a
@@ -54,7 +88,7 @@ export const CONSOLE_CODE_PAGE_PROLOGUE = "chcp.com 65001 >/dev/null 2>&1";
  */
 export function withConsoleCodePage(command: string): string {
   return process.platform === "win32"
-    ? `${CONSOLE_CODE_PAGE_PROLOGUE}; ${command}`
+    ? `${consoleCodePagePrologue()}; ${command}`
     : command;
 }
 

@@ -1,4 +1,5 @@
-import { BASH_MAX_OUTPUT_CHARS } from "../../constants/toolLimits.js";
+import { BASH_MAX_OUTPUT_BYTES } from "../../constants/toolLimits.js";
+import { exceedsUtf8Bytes, truncateUtf8 } from "../../utils/utf8Bytes.js";
 import { READ_TOOL_NAME } from "../../constants/tools.js";
 import {
   buildPersistedOutputMessage,
@@ -152,9 +153,9 @@ export function renderPowerShellResultData(data: PowerShellResultData): string {
         data.persistedOutputPath,
         generatePreview(body),
       )
-    : body.length > BASH_MAX_OUTPUT_CHARS
+    : exceedsUtf8Bytes(body, BASH_MAX_OUTPUT_BYTES)
       ? // 该落盘但没落成（写不进去）：就地截断，与 `processToolResult` 的兜底同形。
-        body.substring(0, BASH_MAX_OUTPUT_CHARS) + TRUNCATED_WITHOUT_FILE
+        truncateUtf8(body, BASH_MAX_OUTPUT_BYTES) + TRUNCATED_WITHOUT_FILE
       : body;
 
   if (!data.interrupted) return persisted;

@@ -13,7 +13,8 @@ import { withConsoleCodePage } from "../utils/shell/bashProvider.js";
 import { toWindowsPath } from "../utils/path.js";
 import { terminateChildProcessTree } from "../utils/terminateProcessTree.js";
 import { persistToolResult } from "../utils/toolResultStorage.js";
-import { BASH_MAX_OUTPUT_CHARS } from "../constants/toolLimits.js";
+import { BASH_MAX_OUTPUT_BYTES } from "../constants/toolLimits.js";
+import { exceedsUtf8Bytes, truncateUtf8 } from "../utils/utf8Bytes.js";
 import type {
   ToolPlugin,
   ToolResult,
@@ -147,12 +148,13 @@ function oneLineLabel(text: string): string {
  */
 function stashLongOutput(data: BashResultData): void {
   const body = composeBashResultText(data);
-  if (body.length <= BASH_MAX_OUTPUT_CHARS) return;
+  if (!exceedsUtf8Bytes(body, BASH_MAX_OUTPUT_BYTES)) return;
   const filePath = persistToolResult(body, "bash");
   if (!filePath) return;
   data.persistedOutputPath = filePath;
+  // 单位仍是字符：`buildPersistedOutputMessage` 的文案就是按字符报的。
   data.persistedOutputSize = body.length;
-  data.stdout = data.stdout.slice(0, BASH_MAX_OUTPUT_CHARS);
+  data.stdout = truncateUtf8(data.stdout, BASH_MAX_OUTPUT_BYTES);
 }
 
 /**
@@ -209,7 +211,7 @@ ${search.search}- Read files: Use ${READ_TOOL_NAME} (NOT cat/head/tail)
 ${search.scope}
 - \`timeout\` is in milliseconds: default ${BASH_DEFAULT_TIMEOUT_MS} (${BASH_DEFAULT_TIMEOUT_MS / 60000} minutes), max ${BASH_MAX_TIMEOUT_MS} (${BASH_MAX_TIMEOUT_MS / 60000} minutes).
 - \`run_in_background\` runs the command detached so you can keep working; you are notified when it finishes. No \`&\` needed.
-- Output over ${BASH_MAX_OUTPUT_CHARS.toLocaleString()} characters is truncated and persisted to a file you can read with the ${READ_TOOL_NAME} tool.
+- Output over ${BASH_MAX_OUTPUT_BYTES.toLocaleString()} bytes (UTF-8) is truncated and persisted to a file you can read with the ${READ_TOOL_NAME} tool.
 - Independent commands go in parallel tool calls in one message; dependent ones chain with \`&&\`.`;
   },
   prompt: (args?: ToolPromptArgs) => {
@@ -239,7 +241,7 @@ Usage notes:
   - The command argument is required.
   - You may specify an optional timeout in milliseconds (up to ${BASH_MAX_TIMEOUT_MS}ms / ${BASH_MAX_TIMEOUT_MS / 60000} minutes). By default, your command will timeout after ${BASH_DEFAULT_TIMEOUT_MS}ms (${BASH_DEFAULT_TIMEOUT_MS / 60000} minutes).
   - It is very helpful if you write a clear, concise description of what this command does in 5-10 words.
-  - If the output exceeds ${BASH_MAX_OUTPUT_CHARS.toLocaleString()} characters, output will be truncated and the full output will be persisted to a file you can read with the Read tool.
+  - If the output exceeds ${BASH_MAX_OUTPUT_BYTES.toLocaleString()} bytes (UTF-8), output will be truncated and the full output will be persisted to a file you can read with the Read tool.
   - You can use the \`run_in_background\` parameter to run the command in the background, which allows you to continue working while the command runs. You can monitor the output using the ${READ_TOOL_NAME} tool as it becomes available. You do not need to use '&' at the end of the command when using this parameter.
 ${search.usage}
   - When issuing multiple commands:
@@ -730,7 +732,7 @@ The working directory persists between commands, but shell state (environment va
       // 带色原文（与 Claude Code 对齐）。纯文本出口才剥。
       // The bytes are UTF-8, with nothing to guess: on Windows the provider puts
       // the console's code page at 65001 before the command runs (see
-      // `CONSOLE_CODE_PAGE_PROLOGUE`), so a native program's localized text
+      // `consoleCodePagePrologue`), so a native program's localized text
       // arrives already encoded as UTF-8. `toString()` is the one decoding path,
       // the same one Claude Code uses — a stream that is GBK anyway (a file's
       // own bytes, a program writing through the ANSI API) shows U+FFFD instead

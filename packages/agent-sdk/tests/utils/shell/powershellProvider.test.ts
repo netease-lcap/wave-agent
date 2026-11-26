@@ -42,10 +42,15 @@ describe("powershellProvider", () => {
 
     // Written out rather than imported: this statement is what makes 5.1 hand
     // back UTF-8, and a silent edit to it would only surface as mojibake on a
-    // user's machine. POSIX pwsh has no console code page to set.
+    // user's machine. Two halves matter — the assignment, and the guard that
+    // keeps ConstrainedLanguage (AppLocker / WDAC) from failing the whole
+    // command over it. POSIX pwsh has no console code page to set.
+    const utf8Statement =
+      "if ($ExecutionContext.SessionState.LanguageMode -eq 'FullLanguage') { try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {} }";
+
     await expect(provider.prepareCommand("Get-Content .\\a.txt")).resolves.toBe(
       process.platform === "win32"
-        ? "[Console]::OutputEncoding = [Text.Encoding]::UTF8\nGet-Content .\\a.txt"
+        ? `${utf8Statement}\nGet-Content .\\a.txt`
         : "Get-Content .\\a.txt",
     );
   });

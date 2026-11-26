@@ -49,7 +49,7 @@
  * this tool's description alone, like CC does.
  */
 
-import { BASH_MAX_OUTPUT_CHARS } from "../../constants/toolLimits.js";
+import { BASH_MAX_OUTPUT_BYTES } from "../../constants/toolLimits.js";
 import {
   EDIT_TOOL_NAME,
   GLOB_TOOL_NAME,
@@ -185,7 +185,7 @@ Usage notes:
    - The command argument is required.
    - You may specify an optional timeout in milliseconds (up to ${POWERSHELL_MAX_TIMEOUT_MS}ms / ${POWERSHELL_MAX_TIMEOUT_MS / 60000} minutes). By default a command times out after ${POWERSHELL_DEFAULT_TIMEOUT_MS}ms (${POWERSHELL_DEFAULT_TIMEOUT_MS / 60000} minutes).
    - It is very helpful if you write a clear, concise description of what this command does.
-   - If the output exceeds ${BASH_MAX_OUTPUT_CHARS.toLocaleString()} characters, it is truncated and the full output persisted to a file you can read with the ${READ_TOOL_NAME} tool.
+   - If the output exceeds ${BASH_MAX_OUTPUT_BYTES.toLocaleString()} bytes (UTF-8), it is truncated and the full output persisted to a file you can read with the ${READ_TOOL_NAME} tool.
    - You can use the \`run_in_background\` parameter to run the command in the background. Only use this if you don't need the result immediately and are OK being notified when the command completes later. You do not need to check the output right away — you'll be notified when it finishes.
    - Avoid using ${POWERSHELL_TOOL_NAME} to run commands that have dedicated tools, unless explicitly instructed:
 ${dedicatedToolLines(args).join("\n")}

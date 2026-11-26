@@ -150,12 +150,13 @@ order: 22
 
 **验收场景**：
 
-1. **假设** 运行在 Windows，**当** 工具接收子进程输出时，**则** 只按 UTF-8 解码，且跨 chunk 连续（给流挂 `setEncoding("utf8")`，管道边界把一个汉字切两半时由 Node 的流式解码器续完）：编码在源头设定——工具把命令交给 provider 前先加 `[Console]::OutputEncoding = [Text.Encoding]::UTF8`（`packages/agent-sdk/src/utils/shell/powershellProvider.ts` 的 `CONSOLE_UTF8_STATEMENT`），收流处没有第二条路，也没有「严格解码失败即改判 GBK」的回退。
+1. **假设** 运行在 Windows，**当** 工具接收子进程输出时，**则** 只按 UTF-8 解码，且跨 chunk 连续（给流挂 `setEncoding("utf8")`，管道边界把一个汉字切两半时由 Node 的流式解码器续完）：编码在源头设定——工具把命令交给 provider 前先加一句**带守卫的**编码语句 `if ($ExecutionContext.SessionState.LanguageMode -eq 'FullLanguage') { try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {} };`（`packages/agent-sdk/src/utils/shell/powershellProvider.ts` 的 `CONSOLE_UTF8_STATEMENT`）：判定与 `try/catch` 都不能省，理由见场景 6；收流处没有第二条路，也没有「严格解码失败即改判 GBK」的回退。
 2. **假设** 命令自身改了输出编码，**当** 收流时，**则** 以命令自己设的为准：工具只在命令之前设一次，事后不按字节反推代码页——反推不出来（整条流是 GBK，还是 UTF-8 流的头被截断，从字节上不可区分）。
 3. **假设** 模型要让另一个工具读取自己写出的文件，**当** 提示词给出编码规则时，**则** 必须点明 `Out-File` / `Set-Content` 在 5.1 默认写 UTF-16 LE 带 BOM、要求 `-Encoding utf8`；未知 edition 时按 5.1 的保守规则给出同一句（`packages/agent-sdk/src/tools/powershellTool/prompt.ts:88`、`:91-93`）。
 4. **假设** 模型用重定向运算符（`>` / `>>`）写文件，**当** 落盘时，**则** 编码由 PowerShell 自身决定（5.1 的 `>` 与 `Out-File` 同源，写 UTF-16 LE 带 BOM；7 写 UTF-8 无 BOM）——工具不拦截、不改写重定向的目标编码，提示词也没有单独就 `>` 给出规则，唯一的防线是模型按上一条显式指定 `-Encoding`。**（无单测覆盖：属 PowerShell 自身语义，工具侧不存在对应代码路径）**
 5. **假设** 命令输出了 ANSI 颜色转义序列，**当** 结果落到模型与 UI 时，**则** 序列必须原样保留（与 Bash 工具同一口径），不在收流处剥离（`packages/agent-sdk/src/managers/backgroundTaskManager.ts:251-252`）。
-6. **假设** 某程序绕过控制台代码页输出本地化文本（走 ANSI API），**当** 收流时，**则** 这段就是 `\uFFFD`，工具不恢复代码页猜测、也不为它二次解码——已知代价，与 Bash 工具、Claude Code 相同。
+6. **假设** 会话的 PowerShell 处在受限语言模式（AppLocker / WDAC 下发 `ConstrainedLanguage`，私有化环境的常见加固形态），**当** 执行命令时，**则** 编码语句必须自带 `LanguageMode -eq 'FullLanguage'` 判定与 `try/catch`（与 Claude Code 同一句）：受限模式下这条 .NET 属性赋值会抛错，裸语句会让**整条命令在编码那一行就失败**，用户看到的是与命令无关的 PowerShell 报错，命令本身根本没跑；跳过之后命令照常执行，中文输出退回「不恢复代码页猜测」的已知代价（场景 2）。
+7. **假设** 某程序绕过控制台代码页输出本地化文本（走 ANSI API），**当** 收流时，**则** 这段就是 `\uFFFD`，工具不恢复代码页猜测、也不为它二次解码——已知代价，与 Bash 工具、Claude Code 相同。
 
 ---
 

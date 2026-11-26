@@ -1368,7 +1368,7 @@ async function answerShellCall(
     };
   }
 
-  // Past 30000 characters `Bash` persists the whole output and hands the model a
+  // Past 30000 UTF-8 bytes `Bash` persists the whole output and hands the model a
   // `<persisted-output>` wrapper with a 2048-character preview. The script gets
   // the same information as fields instead of as a wrapper to parse: the preview
   // in `stdout`, and the spill file in `file` — that file is what `Read` or a
