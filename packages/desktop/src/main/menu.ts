@@ -12,6 +12,13 @@
  * therefore carry `registerAccelerator: false` — the displayed shortcut is
  * informational, and clicking the item takes the exact same code path.
  *
+ * The preview back/forward keys (Cmd+[ / Cmd+] on macOS, Ctrl+[ / Ctrl+] on
+ * Windows/Linux) use the same mechanism but are attached to the preview guest
+ * only, and they act on that guest directly via `guest.navigationHistory`
+ * instead of going through the webview: the event can only come from the guest
+ * that has focus, so that guest *is* the target — no paneId, no IPC, and no way
+ * to pick the wrong pane in a split layout (same as Claude Code Desktop).
+ *
  * CmdOrCtrl+N / CmdOrCtrl+Shift+N / CmdOrCtrl+W, in contrast, ARE registered
  * accelerators: menu accelerators fire app-wide (even while the preview guest
  * has focus) and — for Cmd+N / Cmd+W — preempt the default Electron behavior
@@ -57,6 +64,8 @@ export interface SessionMenuState {
 }
 
 type SwitchDirection = "next" | "prev";
+
+export type PreviewHistoryDirection = "back" | "forward";
 
 /**
  * Map a before-input-event Input to a switch direction, or null when the key
@@ -129,6 +138,28 @@ export function matchPermissionModeInput(
   return (
     primary && input.shift && !secondary && !input.alt && input.code === "KeyM"
   );
+}
+
+/**
+ * Map a before-input-event Input to a preview-history move, or null.
+ * macOS: Cmd+[ / Cmd+]; Windows/Linux: Ctrl+[ / Ctrl+] (aligned with Claude
+ * Code Desktop, which matches the same pair inside the preview guest).
+ * Matches on `code` because `key` is layout-dependent, and requires the exact
+ * modifier set: Shift turns these into the session-switch combo above
+ * (Cmd+Shift+[ / ]) and Ctrl+Alt+[ belongs to the OS / layout, so both are left
+ * alone.
+ */
+export function matchPreviewHistoryInput(
+  input: Input,
+  isMac: boolean,
+): PreviewHistoryDirection | null {
+  if (input.type !== "keyDown" && input.type !== "rawKeyDown") return null;
+  const primary = isMac ? input.meta : input.control;
+  const secondary = isMac ? input.control : input.meta;
+  if (!primary || secondary || input.shift || input.alt) return null;
+  if (input.code === "BracketLeft") return "back";
+  if (input.code === "BracketRight") return "forward";
+  return null;
 }
 
 /** Full application menu: platform defaults + 对话/面板 menus. */
@@ -332,10 +363,26 @@ export function updateMenuState(state: SessionMenuState): void {
   if (closeItem) closeItem.enabled = state.canClosePane;
 }
 
+export interface DesktopShortcutOptions {
+  /**
+   * 预览前进 / 后退的执行器，由**拿到那个 guest 的调用方**构造
+   * （`index.ts` 的 did-attach-webview 里闭包住 `guest.navigationHistory`）。
+   *
+   * 为什么是执行器而不是一条「发命令给渲染端」的动作：`before-input-event`
+   * 只发给获焦的 webContents，而这对键只挂在预览 guest 上 —— 事件能从谁身上
+   * 冒出来，谁就是用户正在操作的那个 panel。就地操作这个 guest 是最短且唯一
+   * 无歧义的路径（对齐 Claude Code Desktop）。绕去渲染端就得回答「哪个 pane
+   * 是焦点的」，而渲染端根本收不到 guest 内的点击（事件不冒泡出 guest），
+   * 宿主侧的 focusedPaneId 会过期 ⇒ 多分屏下退错 pane 的预览。
+   */
+  previewHistory?: (direction: PreviewHistoryDirection) => void;
+}
+
 /** Wire the switch/toggle keys onto a webContents (main window or preview guest). */
 export function attachDesktopShortcutKeys(
   contents: WebContents,
   actions: DesktopMenuActions,
+  options: DesktopShortcutOptions = {},
 ): void {
   contents.on("before-input-event", (event, input) => {
     const isMac = process.platform === "darwin";
@@ -355,6 +402,16 @@ export function attachDesktopShortcutKeys(
     if (matchPermissionModeInput(input, isMac)) {
       event.preventDefault();
       actions.openPermissionModeMenu();
+      return;
+    }
+    // Last on purpose: the bare-bracket combos are the narrowest claim here, so
+    // they must never preempt the switch/toggle keys above.
+    if (options.previewHistory) {
+      const move = matchPreviewHistoryInput(input, isMac);
+      if (move) {
+        event.preventDefault();
+        options.previewHistory(move);
+      }
     }
   });
 }

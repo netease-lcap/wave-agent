@@ -41,6 +41,10 @@ type MockWebview = Omit<
   | "setZoomFactor"
   | "getZoomFactor"
   | "executeJavaScript"
+  | "canGoBack"
+  | "canGoForward"
+  | "goBack"
+  | "goForward"
 > & {
   send: ReturnType<typeof vi.fn>;
   loadURL: ReturnType<typeof vi.fn>;
@@ -50,7 +54,32 @@ type MockWebview = Omit<
   setZoomFactor: ReturnType<typeof vi.fn>;
   getZoomFactor: ReturnType<typeof vi.fn>;
   executeJavaScript: ReturnType<typeof vi.fn>;
+  canGoBack: ReturnType<typeof vi.fn>;
+  canGoForward: ReturnType<typeof vi.fn>;
+  goBack: ReturnType<typeof vi.fn>;
+  goForward: ReturnType<typeof vi.fn>;
 };
+
+/** jsdom 的 <webview> 是个未知元素，一个方法都没有 —— 每个用例渲染完都得把
+ *  PreviewPane 会调的方法挂上去。抽成函数是因为重挂载（bumpPreviewEpoch）会换
+ *  一个新节点，新节点同样得补一遍。 */
+function stubWebview(el: Element | null, fallbackUrl: string): MockWebview {
+  const wv = el as unknown as MockWebview;
+  wv.send = vi.fn();
+  wv.loadURL = vi.fn().mockResolvedValue(undefined);
+  wv.reload = vi.fn();
+  wv.reloadIgnoringCache = vi.fn();
+  wv.getURL = vi.fn(() => fallbackUrl);
+  wv.setZoomFactor = vi.fn();
+  wv.getZoomFactor = vi.fn(() => 1);
+  wv.executeJavaScript = vi.fn(async () => 0);
+  // 默认空历史（新 guest 的真实初值）；要「有历史」的用例在 fire 事件前改这两个。
+  wv.canGoBack = vi.fn(() => false);
+  wv.canGoForward = vi.fn(() => false);
+  wv.goBack = vi.fn();
+  wv.goForward = vi.fn();
+  return wv;
+}
 
 function renderPane(options?: {
   url?: string;
@@ -79,11 +108,16 @@ function renderPane(options?: {
   const Harness = ({
     url: u,
     width: wProp,
+    guestKey,
   }: {
     url: string;
     width?: number;
+    /** 变一下就重挂 PreviewPane —— 真机上等于 bumpPreviewEpoch：新节点 = 新
+     *  guest = 空历史。 */
+    guestKey?: number;
   }) => (
     <PreviewPane
+      key={guestKey}
       url={u}
       vscode={vscode}
       width={wProp ?? 420}
@@ -96,23 +130,23 @@ function renderPane(options?: {
       onReadSource={onReadSource}
     />
   );
-  const result = render(<Harness url={url} />);
-  const wv = result.container.querySelector(
-    "webview",
-  ) as unknown as MockWebview;
-  wv.send = vi.fn();
-  wv.loadURL = vi.fn().mockResolvedValue(undefined);
-  wv.reload = vi.fn();
-  wv.reloadIgnoringCache = vi.fn();
-  wv.getURL = vi.fn(() => url);
-  wv.setZoomFactor = vi.fn();
-  wv.getZoomFactor = vi.fn(() => 1);
-  wv.executeJavaScript = vi.fn(async () => 0);
+  // guestKey 从首帧就是这个值：rerender 时 key 必须一模一样，否则每 rerender 一次
+  // 都会重挂载 guest（那不是任何现有用例的前提）。
+  let guestKey = 0;
+  const result = render(<Harness url={url} guestKey={guestKey} />);
+  const wv = stubWebview(result.container.querySelector("webview"), url);
   const rerenderWithUrl = (u: string, width?: number) =>
-    result.rerender(<Harness url={u} width={width} />);
+    result.rerender(<Harness url={u} width={width} guestKey={guestKey} />);
+  /** 重挂 guest（新 <webview> 节点 → 空历史），返回新节点的 stub。 */
+  const remountGuest = () => {
+    guestKey += 1;
+    result.rerender(<Harness url={url} guestKey={guestKey} />);
+    return stubWebview(result.container.querySelector("webview"), url);
+  };
   return {
     ...result,
     rerenderWithUrl,
+    remountGuest,
     vscode,
     wv,
     url,
@@ -779,6 +813,112 @@ describe("PreviewPane", () => {
 
 // 源码视图（spec desktop-preview.md「HTML 预览的源码视图」）：预览面板头部一颗
 // 按钮在「预览 ↔ 源码」之间翻转，源码走的是文件面板那条只读代码链。
+describe("前进 / 后退（预览历史）", () => {
+  const back = () => screen.getByTestId("preview-back") as HTMLButtonElement;
+  const forward = () =>
+    screen.getByTestId("preview-forward") as HTMLButtonElement;
+  /** guest 的历史态由 webview 自己报（canGoBack/canGoForward）；用例在 fire 事件
+   *  之前改这两个 stub 就等于「guest 现在的历史长这样」。 */
+  const setHistory = (wv: MockWebview, canBack: boolean, canFwd: boolean) => {
+    wv.canGoBack = vi.fn(() => canBack);
+    wv.canGoForward = vi.fn(() => canFwd);
+  };
+
+  it("刚载入的页面没有历史：两颗都禁用，可访问名是中文", () => {
+    const { wv } = renderPane();
+    fireDomReady(wv);
+    expect(back().disabled).toBe(true);
+    expect(forward().disabled).toBe(true);
+    expect(back().getAttribute("aria-label")).toBe("后退");
+    expect(forward().getAttribute("aria-label")).toBe("前进");
+    // 默认空历史 = guest 自己报 false，不是我们自己编的初值。
+    expect(wv.canGoBack).toHaveBeenCalled();
+  });
+
+  it("dom-ready 之前不碰 guest 的 canGoBack（未 attach 会抛）", () => {
+    const { wv } = renderPane();
+    // 恢复上次地址那种首载，did-navigate 可能早于 dom-ready 到。
+    fireDidNavigate(wv, "http://localhost:5173/app");
+    expect(wv.canGoBack).not.toHaveBeenCalled();
+    expect(wv.canGoForward).not.toHaveBeenCalled();
+    expect(back().disabled).toBe(true);
+    expect(forward().disabled).toBe(true);
+  });
+
+  it("有后退没有前进：只有「后退」可用", () => {
+    const { wv } = renderPane();
+    setHistory(wv, true, false);
+    fireDomReady(wv);
+    expect(back().disabled).toBe(false);
+    expect(forward().disabled).toBe(true);
+  });
+
+  it("点「后退」只调 goBack 一次，并跟着 guest 的新历史刷新可用态", () => {
+    const { wv } = renderPane();
+    setHistory(wv, true, false);
+    fireDomReady(wv);
+    // 退回上一页之后：前面没路了，后面多了一条 —— guest 的真实态。
+    setHistory(wv, false, true);
+    fireEvent.click(back());
+    expect(wv.goBack).toHaveBeenCalledTimes(1);
+    // 绝不拿 loadURL 当后退：那会截断 forward 栈。
+    expect(wv.loadURL).not.toHaveBeenCalled();
+    expect(back().disabled).toBe(true);
+    expect(forward().disabled).toBe(false);
+  });
+
+  it("点「前进」只调 goForward 一次", () => {
+    const { wv } = renderPane();
+    setHistory(wv, false, true);
+    fireDomReady(wv);
+    expect(forward().disabled).toBe(false);
+    fireEvent.click(forward());
+    expect(wv.goForward).toHaveBeenCalledTimes(1);
+    expect(wv.loadURL).not.toHaveBeenCalled();
+  });
+
+  it("SPA 路由（did-navigate-in-page）也刷可用态", () => {
+    const { wv } = renderPane();
+    fireDomReady(wv);
+    expect(back().disabled).toBe(true);
+    setHistory(wv, true, false);
+    fireInPageNavigate(wv, "http://localhost:5173/app/detail");
+    expect(back().disabled).toBe(false);
+  });
+
+  it("源码视图态两颗都不渲染（guest 只是被藏起来，别让人翻看不见的页面）", async () => {
+    const onReadSource = vi.fn(async () => ({
+      content: "<p>hi</p>",
+      truncated: false,
+    }));
+    renderPane({ filePath: "/repo/history.html", onReadSource });
+    expect(screen.getByTestId("preview-back")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("preview-source-toggle"));
+    await waitFor(() =>
+      expect(screen.getByTestId("preview-source")).toBeTruthy(),
+    );
+    expect(screen.queryByTestId("preview-back")).toBeNull();
+    expect(screen.queryByTestId("preview-forward")).toBeNull();
+  });
+
+  it("guest 重挂载（bumpPreviewEpoch / 重新 acquire）后回到双禁用", () => {
+    const { wv, remountGuest } = renderPane();
+    setHistory(wv, true, true);
+    fireDomReady(wv);
+    expect(back().disabled).toBe(false);
+    expect(forward().disabled).toBe(false);
+
+    // 新节点 = 新 guest：dom-ready 之前两颗禁用……
+    const remounted = remountGuest();
+    expect(back().disabled).toBe(true);
+    expect(forward().disabled).toBe(true);
+    // ……dom-ready 之后读的是新 guest 自己的历史，也是空的。
+    fireDomReady(remounted);
+    expect(back().disabled).toBe(true);
+    expect(forward().disabled).toBe(true);
+  });
+});
+
 describe("源码视图（HTML 预览）", () => {
   const toggle = () => screen.getByTestId("preview-source-toggle");
 

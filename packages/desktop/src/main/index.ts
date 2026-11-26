@@ -519,8 +519,17 @@ function createWindow(): void {
 
   mainWindow.webContents.on("did-attach-webview", (_event, guest) => {
     // The session-switch/panel-toggle keys must also work while the preview
-    // pane has focus.
-    attachDesktopShortcutKeys(guest, menuActions);
+    // pane has focus. The preview back/forward keys exist ONLY here: attaching
+    // them to the guest is what scopes them to preview focus, and they act on
+    // this very guest (its navigation history is the thing on screen), so a
+    // split layout cannot route them to the wrong pane.
+    attachDesktopShortcutKeys(guest, menuActions, {
+      previewHistory: (direction) => {
+        const history = guest.navigationHistory;
+        if (direction === "back") history.goBack();
+        else history.goForward();
+      },
+    });
     // Preview pages get the same right-click menu (image copy + text menu) as
     // the main window.
     attachContextMenu(guest);

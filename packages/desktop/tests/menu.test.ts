@@ -8,10 +8,12 @@ import type {
 import { Menu } from "electron";
 import {
   attachContextMenu,
+  attachDesktopShortcutKeys,
   buildApplicationMenuTemplate,
   installApplicationMenu,
   matchPanelToggleInput,
   matchPermissionModeInput,
+  matchPreviewHistoryInput,
   matchSessionSwitchInput,
   updateMenuState,
 } from "../src/main/menu";
@@ -354,6 +356,272 @@ describe("matchPermissionModeInput", () => {
         true,
       ),
     ).toBe(false);
+  });
+});
+
+describe("matchPreviewHistoryInput", () => {
+  it("maps Cmd+[ / Cmd+] on macOS, matching on code", () => {
+    expect(
+      matchPreviewHistoryInput(
+        keyEvent({ key: "[", code: "BracketLeft", meta: true }),
+        true,
+      ),
+    ).toBe("back");
+    expect(
+      matchPreviewHistoryInput(
+        keyEvent({ key: "]", code: "BracketRight", meta: true }),
+        true,
+      ),
+    ).toBe("forward");
+  });
+
+  it("maps Ctrl+[ / Ctrl+] on Windows/Linux", () => {
+    expect(
+      matchPreviewHistoryInput(
+        keyEvent({ key: "[", code: "BracketLeft", control: true }),
+        false,
+      ),
+    ).toBe("back");
+    expect(
+      matchPreviewHistoryInput(
+        keyEvent({ key: "]", code: "BracketRight", control: true }),
+        false,
+      ),
+    ).toBe("forward");
+  });
+
+  it("accepts rawKeyDown and ignores keyUp/char", () => {
+    expect(
+      matchPreviewHistoryInput(
+        keyEvent({ type: "rawKeyDown", code: "BracketLeft", control: true }),
+        false,
+      ),
+    ).toBe("back");
+    expect(
+      matchPreviewHistoryInput(
+        keyEvent({ type: "keyUp", code: "BracketLeft", control: true }),
+        false,
+      ),
+    ).toBeNull();
+    expect(
+      matchPreviewHistoryInput(
+        keyEvent({ type: "char", code: "BracketLeft", control: true }),
+        false,
+      ),
+    ).toBeNull();
+  });
+
+  // 这一条的每个断言都对应一条真实存在的组合：Shift 那对是切换会话、
+  // Alt 那对归输入法/系统，跨平台的错配主修饰键必须一个都不认。
+  it("requires the exact modifier set so no other combo is stolen", () => {
+    // ⌘⇧[ / ⌘⇧] 是切换会话，绝不能当历史用。
+    expect(
+      matchPreviewHistoryInput(
+        keyEvent({ code: "BracketLeft", meta: true, shift: true }),
+        true,
+      ),
+    ).toBeNull();
+    expect(
+      matchPreviewHistoryInput(
+        keyEvent({ code: "BracketRight", meta: true, shift: true }),
+        true,
+      ),
+    ).toBeNull();
+    // Ctrl+Alt+[ 留给输入法 / 系统。
+    expect(
+      matchPreviewHistoryInput(
+        keyEvent({ code: "BracketLeft", control: true, alt: true }),
+        false,
+      ),
+    ).toBeNull();
+    // 主修饰键按平台走：mac 上 Ctrl+[ 不算，Win/Linux 上 ⌘/Win+[ 也不算。
+    expect(
+      matchPreviewHistoryInput(
+        keyEvent({ code: "BracketLeft", control: true }),
+        true,
+      ),
+    ).toBeNull();
+    expect(
+      matchPreviewHistoryInput(
+        keyEvent({ code: "BracketLeft", meta: true }),
+        false,
+      ),
+    ).toBeNull();
+    // 两个主修饰键同时按下不认。
+    expect(
+      matchPreviewHistoryInput(
+        keyEvent({ code: "BracketLeft", control: true, meta: true }),
+        true,
+      ),
+    ).toBeNull();
+    // 同样的修饰键 + 别的键不认。
+    expect(
+      matchPreviewHistoryInput(keyEvent({ code: "KeyP", meta: true }), true),
+    ).toBeNull();
+  });
+});
+
+describe("attachDesktopShortcutKeys", () => {
+  const shortcutActions = () => ({
+    nextSession: vi.fn(),
+    prevSession: vi.fn(),
+    newSession: vi.fn(),
+    newSessionInPane: vi.fn(),
+    closePane: vi.fn(),
+    togglePanel: vi.fn(),
+    openPermissionModeMenu: vi.fn(),
+  });
+
+  const contentsMock = () => ({ on: vi.fn() }) as unknown as WebContents;
+
+  const press = (contents: WebContents, input: Input) => {
+    // `contents.on` 是重载方法，`mock.calls` 只按最后一个重载打类型，所以按
+    // 真实注册形状（事件名 + 处理器）重新描述实参，才能找到 before-input-event。
+    const registrations = vi.mocked(contents.on).mock.calls as unknown as Array<
+      [string, (event: { preventDefault: () => void }, input: Input) => void]
+    >;
+    const [, handler] = registrations.find(
+      ([event]) => event === "before-input-event",
+    )!;
+    const event = { preventDefault: vi.fn() };
+    handler(event, input);
+    return event;
+  };
+
+  // process.platform 是 configurable 的只读属性：换掉再换回来，两条平台的键位
+  // 在同一台机器上都能验（本机 linux 上也能按 macOS 的键位跑一遍）。
+  const asPlatform = (platform: NodeJS.Platform, run: () => void) => {
+    const descriptor = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { value: platform });
+    try {
+      run();
+    } finally {
+      Object.defineProperty(process, "platform", descriptor);
+    }
+  };
+
+  // 一个假的预览 guest：`navigationHistory` 就是执行器唯一会碰的东西。
+  const previewGuest = () => {
+    const history = { goBack: vi.fn(), goForward: vi.fn() };
+    return { contents: contentsMock(), history };
+  };
+
+  // 与 index.ts 的 did-attach-webview 里构造的执行器同形：闭包住**触发事件的
+  // 那个 guest**，只动它自己的历史（不经过渲染端，也没有 paneId 可传错）。
+  const attachPreview = (
+    guest: ReturnType<typeof previewGuest>,
+    actions = shortcutActions(),
+  ) => {
+    attachDesktopShortcutKeys(guest.contents, actions, {
+      previewHistory: (direction) => {
+        if (direction === "back") guest.history.goBack();
+        else guest.history.goForward();
+      },
+    });
+    return actions;
+  };
+
+  it("moves the focused guest's history on Cmd+[ / Cmd+]", () => {
+    asPlatform("darwin", () => {
+      const guest = previewGuest();
+      const actions = attachPreview(guest);
+
+      const back = press(
+        guest.contents,
+        keyEvent({ key: "[", code: "BracketLeft", meta: true }),
+      );
+      expect(back.preventDefault).toHaveBeenCalled();
+      expect(guest.history.goBack).toHaveBeenCalledTimes(1);
+      expect(guest.history.goForward).not.toHaveBeenCalled();
+
+      press(
+        guest.contents,
+        keyEvent({ key: "]", code: "BracketRight", meta: true }),
+      );
+      expect(guest.history.goForward).toHaveBeenCalledTimes(1);
+      expect(guest.history.goBack).toHaveBeenCalledTimes(1);
+      expect(actions.nextSession).not.toHaveBeenCalled();
+      expect(actions.prevSession).not.toHaveBeenCalled();
+    });
+  });
+
+  it("moves the focused guest's history on Ctrl+[ / Ctrl+] off macOS", () => {
+    asPlatform("win32", () => {
+      const guest = previewGuest();
+      attachPreview(guest);
+
+      press(
+        guest.contents,
+        keyEvent({ key: "[", code: "BracketLeft", control: true }),
+      );
+      expect(guest.history.goBack).toHaveBeenCalledTimes(1);
+      press(
+        guest.contents,
+        keyEvent({ key: "]", code: "BracketRight", control: true }),
+      );
+      expect(guest.history.goForward).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // 多分屏回归（本次修复的要害）：每个预览 guest 各带一个执行器，事件从谁身上
+  // 冒出来就只动谁的历史。旧实现把 paneId 交给渲染端路由、依赖宿主侧的
+  // focusedPaneId —— 那个值在 guest 内点击时不会更新，于是 B 里按 ⌘[ 会退掉
+  // A 的预览。
+  it("only touches the guest the event came from (split panes)", () => {
+    asPlatform("darwin", () => {
+      const paneA = previewGuest();
+      const paneB = previewGuest();
+      attachPreview(paneA);
+      attachPreview(paneB);
+
+      press(
+        paneA.contents,
+        keyEvent({ key: "[", code: "BracketLeft", meta: true }),
+      );
+      expect(paneA.history.goBack).toHaveBeenCalledTimes(1);
+      expect(paneB.history.goBack).not.toHaveBeenCalled();
+      expect(paneB.history.goForward).not.toHaveBeenCalled();
+
+      press(
+        paneB.contents,
+        keyEvent({ key: "]", code: "BracketRight", meta: true }),
+      );
+      expect(paneB.history.goForward).toHaveBeenCalledTimes(1);
+      expect(paneA.history.goForward).not.toHaveBeenCalled();
+      expect(paneA.history.goBack).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("leaves the session-switch combo to the session switcher", () => {
+    asPlatform("darwin", () => {
+      const guest = previewGuest();
+      const actions = attachPreview(guest);
+
+      press(
+        guest.contents,
+        keyEvent({ key: "{", code: "BracketLeft", meta: true, shift: true }),
+      );
+      expect(actions.prevSession).toHaveBeenCalledTimes(1);
+      expect(guest.history.goBack).not.toHaveBeenCalled();
+    });
+  });
+
+  // 主窗口（不带 previewHistory）上 ⌘[ / Ctrl+[ 一点反应都没有 —— 这对键只挂在
+  // 预览 guest 上，这就是「只有预览获焦时才生效」的实现方式。
+  it("ignores the preview keys on the main window", () => {
+    asPlatform("darwin", () => {
+      const actions = shortcutActions();
+      const contents = contentsMock();
+      attachDesktopShortcutKeys(contents, actions);
+
+      const event = press(
+        contents,
+        keyEvent({ key: "[", code: "BracketLeft", meta: true }),
+      );
+      expect(event.preventDefault).not.toHaveBeenCalled();
+      expect(actions.prevSession).not.toHaveBeenCalled();
+      expect(actions.togglePanel).not.toHaveBeenCalled();
+    });
   });
 });
 

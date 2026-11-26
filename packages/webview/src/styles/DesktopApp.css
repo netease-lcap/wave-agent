@@ -1965,6 +1965,19 @@ body.is-panel-resizing webview {
   background: var(--vscode-list-hoverBackground);
 }
 
+/* 禁用态（预览面板的「后退 / 前进」）：灰显 + 默认光标，且 hover 不给底色 ——
+   hover 规则对 disabled 元素照样命中，不显式压回会出现「灰着但一亮一亮」。
+   这里禁用表达的是「guest 没有那段历史」，不是「暂时不能点」。 */
+.preview-pane-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.preview-pane-button:disabled,
+.preview-pane-button:disabled:hover {
+  background: transparent;
+}
+
 /* 刷新中旋转（diff 等 pane 的 RefreshIcon svg；原 codicon-modifier-spin 只
    作用于字体图标，svg 需自带动画） */
 .preview-pane-icon.is-spinning {

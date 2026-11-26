@@ -1429,6 +1429,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const openTasksSurfaceRef = useRef<(taskId?: string) => void>(() => {});
   const panelDisabledRef = useRef<DesktopPanelKind[]>([]);
   const messageInputRef = useRef<MessageInputHandle>(null);
+
   const messageListRef = useRef<{
     scrollToBottom: (behavior?: ScrollBehavior) => void;
     pinToBottom: (behavior?: ScrollBehavior) => void;
