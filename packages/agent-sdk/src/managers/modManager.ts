@@ -82,7 +82,7 @@ import {
 import type { Plugin } from "../types/plugins.js";
 import { atomicWriteFileSync } from "../utils/atomicWrite.js";
 import { engineVersion } from "../utils/engineVersion.js";
-import { getEsbuild, releaseEsbuild } from "../utils/esbuild.js";
+import { getEsbuild, withEsbuildBatch } from "../utils/esbuild.js";
 import { logger } from "../utils/globalLogger.js";
 
 /**
@@ -1155,9 +1155,9 @@ export class ModManager {
 
       // 编译是一次性的（跑起来的是编出来的 CJS），编译器用完就收：它的
       // 常驻服务会把 cwd 钉在会话目录上，Windows 下那等于锁住 worktree，
-      // 退出删除时只剩空壳（见 releaseEsbuild 的注释）。
-      const outcomes = await compileMods(esbuild, sources).finally(() =>
-        releaseEsbuild(),
+      // 退出删除时只剩空壳（见 `withEsbuildBatch` 的注释）。
+      const outcomes = await withEsbuildBatch(() =>
+        compileMods(esbuild, sources),
       );
       // 该插件全部文件的编译产物：每个 mod 的沙箱都能解析到兄弟文件。
       const compiled: CompiledModule[] = [];

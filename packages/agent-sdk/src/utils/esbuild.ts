@@ -117,7 +117,35 @@ export function resetEsbuild(): void {
  * compile respawns it (23ms measured, against 41ms cold). Claude Code has no
  * such process at all: it transpiles in-process with `Bun.Transpiler`.
  */
-export function releaseEsbuild(): void {
-  // esbuild 把 `stop()` 标成返回 Promise，实现里是同步关管道 + kill。
-  void cached?.stop();
+export async function releaseEsbuild(): Promise<void> {
+  await cached?.stop();
+}
+
+/** 编译批次排队用：同一时刻只有一批在跑。 */
+let batchQueue: Promise<void> = Promise.resolve();
+
+/**
+ * Run one compilation batch, one batch at a time, releasing the service when it
+ * ends.
+ *
+ * Batches are serialised because they share **one** esbuild service: two Agents
+ * created at the same moment (one per desktop pane) each compile their own
+ * plugins, and a `stop()` that landed inside the other one's `transform()` would
+ * come back as "The service was stopped" in that pane. Queueing also makes the
+ * release ordering trivial — the next batch starts only after the previous
+ * release finished, so it simply respawns (23ms).
+ *
+ * [release] is injectable so tests can watch the ordering without a real
+ * compiler.
+ */
+export function withEsbuildBatch<T>(
+  task: () => Promise<T>,
+  release: () => Promise<void> = releaseEsbuild,
+): Promise<T> {
+  const run = batchQueue.then(task, task);
+  batchQueue = run.then(release, release).then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
 }
