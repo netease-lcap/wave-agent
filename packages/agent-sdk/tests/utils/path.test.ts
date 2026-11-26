@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import {
   resolvePath,
   getDisplayPath,
+  restoreWindowsPath,
   toWindowsPath,
 } from "../../src/utils/path.js";
 import { homedir } from "os";
@@ -173,5 +174,83 @@ describe("path utils", () => {
     it("should pass through already-Windows paths unchanged", () => {
       expect(toWindowsPath("C:\\Users\\foo")).toBe("C:\\Users\\foo");
     });
+  });
+});
+
+describe("restoreWindowsPath", () => {
+  let platformSpy: ReturnType<typeof vi.spyOn>;
+
+  afterAll(() => {
+    platformSpy.mockRestore();
+  });
+
+  describe("on Windows", () => {
+    beforeAll(() => {
+      platformSpy = vi
+        .spyOn(process, "platform", "get")
+        .mockReturnValue("win32" as NodeJS.Platform);
+    });
+
+    it("should restore the MSYS spellings to the drive path they name", () => {
+      expect(restoreWindowsPath("/d/x")).toBe("D:\\x");
+      expect(restoreWindowsPath("/cygdrive/d/x")).toBe("D:\\x");
+      expect(restoreWindowsPath("/proc/cygdrive/d/x")).toBe("D:\\x");
+      // A bare drive is that drive's root.
+      expect(restoreWindowsPath("/d")).toBe("D:\\");
+    });
+
+    it("should unwrap a verbatim drive path", () => {
+      expect(restoreWindowsPath("\\\\?\\D:\\x")).toBe("D:\\x");
+      expect(restoreWindowsPath("\\\\?\\G:\\y")).toBe("G:\\y");
+      // The forward-slash spelling of the same namespace is left alone, and is
+      // refused as a device path rather than guessed at.
+      expect(restoreWindowsPath("//?/G:/y")).toBe("//?/G:/y");
+    });
+
+    it("should keep a device or namespace path as written", () => {
+      // There is no drive behind these, so there is nothing to restore; the
+      // judgement refuses them instead of guessing.
+      for (const target of [
+        "\\\\.\\PhysicalDrive0",
+        "\\\\?\\GLOBALROOT\\Device\\HarddiskVolume1",
+      ]) {
+        expect(restoreWindowsPath(target)).toBe(target);
+      }
+    });
+
+    it("should expand this machine's administrative share to its drive", () => {
+      expect(restoreWindowsPath("//localhost/D$/x")).toBe("D:\\x");
+      expect(restoreWindowsPath("//127.0.0.1/C$/x")).toBe("C:\\x");
+    });
+
+    it("should keep another machine's administrative share", () => {
+      // That D$ is a different disk: expanding it to `D:\x` would judge a local
+      // directory the command never touches.
+      expect(restoreWindowsPath("//nas/D$/x")).toBe("\\\\nas\\D$\\x");
+    });
+
+    it("should only flip the separators of an ordinary UNC share", () => {
+      expect(restoreWindowsPath("//server/share/x")).toBe(
+        "\\\\server\\share\\x",
+      );
+    });
+
+    it("should leave a native path alone", () => {
+      expect(restoreWindowsPath("D:\\x")).toBe("D:\\x");
+      expect(restoreWindowsPath("x")).toBe("x");
+    });
+  });
+
+  it("should return the path as written off Windows", () => {
+    // None of these spellings name a drive on POSIX, so nothing is restored.
+    const spy = vi
+      .spyOn(process, "platform", "get")
+      .mockReturnValue("linux" as NodeJS.Platform);
+    try {
+      expect(restoreWindowsPath("/d/x")).toBe("/d/x");
+      expect(restoreWindowsPath("D:\\x")).toBe("D:\\x");
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

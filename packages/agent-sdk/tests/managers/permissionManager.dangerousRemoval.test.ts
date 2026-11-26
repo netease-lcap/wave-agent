@@ -26,6 +26,7 @@ const PARENT = path.dirname(WORKDIR);
 function createManager(options: {
   allowedRules?: string[];
   additionalDirectories?: string[];
+  configuredPermissionMode?: PermissionMode;
 }): PermissionManager {
   const container = new Container();
   container.register("CurrentWorkdir", WORKDIR);
@@ -36,6 +37,7 @@ function createManager(options: {
   return new PermissionManager(container, {
     allowedRules: options.allowedRules,
     additionalDirectories: options.additionalDirectories,
+    configuredPermissionMode: options.configuredPermissionMode,
   });
 }
 
@@ -73,17 +75,67 @@ describe("removing the session's own working directory", () => {
     expect(result.behavior).toBe("allow");
   });
 
-  it.each<PermissionMode>([
-    "default",
-    "acceptEdits",
-    "plan",
-    "bypassPermissions",
-  ])("asks in %s mode", async (mode) => {
+  it.each<PermissionMode>(["default", "acceptEdits", "plan"])(
+    "asks in %s mode",
+    async (mode) => {
+      const manager = createManager({});
+      const callback = allowOnce();
+
+      await check(manager, "rm -rf ../..", {
+        mode,
+        callback: callback as unknown as PermissionCallback,
+      });
+
+      expect(callback).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("still asks in bypassPermissions, as Claude Code does", async () => {
+    // Claude Code marks this check `bypassImmune`, which keeps the ask in
+    // bypass mode; `waivableInBypass` only names a separate escape hatch (an
+    // env var) that is off by default. A mode whose promise is "do not ask me"
+    // still cannot answer this one: the question is not whether a rule approves
+    // the call, but whether the call takes the whole workspace with it.
     const manager = createManager({});
     const callback = allowOnce();
 
+    const result = await check(manager, "rm -rf ../..", {
+      mode: "bypassPermissions",
+      callback: callback as unknown as PermissionCallback,
+    });
+
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(result.behavior).toBe("allow");
+  });
+
+  it("still asks in plan mode when the session was created with bypass", async () => {
+    // The authorization lets plan mode answer ordinary cards; it is not a
+    // licence to skip the one card that asks about the whole workspace.
+    const manager = createManager({
+      configuredPermissionMode: "bypassPermissions",
+    });
+    manager.captureBypassAuthorization();
+    const callback = allowOnce();
+
     await check(manager, "rm -rf ../..", {
-      mode,
+      mode: "plan",
+      callback: callback as unknown as PermissionCallback,
+    });
+
+    expect(callback).toHaveBeenCalledTimes(1);
+  });
+
+  it("still asks in default mode for a session created with bypass", async () => {
+    // The authorization is frozen for plan mode only; it is not a licence for
+    // every later mode to skip the card.
+    const manager = createManager({
+      configuredPermissionMode: "bypassPermissions",
+    });
+    manager.captureBypassAuthorization();
+    const callback = allowOnce();
+
+    await check(manager, "rm -rf ../..", {
+      mode: "default",
       callback: callback as unknown as PermissionCallback,
     });
 

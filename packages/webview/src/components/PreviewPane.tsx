@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { VsCodeApi } from "../types";
 import {
+  CodeIcon,
+  EyeIcon,
   InspectorCursorIcon,
   OpenBrowserIcon,
   RefreshIcon,
@@ -8,7 +10,9 @@ import {
 import { PanelKindIcon } from "./PanelKindIcon";
 import { PaneShell } from "./PaneShell";
 import { Tooltip } from "./Tooltip";
+import { ReadOnlyCodeView } from "./fileEditor/ReadOnlyCodeView";
 import { readRootCssVar } from "../utils/cssVars";
+import type { PreviewSourceOutcome } from "../utils/previewSourceRequest";
 
 /**
  * Desktop-only preview pane: renders localhost dev servers in a sandboxed
@@ -256,7 +260,21 @@ export interface PreviewPaneProps {
    * `visibility:hidden` 隐藏，焦点落在隐藏输入框上会把用户的输入框顶掉）。
    */
   parked?: boolean;
+  /**
+   * 这个预览 tab 是从哪个本地文件打开的（`.html/.htm`）。有它才有「查看源码」
+   * ——给宿主要的就是这份文件的文本；地址栏手输网址、localhost 链接点进来的
+   * 预览没有文件可读（spec desktop-preview.md「HTML 预览的源码视图」）。
+   */
+  filePath?: string;
+  /** 读源码文本。桌面端由 ChatApp 绑到宿主通道（补 paneId，本地/远程同一套）。 */
+  onReadSource?: (path: string) => Promise<PreviewSourceOutcome>;
 }
+
+/** 源码视图的三态（读盘是一笔异步请求，翻到源码的瞬间还没有内容）。 */
+type PreviewSourceState =
+  | { status: "loading" }
+  | { status: "ready"; content: string; truncated: boolean }
+  | { status: "failed"; error: string };
 
 export const PreviewPane: React.FC<PreviewPaneProps> = ({
   url,
@@ -268,6 +286,8 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   onTitleChange,
   onNavigate,
   parked = false,
+  filePath,
+  onReadSource,
 }) => {
   // URL the address bar shows — "" while empty (blank pane awaiting an
   // address); follows in-guest navigation via did-navigate.
@@ -660,7 +680,47 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
     return () => clearTimeout(timer);
   }, [pickerUnsupported]);
 
+  // 源码视图（spec desktop-preview.md「HTML 预览的源码视图」）：预览态是默认，
+  // 工具条那颗按钮翻到源码、再翻回预览。状态是**这个 tab 自己的**（一个
+  // PreviewPane 实例 = 一个 tab）：不落 sessionUi 快照，所以切会话、关掉再开都
+  // 从预览开始，与 Claude 桌面端一致；不同 tab 之间也互不影响。
+  const [sourceMode, setSourceMode] = useState(false);
+  const [source, setSource] = useState<PreviewSourceState | null>(null);
+  const canShowSource = filePath !== undefined && onReadSource !== undefined;
+
+  const loadSource = useCallback(async () => {
+    if (!filePath || !onReadSource) return;
+    setSource({ status: "loading" });
+    const outcome = await onReadSource(filePath);
+    setSource(
+      "error" in outcome
+        ? { status: "failed", error: outcome.error }
+        : {
+            status: "ready",
+            content: outcome.content,
+            truncated: outcome.truncated,
+          },
+    );
+  }, [filePath, onReadSource]);
+
+  const toggleSource = () => {
+    if (sourceMode) {
+      setSourceMode(false);
+      return;
+    }
+    setSourceMode(true);
+    // 已经读过就不再读一遍（翻回去又翻回来还是那份内容）；要看磁盘上的最新
+    // 版本点「刷新」。
+    if (source?.status !== "ready") void loadSource();
+  };
+
   const handleRefresh = () => {
+    // 源码态下「刷新」刷的是看得见的那份东西——重新读一遍文件，而不是去刷被
+    // 藏起来的 guest（用户看不到任何变化）。
+    if (sourceMode) {
+      void loadSource();
+      return;
+    }
     setLoadError(null);
     // Force-refresh: plain reload() honors the HTTP cache, which can hide a
     // dev server's latest output behind stale cache headers.
@@ -707,6 +767,28 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
                   地址胶囊无前置图标，font 14/26 高），点击进入编辑。 */}
               <span className="preview-pane-url-text">{displayUrl}</span>
             </span>
+          )}
+          {/* 预览 ↔ 源码（spec desktop-preview.md「HTML 预览的源码视图」）：
+              形制照 Claude 桌面端预览面板那颗按钮 —— 预览态给「查看源码 + Code
+              图标」，源码态给「预览 + Eye 图标」，同一颗按钮翻来翻去（不做
+              分段控件：那是 artifact 页的做法）。只有从本地 .html 文件打开的
+              预览才有这个入口。 */}
+          {canShowSource && (
+            <button
+              className="preview-pane-button preview-pane-button--labeled"
+              aria-label={sourceMode ? "预览" : "查看源码"}
+              aria-pressed={sourceMode}
+              data-testid="preview-source-toggle"
+              data-mode={sourceMode ? "source" : "preview"}
+              onClick={toggleSource}
+            >
+              {sourceMode ? (
+                <EyeIcon className="preview-pane-icon" />
+              ) : (
+                <CodeIcon className="preview-pane-icon" />
+              )}
+              <span>{sourceMode ? "预览" : "查看源码"}</span>
+            </button>
           )}
           {/* 1009 评论（她点 `button.preview-pane-button`「这边三个功能缺少气泡提示」）：
               三颗图标按钮的气泡文案沿用原来各颗的 `title` 原文，`title` 换成
@@ -757,13 +839,56 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
       }
       bodyClassName="preview-pane-body"
     >
+      {/* guest 一直挂着：源码态只把它藏起来（visibility），翻回预览时页面不重新
+          加载，acquire/release 引用计数与跨会话保活台账一个字都不动。 */}
       <webview
         ref={webviewRef}
-        className="preview-pane-webview"
+        className={`preview-pane-webview${sourceMode ? " is-source-hidden" : ""}`}
         preload={window.wavePickerPreloadPath}
         webpreferences="sandbox=yes, contextIsolation=yes"
       />
-      {!displayUrl && (
+      {sourceMode && filePath !== undefined && (
+        <div className="preview-pane-source" data-testid="preview-source">
+          {source?.status === "ready" ? (
+            <>
+              {source.truncated && (
+                <div
+                  className="preview-pane-source-note"
+                  data-testid="preview-source-truncated"
+                >
+                  文件较大，只显示开头部分（与文件面板是同一条读取上限）。
+                </div>
+              )}
+              {/* 文件面板同一条只读代码链：语言按扩展名走 languageFor(path)，
+                  所以 .html 就是 html 语法、主题/行高/行号与文件面板一致。 */}
+              <ReadOnlyCodeView path={filePath} content={source.content} />
+            </>
+          ) : source?.status === "failed" ? (
+            <div
+              className="preview-pane-error"
+              data-testid="preview-source-error"
+            >
+              <span>{source.error}</span>
+              <button
+                className="preview-pane-button"
+                data-testid="preview-source-retry"
+                onClick={() => void loadSource()}
+              >
+                重试
+              </button>
+            </div>
+          ) : (
+            <div
+              className="file-pane-status file-pane-status--loading"
+              data-testid="preview-source-loading"
+            >
+              <i className="codicon codicon-loading codicon-modifier-spin" />
+              <span>正在读取…</span>
+            </div>
+          )}
+        </div>
+      )}
+      {!displayUrl && !sourceMode && (
         <div className="preview-tab-new" data-testid="preview-tab-new">
           <PanelKindIcon
             kind="preview"
@@ -773,7 +898,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
           <span>在上方地址栏输入网址开始预览</span>
         </div>
       )}
-      {loadError && (
+      {loadError && !sourceMode && (
         <div className="preview-pane-error" data-testid="preview-error">
           <span>页面加载失败：{loadError}</span>
           <button

@@ -87,6 +87,8 @@ export const EXT_LANGUAGE: Record<string, string> = {
   jsonc: "json",
   html: "xml",
   htm: "xml",
+  // highlight.js ships no Vue grammar; markup highlighting is the closest one.
+  vue: "xml",
   svg: "xml",
   xml: "xml",
   css: "css",

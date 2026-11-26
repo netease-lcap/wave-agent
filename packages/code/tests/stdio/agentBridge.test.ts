@@ -2547,7 +2547,7 @@ test("destroy deletes no branch when neither a snapshot nor the path layout can 
   // least of all the branch that happens to be checked out.
   const worktreePath = path.join(REPO_ROOT, "linked", "feat");
   const transcript = path.join(
-    "/tmp",
+    process.cwd(),
     `wave-agentbridge-legacy-${process.pid}-${Math.random().toString(36).slice(2)}.jsonl`,
   );
   await writeFile(
@@ -2594,7 +2594,7 @@ test("destroy uses the branch recorded at creation when the session is re-attach
   // daemon restart, since HEAD has since moved to the user's branch.
   const worktreePath = path.join(REPO_ROOT, "linked", "feat");
   const transcript = path.join(
-    "/tmp",
+    process.cwd(),
     `wave-agentbridge-branch-${process.pid}-${Math.random().toString(36).slice(2)}.jsonl`,
   );
   await writeFile(
@@ -3947,7 +3947,7 @@ test("initialize from-disk re-attach recovers the creation workdir from the tran
   // The recorded creation workdir must be recovered from the transcript's
   // creation-time metadata header, not the client's (possibly drifted) cwd.
   const transcript = path.join(
-    "/tmp",
+    process.cwd(),
     `wave-agentbridge-header-${process.pid}-${Math.random().toString(36).slice(2)}.jsonl`,
   );
   const header =

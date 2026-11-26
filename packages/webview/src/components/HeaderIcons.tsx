@@ -1133,6 +1133,48 @@ export const InspectorCursorIcon: React.FC<IconProps> = ({
   </svg>
 );
 
+/** 查看源码（形制按 Claude 桌面端预览面板那颗 `Code` 图标：一对尖括号；
+ *  本仓没有对应 Figma 导出，几何按同一套 16px 栅格手写）。 */
+export const CodeIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    className={className}
+  >
+    <path
+      d="M5.6 4.2 2 8l3.6 3.8M10.4 4.2 14 8l-3.6 3.8"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+/** 回到预览（同上一颗的来源：Claude 桌面端的 `Eye`）：眼睛轮廓 + 瞳孔。 */
+export const EyeIcon: React.FC<IconProps> = ({ className = "header-icon" }) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    className={className}
+  >
+    <path
+      d="M1.4 8S3.8 4 8 4s6.6 4 6.6 4-2.4 4-6.6 4S1.4 8 1.4 8Z"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <circle cx="8" cy="8" r="1.9" stroke="currentColor" strokeWidth="1.4" />
+  </svg>
+);
+
 /** 搜索（figma search.svg，codechat 侧栏「搜索」按钮同款资源）：放大镜。
  *  桌面/文件面板工具条的搜索按钮与前导小图标复用本组件，替代原 codicon
  *  `codicon-search` 字体图标（同一 surface 不混图标库，2026-09-17 评论）。 */

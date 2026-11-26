@@ -15949,6 +15949,121 @@ describe("html preview (desktopPreviewFile)", () => {
   });
 });
 
+// spec: docs/specs/desktop/desktop-preview.md「HTML 预览的源码视图」— the pane's
+// source view asks the host for the file's text. Deliberately the file panel's
+// own read path: a local pane reads fs, a remote pane goes through that session's
+// host, and the 2 MB / 2000-line cap is the same one (>truncated) the panel uses,
+// so the code next to the rendered page is the code the panel would show.
+describe("preview source view (desktopPreviewSource)", () => {
+  const seed = (p: string, content: string | Buffer) => {
+    h.files.set(p, content);
+    h.existingPaths.add(p);
+  };
+
+  it("local file: replies with the text and echoes requestId", async () => {
+    const { host, sent } = await readyHost();
+    seed("/work/a/index.html", "<h1>hi</h1>\n");
+
+    await host.handleWebviewMessage({
+      command: "desktopPreviewSource",
+      path: "/work/a/index.html",
+      requestId: "src-1",
+    });
+
+    expect(sent("desktopPreviewSourceResult")).toEqual([
+      {
+        command: "desktopPreviewSourceResult",
+        paneId: "pane-1",
+        requestId: "src-1",
+        path: "/work/a/index.html",
+        content: "<h1>hi</h1>\n",
+        truncated: false,
+      },
+    ]);
+  });
+
+  it("over the read cap: content is the head and truncated is the host's verdict", async () => {
+    const { host, sent } = await readyHost();
+    seed("/work/a/huge.html", "x".repeat(REMOTE_FILE_MAX_BYTES + 5));
+
+    await host.handleWebviewMessage({
+      command: "desktopPreviewSource",
+      path: "/work/a/huge.html",
+      requestId: "src-2",
+    });
+
+    const reply = sent("desktopPreviewSourceResult").at(-1);
+    expect(reply).toMatchObject({
+      requestId: "src-2",
+      truncated: true,
+    });
+    expect(reply?.content).toHaveLength(REMOTE_FILE_MAX_BYTES);
+  });
+
+  it("missing file replies with an error (the pane renders it)", async () => {
+    const { host, sent } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "desktopPreviewSource",
+      path: "/work/a/gone.html",
+      requestId: "src-3",
+    });
+
+    expect(sent("desktopPreviewSourceResult").at(-1)).toMatchObject({
+      requestId: "src-3",
+      error: "文件不存在：/work/a/gone.html",
+    });
+  });
+
+  it("remote session: reads over that session's host, not the local disk", async () => {
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host, sent } = createHost();
+    await host.handleWebviewMessage({
+      command: "desktopSelectHost",
+      host: "prod",
+    });
+    vi.mocked(readRemoteFile).mockResolvedValueOnce({
+      type: "text",
+      mime: "text/html",
+      contentBase64: Buffer.from("<p>remote</p>").toString("base64"),
+      truncated: false,
+      totalLines: 1,
+    });
+
+    await host.handleWebviewMessage({
+      command: "desktopPreviewSource",
+      path: "/remote/site/index.html",
+      requestId: "src-4",
+    });
+
+    expect(vi.mocked(readRemoteFile)).toHaveBeenCalledWith(
+      "prod",
+      "/remote/site/index.html",
+    );
+    expect(sent("desktopPreviewSourceResult").at(-1)).toMatchObject({
+      requestId: "src-4",
+      content: "<p>remote</p>",
+      truncated: false,
+    });
+  });
+
+  it("a binary file replies with the reader's error instead of empty content", async () => {
+    const { host, sent } = await readyHost();
+    seed("/work/a/blob.html", Buffer.from([0x3c, 0x00, 0x3e]));
+
+    await host.handleWebviewMessage({
+      command: "desktopPreviewSource",
+      path: "/work/a/blob.html",
+      requestId: "src-5",
+    });
+
+    expect(sent("desktopPreviewSourceResult").at(-1)).toMatchObject({
+      requestId: "src-5",
+      error: "二进制文件无法在面板中显示",
+    });
+  });
+});
+
 describe("desktopGetWorkspaceDiff (diff panel)", () => {
   it("asks the CLI on the pane's host and echoes paneId + requestId", async () => {
     const { host, send } = await readyHost();

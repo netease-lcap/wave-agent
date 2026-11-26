@@ -789,6 +789,21 @@ export interface DesktopPreviewFileResultMessage
   error?: string;
 }
 
+/** Reply to `desktopPreviewSource` — the file's text for the preview pane's
+ *  source view (spec desktop-preview.md「HTML 预览的源码视图」). Read through the
+ *  same host-side path the file panel uses, so a remote session's file reads over
+ *  that session's host instead of the local disk. `truncated` is the host's
+ *  verdict (2 MB / 2000 lines), never the pane's own guess. */
+export interface DesktopPreviewSourceResultMessage
+  extends HostToWebviewMessageBase {
+  command: "desktopPreviewSourceResult";
+  requestId: string;
+  path: string;
+  content?: string;
+  truncated?: boolean;
+  error?: string;
+}
+
 export interface UpdateQueueMessage extends HostToWebviewMessageBase {
   command: "updateQueue";
   queue: QueuedMessage[];
@@ -2049,6 +2064,7 @@ export type HostToWebviewMessage =
   | DesktopDirEntriesMessage
   | DesktopFileSaveResultMessage
   | DesktopPreviewFileResultMessage
+  | DesktopPreviewSourceResultMessage
   | UpdateQueueMessage
   | UpdateQueuedMessageMissingMessage
   | UpdateCommandRunningMessage
@@ -2181,6 +2197,9 @@ type ReplyAttribution = {
   // 本地 HTML 预览：请求生成 id，回复原样带回（webview 比对 requestId 弃旧
   // 回复；失败回复触发文件面板回退）。
   desktopPreviewFileResult: "requestId";
+  // 预览面板「查看源码」：同一个 tab 可以反复切换（读源码 → 回预览 → 再读），
+  // 晚到的旧回复必须按 requestId 丢弃，否则会把上一版内容贴回刚切换的视图。
+  desktopPreviewSourceResult: "requestId";
   // 文件面板保存：一次编辑可重试多次（覆盖保存 / 失败重试），晚到的旧结果必须按
   // requestId 丢弃，否则会把上一次失败的横幅贴回已经存好的文件。
   desktopFileSaveResult: "requestId";
@@ -2297,6 +2316,7 @@ export const replyAttributionLocked = {
   btwError: true,
   desktopForwardPortResult: true,
   desktopPreviewFileResult: true,
+  desktopPreviewSourceResult: true,
   desktopFileSaveResult: true,
   desktopDirEntries: true,
   desktopRemoteDirList: true,

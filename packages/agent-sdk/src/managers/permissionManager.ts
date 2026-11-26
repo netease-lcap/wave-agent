@@ -1235,10 +1235,7 @@ export class PermissionManager {
     // to bypass at creation time — always allow.
     // Worktree safety check above runs unconditionally, so bypass never skips it;
     // tools that require user interaction never reach here (step 1 above).
-    const bypassesPermissionChecks =
-      context.permissionMode === "bypassPermissions" ||
-      (context.permissionMode === "plan" && this.getBypassAuthorization());
-    if (bypassesPermissionChecks) {
+    if (this.bypassesPermissionChecks(context)) {
       return { decision: "allow", source: "config" };
     }
 
@@ -1458,16 +1455,33 @@ export class PermissionManager {
   }
 
   /**
+   * Modes that answer every card themselves: `bypassPermissions`, and plan mode
+   * in a session that was authorized to bypass when it was created. Used by the
+   * automatic allow below only — {@link dangerousRemovalVerdict} is deliberately
+   * not on this list, so it still asks in these modes.
+   */
+  private bypassesPermissionChecks(context: ToolPermissionContext): boolean {
+    return (
+      context.permissionMode === "bypassPermissions" ||
+      (context.permissionMode === "plan" && this.getBypassAuthorization())
+    );
+  }
+
+  /**
    * The built-in refusal to remove the session's own working directory. Bash
    * only: PowerShell's channel answers the same question in its own hard-deny
    * band (`evaluatePowerShellCommand`), where rules already do not reach.
    *
    * `dontAsk` denies instead of asking — a mode whose whole promise is "do not
-   * ask me" cannot answer a card, and Claude Code draws the same line. Every
-   * other mode asks, including `bypassPermissions`: Claude Code's check is not
-   * waivable by bypass either, and Wave's "no callback configured" path already
-   * turns that `ask` into a deny for headless callers (`wave -p`, SDK hosts
-   * without `canUseTool`).
+   * ask me" cannot answer a card, and Claude Code draws the same line.
+   * `bypassPermissions` does *not* release it: the question here is not "does a
+   * rule approve this call" but "does this call take the whole workspace with
+   * it", so it shares a band with the root and home targets and only a person
+   * can answer it. Claude Code reaches the same place by keeping the ask for
+   * every `bypassImmune` check; `waivableInBypass` there names a separate,
+   * off-by-default escape hatch that this implementation does not offer. Wave's
+   * "no callback configured" path still turns that `ask` into a deny for
+   * headless callers (`wave -p`, SDK hosts without `canUseTool`).
    */
   private dangerousRemovalVerdict(
     context: ToolPermissionContext,
@@ -1491,14 +1505,18 @@ export class PermissionManager {
     if (!hit) return null;
 
     const message = describeDangerousRemoval(hit);
-    logger?.warn("Refusing to remove the session's working directory", {
+    const detail = {
       toolName: context.toolName,
       rule: hit.rule,
       target: hit.target,
       resolved: hit.resolved,
-    });
+    };
 
     if (context.permissionMode === "dontAsk") {
+      logger?.warn(
+        "Refusing to remove the session's working directory",
+        detail,
+      );
       return {
         decision: "deny",
         message,
@@ -1507,6 +1525,8 @@ export class PermissionManager {
         denyReason: "denied_by_mode",
       };
     }
+
+    logger?.warn("Refusing to remove the session's working directory", detail);
 
     // The card cannot offer "don't ask again": the person is answering for this
     // one command, not for a rule that would approve the next one too.
