@@ -76,9 +76,46 @@
   color: var(--vscode-descriptionForeground);
 }
 
+/* ═══ 详情态返回键（1126 评论：从纯图标键改成「图标 + 面板名」）═══
+   她的两条评论：点 `button.preview-pane-button.background-tasks-back`「这里返回，
+   应该带着后台任务的文案一起」，参照物 = 点 `button.session-board-back`「返回当前
+   会话」「参考这里」。
+   参照物口径（SessionBoard.css:53 + host-desktop.css:4306 那组 0923 / 1126 的定档）：
+     inline-flex / gap 8 / 盒高 30 / 内衬 `0 8px` / 圆角 8 / 透明底 /
+     14px / 500 / `--vscode-foreground`（浅 #202020、深 #E5E7E8）/
+     hover 只出面（桌面浅 `--cc-fill-pressed` #E7E9ED、深 8% 白），字色不动。
+   改前本键是 `.preview-pane-button`（24×24 纯图标，r4），面板名「后台任务」在它右边
+   的标题位上；现在详情态把标题并进返回键 ⇒ 头部读作「‹图标› 后台任务」，点它回列表。
+   列表态没有返回键，标题仍在原位、仍是 14 / 600（`.desktop-panel-toolbar-title`）。
+   图标沿用同一枚 Figma 矢量（`fill: currentColor` ⇒ 自动跟按钮字色，无需单列图标色，
+   这一点与看板的 codicon 不同：那边要单写 `.codicon` 规则才不会停在宿主图标灰）。 */
 .background-tasks-back {
-  font-size: 13px;
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-size: var(--cc-font-size-md, 14px);
+  font-weight: var(--cc-font-weight-medium, 500);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.background-tasks-back:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+/* 桌面档 hover：与看板返回键逐值相同（1126 统一的那一档），深色 8% 白。 */
+[data-host="desktop"] .background-tasks-back:hover {
+  background: var(--cc-fill-pressed, #e7e9ed);
+}
+
+[data-host="desktop"][data-theme="dark"] .background-tasks-back:hover {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 /* ═══ 列表 ═══ */

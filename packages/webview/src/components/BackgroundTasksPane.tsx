@@ -362,19 +362,27 @@ export const BackgroundTasksPane: React.FC<BackgroundTasksPaneProps> = ({
       width={width}
       toolbar={
         <>
-          {selectedTask && (
+          {/* 1126 评论（点 `button.preview-pane-button.background-tasks-back`）：
+              「这里返回，应该带着后台任务的文案一起」，参照物 = 看板
+              `button.session-board-back`「返回当前会话」。详情态的返回键因此从
+              「一枚 24×24 纯图标键 + 右侧独立标题」合成「‹图标› 后台任务」一颗键，
+              标题不再单独渲染（否则同一句话出现两次）；列表态没有返回键，标题照旧。 */}
+          {selectedTask ? (
             <button
               type="button"
-              className="preview-pane-button background-tasks-back"
-              aria-label="返回任务列表"
+              className="background-tasks-back"
+              title="返回后台任务列表"
+              aria-label="返回后台任务列表"
               data-testid="tasks-pane-back"
               onClick={backToList}
             >
               {/* 与文件面板「返回文件列表」同一枚官方矢量，两处手感一致。 */}
-              <SettingsBackIcon className="preview-pane-icon" />
+              <SettingsBackIcon className="background-tasks-back-icon" />
+              后台任务
             </button>
+          ) : (
+            <span className="desktop-panel-toolbar-title">后台任务</span>
           )}
-          <span className="desktop-panel-toolbar-title">后台任务</span>
           {!selectedTask && tasks.length > 0 && (
             <span className="background-tasks-count">
               {runningTasks.length > 0
