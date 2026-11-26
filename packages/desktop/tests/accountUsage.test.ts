@@ -237,4 +237,43 @@ describe("usageFromQuotaHeaders", () => {
       requireSnapshot({ "x-codechat-quota-api-limit": "20" }, prev).apiQuota,
     ).toEqual({ limit: 20, used: 5 });
   });
+
+  it("scope 不在头里：沿用上次已知值（spec 故事 3 场景 11）", () => {
+    const prev: AccountUsageSnapshot = {
+      apiQuota: { limit: 10, used: 1, scope: "department" },
+    };
+    const first = requireSnapshot(
+      {
+        "x-codechat-quota-api-status": "ok",
+        "x-codechat-quota-api-limit": "10",
+        "x-codechat-quota-api-used": "2",
+      },
+      prev,
+    );
+    // 头只给数：部门共享这一层不能被退回个人，否则一次模型调用后标签就从
+    // 「部门剩余积分」变成「个人剩余积分」（数字还是部门共享的）。
+    expect(first.apiQuota).toEqual({
+      limit: 10,
+      used: 2,
+      scope: "department",
+    });
+    // 连来两次头也一样（第二次的 prev 就是第一次的结果）。
+    expect(
+      requireSnapshot(
+        {
+          "x-codechat-quota-api-limit": "unlimited",
+          "x-codechat-quota-api-used": "3",
+        },
+        first,
+      ).apiQuota,
+    ).toEqual({ limit: null, used: 3, scope: "department" });
+
+    // 老服务端（从来没给过 scope）：结果里也不凭空多出这个键。
+    expect(
+      requireSnapshot(
+        { "x-codechat-quota-api-limit": "20" },
+        { apiQuota: { limit: 20, used: 5 } },
+      ).apiQuota,
+    ).toEqual({ limit: 20, used: 5 });
+  });
 });

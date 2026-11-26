@@ -156,9 +156,15 @@ export function usageFromQuotaHeaders(
   const apiLimit = readLimit(headers, "api-limit");
   if (apiLimit !== undefined) {
     const apiUsed = readNumber(headers, "api-used");
+    // `scope` 不在头里（`x-codechat-quota-api-*` 只给数），但它决定余额维度读「部门
+    // 剩余积分」还是「个人剩余积分」：整体重建 `apiQuota` 会让部门企业在一次模型调用
+    // 后把标签退回个人（数字还是部门共享的，文案却说是自己的）。故沿用上次已知值，
+    // 已知也没有就不带这个键（老服务端形态，读侧按 `"user"` 兜底）。
+    const scope = prev.apiQuota?.scope;
     out.apiQuota = {
       limit: apiLimit,
       used: apiUsed !== undefined ? apiUsed : (prev.apiQuota?.used ?? 0),
+      ...(scope !== undefined ? { scope } : {}),
     };
   }
 

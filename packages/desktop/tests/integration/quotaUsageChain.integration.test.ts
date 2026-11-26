@@ -36,6 +36,12 @@ import {
 interface FakeCodechat {
   origin: string;
   accountHits: () => number;
+  /** Quota the account endpoint answers with (default: 不限额, used 0). */
+  setAccountQuota(quota: {
+    limit: number | null;
+    used: number;
+    scope?: "user" | "department";
+  }): void;
   /** Headers the next model response carries (undefined = none at all). */
   setQuota(headers: Record<string, string> | undefined): void;
   /** Make the next model responses fail with this status instead of streaming. */
@@ -47,6 +53,11 @@ interface FakeCodechat {
 async function startFakeCodechat(): Promise<FakeCodechat> {
   let hits = 0;
   let quota: Record<string, string> | undefined;
+  let accountQuota: {
+    limit: number | null;
+    used: number;
+    scope?: "user" | "department";
+  } = { limit: null, used: 0 };
   let failStatus: number | undefined;
   let text = "回复：A-OK";
 
@@ -66,7 +77,7 @@ async function startFakeCodechat(): Promise<FakeCodechat> {
               expireDate: "2027-01-01",
             },
           },
-          apiQuota: { limit: null, used: 0 },
+          apiQuota: accountQuota,
         }),
       );
       return;
@@ -110,6 +121,9 @@ async function startFakeCodechat(): Promise<FakeCodechat> {
   return {
     origin: `http://127.0.0.1:${port}`,
     accountHits: () => hits,
+    setAccountQuota: (q) => {
+      accountQuota = q;
+    },
     setQuota: (h) => {
       quota = h;
     },
@@ -236,6 +250,41 @@ describe("real host · quota headers drive the account card", () => {
     expect(codechat.accountHits()).toBe(hitsBefore + 1);
     // 账户接口的数字覆盖头里的读数（后到者胜，同源不同时刻）。
     expect(refreshed.billing).toMatchObject({ plan: { weekUsed: 10 } });
+  });
+
+  it("apiQuota.scope survives the CLI hop and later header patches", async () => {
+    // 部门共享池：scope 只在这条 GET /api/v1/account 上出现（响应头里没有它）。
+    codechat.setAccountQuota({ limit: 100, used: 40, scope: "department" });
+    await openProject();
+
+    const seeded = await ctx.waitFor("desktopAccountInfo", {
+      predicate: (m) =>
+        (m.apiQuota as { scope?: string } | null)?.scope === "department",
+      timeout: 60_000,
+    });
+    // CLI 的 agentBridge 是透传（只做了 as 断言），scope 必须原样到宿主缓存。
+    expect(seeded.apiQuota).toEqual({
+      limit: 100,
+      used: 40,
+      scope: "department",
+    });
+
+    // 一次按 API 计费的调用：头里只有数字。若映射时整体重建 apiQuota，这里就会把
+    // 标签退回「个人剩余积分」（数字仍是部门共享的）——spec 故事 3 场景 11。
+    codechat.setQuota({
+      "x-codechat-quota-api-limit": "80",
+      "x-codechat-quota-api-used": "55",
+    });
+    codechat.reply("这一轮按 API 计费");
+    await ctx.turn("你好");
+    const patched = await ctx.waitFor("desktopAccountInfo", {
+      predicate: (m) => (m.apiQuota as { used?: number } | null)?.used === 55,
+    });
+    expect(patched.apiQuota).toEqual({
+      limit: 80,
+      used: 55,
+      scope: "department",
+    });
   });
 
   it("a 402 error response still refreshes the reading (blocked conclusion)", async () => {

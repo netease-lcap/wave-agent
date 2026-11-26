@@ -1008,7 +1008,7 @@ export const ChevronDownIcon: React.FC<IconProps> = ({
   </svg>
 );
 
-// API 余额明细 ⓘ — Figma 官方 info 图标 (13651:3900，16 artboard：外圈 +
+// 积分余额明细 ⓘ — Figma 官方 info 图标 (13651:3900，16 artboard：外圈 +
 // 「i」弧线 + 中心点，stroke/point #8B8F95 → currentColor)。账户卡用量区
 // 按设计稿 13651:4911 替换原 codicon-info 字形（命名 ApiInfoIcon 以区分
 // 文件头同名义遗留图标；旧 InfoIcon 无引用，保留不动）。

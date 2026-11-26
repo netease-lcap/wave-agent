@@ -5,6 +5,7 @@ import type {
   AccountBillingInfo,
   AccountBillingPlanUsage,
   AccountCredential,
+  AccountQuotaScope,
   AccountUpdateInfo,
 } from "wave-webview-fixtures";
 import { MoreMenu } from "./MoreMenu";
@@ -32,9 +33,9 @@ import "../styles/ConfirmDialog.css";
  * `desktopAccountInfo` 快照；卡片未登录态为整条登录按钮 + 更多按钮，登录态为
  * 三段式：
  *
- *  1. 用量常驻区（2026-10-09 起为「套餐用量 / API 余额」两个互斥维度切换：套餐
+ *  1. 用量常驻区（2026-10-09 起为「套餐用量 / 积分余额」两个互斥维度切换：套餐
  *     维度 = 本周条 + 本月条 + 到期日 + 计费结论行；余额维度 = 已用 + 剩余 + 预警。
- *     套餐未用尽时 API 余额不参与计费，故默认停在套餐维度。两维只有一维可用时
+ *     套餐未用尽时积分余额不参与计费，故默认停在套餐维度。两维只有一维可用时
  *     不渲染切换器、直接展示那一维），经个人信息行右侧 chevron 收起/展开；显隐
  *     独立记忆、与个人信息菜单开合解耦；
  *  2. 个人信息行（头像 + 姓名热区 + 更新按钮 + 用量显隐按钮）：点击热区开/关
@@ -120,11 +121,19 @@ export function planBarView(used: number, limit: number | null): PlanBarView {
   return { percent, text: `${percent}%`, tone: "normal" };
 }
 
+/**
+ * 部门共享池用完那一句（codechat `billingService.quotaZeroMessage` 的 department 分支原文）：
+ * 它顶替的是 `USER_QUOTA_ZERO`——**同一个计费码、按 `apiQuota.scope` 换一句话**，
+ * 不是新的 `BillingCode`（spec 场景 25；不扩枚举）。
+ */
+const DEPARTMENT_QUOTA_ZERO_TEXT =
+  "您所在部门的积分已用完，请联系公司管理员分配积分后使用！";
+
 /** 计费阻断码 → proxy 402 的同一句文案（与后端 `BLOCKED_INFO` 逐字一致）. */
 const BLOCKED_TEXT: Record<AccountBillingCode, string> = {
   EXPIRED_NO_API: "您订购的套餐已过期，无法使用本产品！",
-  USER_QUOTA_ZERO: "您的 API 额度已用完，请联系公司管理员分配额度后使用！",
-  TEAM_QUOTA_ZERO: "团队 API 额度已用完，请联系公司管理员充值后使用！",
+  USER_QUOTA_ZERO: "您的积分额度已用完，请联系公司管理员分配额度后使用！",
+  TEAM_QUOTA_ZERO: "团队积分额度已用完，请联系公司管理员充值后使用！",
 };
 
 /**
@@ -140,9 +149,14 @@ const BLOCKED_TEXT: Record<AccountBillingCode, string> = {
  */
 export function planConclusion(
   billing: AccountBillingInfo,
+  quotaScope?: AccountQuotaScope,
 ): { text: string; tone: "warning" | "error" } | null {
   if (billing.mode === "plan") return null;
   if (billing.mode === "blocked") {
+    // 部门共享池用完：同一计费码、换一句（spec 场景 25，与 proxy 402 逐字对齐）。
+    if (billing.code === "USER_QUOTA_ZERO" && quotaScope === "department") {
+      return { text: DEPARTMENT_QUOTA_ZERO_TEXT, tone: "error" };
+    }
     // 运行时兜底：规格外的 code（后端先发版）查表得 undefined ⇒ 只剩一条没有文案的空红框。
     // `BLOCKED_TEXT` 的穷尽 `Record` 只挡仓内漏补文案，挡不住跨仓先发的新枚举值。
     if (!(billing.code in BLOCKED_TEXT)) {
@@ -313,12 +327,26 @@ const PlanBar: React.FC<{
   );
 };
 
-/** 金额两位小数 + 千位分隔（手写，避免 toLocaleString 的 Intl 环境差异）. */
+/** 数值两位小数 + 千位分隔（手写，避免 toLocaleString 的 Intl 环境差异）. */
 export function formatAmount(value: number): string {
   const fixed = value.toFixed(2);
   const [intPart, fracPart] = fixed.split(".");
   const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   return `${grouped}.${fracPart}`;
+}
+
+/**
+ * 余额维度两行标签（spec 场景 25 / 26）：`scope = "department"` 的读数是**部门共享**的，
+ * 标签必须写明「部门」，否则用户会把它当自己的额度去追问；`"user"` 与缺省（老服务端）
+ * 一律读个人那一套——缺字段按 `"user"` 渲染，不报错、不留空标签。
+ */
+export function apiQuotaLabels(quota: AccountApiQuotaInfo): {
+  used: string;
+  remaining: string;
+} {
+  return quota.scope === "department"
+    ? { used: "部门已用", remaining: "部门剩余积分" }
+    : { used: "已用", remaining: "个人剩余积分" };
 }
 
 /** 剩余额度（limit 为数字时）；limit=null（不限额）返回 null。 */
@@ -328,7 +356,7 @@ export function apiQuotaRemaining(quota: AccountApiQuotaInfo): number | null {
 }
 
 /**
- * API 余额能否下「额度已用完」结论：`billing.mode` 是唯一判据（issue #2776）。
+ * 积分余额能否下「额度已用完」结论：`billing.mode` 是唯一判据（issue #2776）。
  *
  * 只有「此刻真的按 API 计费」（`mode = "api"`）或宿主没下发 `billing`（只下发了余额
  * 这一维，余额即唯一计费口径）时，`limit = 0` / 剩余 ≤ 0 才等于「当前不可用」。`mode = "plan"` 下
@@ -344,7 +372,7 @@ function apiQuotaDecisive(
 }
 
 /**
- * API 余额预警级别（交互定稿 v3.1）：剩余 < 限额 20% = "low"（琥珀金额 +
+ * 积分余额预警级别（交互定稿 v3.1）：剩余 < 限额 20% = "low"（琥珀数值 +
  * 气泡预警）；剩余 ≤ 0 = "exhausted"（错误色 + 强警示）；不限额不参与预警。
  *
  * 耗尽属「API 侧结论」，只在 `apiQuotaDecisive` 成立时给（见该函数）；不足 20% 是
@@ -364,8 +392,8 @@ export function apiQuotaWarningLevel(
 }
 
 /**
- * API 余额行内文案（label 已含「余额」语义，金额不再加「剩余」前缀）：
- * 限额且未用完 → 「¥x」；用完 → 「已用完」；不限额 → 「不限额」。
+ * 积分余额行内文案（label 已含「剩余」语义，数值只带单位）：
+ * 限额且未用完 → 「x 积分」；用完 → 「已用完」；不限额 → 「不限额」。
  *
  * `mode = "plan"` / `"blocked"` 下剩余 ≤ 0 不读「已用完」（limit = 0 不等于当前不可用，
  * 见 `apiQuotaDecisive`），只保留数值且封底到 0（不出现负数）。
@@ -377,9 +405,9 @@ export function apiQuotaInlineText(
   const remaining = apiQuotaRemaining(quota);
   if (remaining === null) return "不限额";
   if (remaining <= 0) {
-    return apiQuotaDecisive(billing) ? "已用完" : `¥${formatAmount(0)}`;
+    return apiQuotaDecisive(billing) ? "已用完" : `${formatAmount(0)} 积分`;
   }
-  return `¥${formatAmount(remaining)}`;
+  return `${formatAmount(remaining)} 积分`;
 }
 
 /**
@@ -452,7 +480,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   // 尾部的用量按钮，在卡片上方弹一层浮层（与卡片等宽、贴行顶向上弹）。
   const [showUsage, setShowUsage] = useState(false);
   const [usageAnchor, setUsageAnchor] = useState<DOMRect | null>(null);
-  // 用量维度（2026-10-09 交互定稿）：套餐未用尽时 API 余额不参与计费，默认停在
+  // 用量维度（2026-10-09 交互定稿）：套餐未用尽时积分余额不参与计费，默认停在
   // 「套餐用量」不占版面，想看余额再切过去；两维只有一维可用时无切换器。
   const [usageTab, setUsageTab] = useState<"plan" | "api">("plan");
   // 更新确认对话框（S2）：只有用户点开「更新」按钮才出现——下载在后台静默完成，
@@ -633,9 +661,11 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   const planUsage =
     billingPlan && isPlanUsage(billingPlan) ? billingPlan : null;
   const expireDate = billingPlan?.expireDate ?? null;
-  const conclusion = billing ? planConclusion(billing) : null;
+  // 结论行带上 `apiQuota.scope`：`USER_QUOTA_ZERO` 在部门维度下要换成部门那一句
+  // （spec 场景 25），套餐块与余额块两处结论同源、同句。
+  const conclusion = billing ? planConclusion(billing, apiQuota?.scope) : null;
   const showPlanBlock = planUsage !== null || conclusion !== null;
-  // API 余额预警级：null=充足/不限额；"low"=剩余<20%；"exhausted"=剩余≤0
+  // 积分余额预警级：null=充足/不限额；"low"=剩余<20%；"exhausted"=剩余≤0
   // （仅在真按 API 计费时成立，`mode = "plan"` 的 limit=0 不算用完，见 issue #2776）。
   const apiWarning = apiQuota ? apiQuotaWarningLevel(apiQuota, billing) : null;
   // 网关形态不给用量入口：宿主切到网关凭据时缓存里可能还留着上一个身份的
@@ -666,14 +696,14 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   const handleUpdateClick = () => setUpdateDialog("restart");
 
   // 余额用途说明钮（2026-10-09）：排在**余额维度的右上角**——与套餐维度的到期日
-  // 同一位置，两个维度各占各的右上角信息。放在金额行里会把「剩余」的数字挤得比
-  // 「已用」短一截、两行右边缘对不齐，故不进金额行。
+  // 同一位置，两个维度各占各的右上角信息。放在数值行里会把「剩余」的数字挤得比
+  // 「已用」短一截、两行右边缘对不齐，故不进数值行。
   const apiInfoButton = (
-    <Tooltip text="将在套餐用量耗尽时使用API余额" position="top">
+    <Tooltip text="将在套餐余量耗尽时消耗积分" position="top">
       <button
         type="button"
         className="account-api-info-btn"
-        aria-label="API 余额说明"
+        aria-label="积分余额说明"
         data-testid="api-quota-info"
       >
         <ApiInfoIcon />
@@ -793,7 +823,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
                   data-testid="account-usage-tab-api"
                   onClick={() => setUsageTab("api")}
                 >
-                  API 余额
+                  积分余额
                 </button>
               </div>
               {/* 右上角随维度换：套餐维度 = 到期日，余额维度 = ⓘ（2026-10-09
@@ -878,20 +908,24 @@ export const AccountCard: React.FC<AccountCardProps> = ({
             >
               {!showUsageTabs && (
                 <div className="account-usage-title">
-                  <span>API 余额</span>
+                  <span>积分余额</span>
                   {apiInfoButton}
                 </div>
               )}
               <div className="account-usage-row">
-                <span className="account-usage-label">已用</span>
+                <span className="account-usage-label">
+                  {apiQuotaLabels(apiQuota).used}
+                </span>
                 <span className="account-usage-value">
                   <span className="account-usage-value-text">
-                    ¥{formatAmount(apiQuota.used)}
+                    {formatAmount(apiQuota.used)} 积分
                   </span>
                 </span>
               </div>
               <div className="account-usage-row">
-                <span className="account-usage-label">剩余</span>
+                <span className="account-usage-label">
+                  {apiQuotaLabels(apiQuota).remaining}
+                </span>
                 <span
                   className={
                     "account-usage-value" +

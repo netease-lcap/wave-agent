@@ -136,7 +136,7 @@ const planBilling = {
     expireDate: "2027-03-01",
   },
 };
-/** API 限额 ¥10,000 已用 ¥1,153.14 → 剩余充足. */
+/** 积分限额 10,000、已用 1,153.14 积分 → 剩余充足. */
 const apiPlenty = { limit: 10000, used: 1153.14 };
 
 describe("AccountCard (desktop sidebar)", () => {
@@ -185,7 +185,7 @@ describe("AccountCard (desktop sidebar)", () => {
     });
   });
 
-  describe("用量常驻区（套餐用量 + API 余额）", () => {
+  describe("用量常驻区（套餐用量 + 积分余额）", () => {
     it("常驻区默认停在套餐维度（本周在上、本月在下 + 到期日），余额行不占版面", () => {
       renderDesktop();
       pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
@@ -223,7 +223,7 @@ describe("AccountCard (desktop sidebar)", () => {
       expect(
         screen.queryByTestId("account-plan-conclusion"),
       ).not.toBeInTheDocument();
-      // 默认停在套餐维度 ⇒ API 余额整块不渲染（2026-10-09 定稿：套餐没耗尽时
+      // 默认停在套餐维度 ⇒ 积分余额整块不渲染（2026-10-09 定稿：套餐没耗尽时
       // 余额不参与计费，默认不占版面）.
       expect(screen.queryByTestId("account-api-quota")).not.toBeInTheDocument();
       expect(screen.queryByTestId("api-quota-info")).not.toBeInTheDocument();
@@ -235,15 +235,15 @@ describe("AccountCard (desktop sidebar)", () => {
 
       fireEvent.click(screen.getByTestId("account-usage-tab-api"));
       const apiBlock = screen.getByTestId("account-api-quota");
-      // 金额 ¥ 前缀 + 千位分隔 + 两位小数.
+      // 积分口径：千位分隔 + 两位小数 + 「 积分」后缀.
       expect(apiBlock).toHaveTextContent("已用");
-      expect(apiBlock).toHaveTextContent("¥1,153.14");
+      expect(apiBlock).toHaveTextContent("1,153.14 积分");
       expect(apiBlock).toHaveTextContent("剩余");
-      expect(apiBlock).toHaveTextContent("¥8,846.86");
+      expect(apiBlock).toHaveTextContent("8,846.86 积分");
       expect(apiBlock.querySelector(".is-warning")).toBeNull();
       expect(screen.getByTestId("api-quota-info")).toHaveAttribute(
         "aria-label",
-        "API 余额说明",
+        "积分余额说明",
       );
       // ⓘ 在余额维度的右上角（页签行内），不进金额行——两行金额才能右对齐.
       expect(
@@ -278,7 +278,7 @@ describe("AccountCard (desktop sidebar)", () => {
       ).not.toBeInTheDocument();
       // 单维也保留块内标题行（没有页签可替代它），ⓘ 落到标题行右侧.
       const apiBlock = screen.getByTestId("account-api-quota");
-      expect(apiBlock).toHaveTextContent("API 余额");
+      expect(apiBlock).toHaveTextContent("积分余额");
       expect(apiBlock.querySelector(".account-api-info-btn")).not.toBeNull();
     });
 
@@ -416,9 +416,64 @@ describe("AccountCard (desktop sidebar)", () => {
       const conclusion = screen.getByTestId("account-plan-conclusion");
       // 与 proxy 402 同一句话（codechat BLOCKED_INFO 逐字）.
       expect(conclusion).toHaveTextContent(
-        "您的 API 额度已用完，请联系公司管理员分配额度后使用！",
+        "您的积分额度已用完，请联系公司管理员分配额度后使用！",
       );
       expect(conclusion.classList.contains("is-error")).toBe(true);
+    });
+
+    it("labels the balance rows as 部门共享 when apiQuota.scope is department", () => {
+      renderDesktop();
+      pushUsage({
+        ...loggedIn,
+        billing: planBilling,
+        apiQuota: { ...apiPlenty, scope: "department" },
+      });
+
+      fireEvent.click(screen.getByTestId("account-usage-tab-api"));
+      const apiBlock = screen.getByTestId("account-api-quota");
+      // 读数属于部门共享池：标签必须写明「部门」，否则会被当成本人额度.
+      const labels = [...apiBlock.querySelectorAll(".account-usage-label")].map(
+        (el) => el.textContent,
+      );
+      expect(labels).toEqual(["部门已用", "部门剩余积分"]);
+      // 数值口径不变（积分 + 两位小数 + 千位分隔）.
+      expect(apiBlock).toHaveTextContent("1,153.14 积分");
+      expect(apiBlock).toHaveTextContent("8,846.86 积分");
+      expect(apiBlock).not.toHaveTextContent("个人剩余积分");
+    });
+
+    it("falls back to the personal labels when apiQuota.scope is missing（老服务端）", () => {
+      renderDesktop();
+      pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+
+      fireEvent.click(screen.getByTestId("account-usage-tab-api"));
+      const apiBlock = screen.getByTestId("account-api-quota");
+      const labels = [...apiBlock.querySelectorAll(".account-usage-label")].map(
+        (el) => el.textContent,
+      );
+      // 缺字段按 "user" 渲染：不报错、不空标签、不解释成部门.
+      expect(labels).toEqual(["已用", "个人剩余积分"]);
+      expect(apiBlock).not.toHaveTextContent("部门");
+    });
+
+    it("picks the department sentence for USER_QUOTA_ZERO when scope is department", () => {
+      renderDesktop();
+      pushUsage({
+        ...loggedIn,
+        billing: { mode: "blocked", code: "USER_QUOTA_ZERO" },
+        apiQuota: { limit: 5, used: 5, scope: "department" },
+      });
+
+      const conclusion = screen.getByTestId("account-plan-conclusion");
+      // 与 codechat proxy 402 的 department 分支逐字一致（spec 场景 25）.
+      expect(conclusion).toHaveTextContent(
+        "您所在部门的积分已用完，请联系公司管理员分配积分后使用！",
+      );
+      fireEvent.click(screen.getByTestId("account-usage-tab-api"));
+      // 余额维度内同一句：两处结论同源，不各写一份.
+      expect(screen.getByTestId("account-api-conclusion").textContent).toBe(
+        conclusion.textContent,
+      );
     });
 
     it("uses the expiry date in the conclusion for an expired plan, and hides it when never purchased", () => {
@@ -602,7 +657,7 @@ describe("AccountCard (desktop sidebar)", () => {
       expect(screen.queryByTestId("account-plan")).not.toBeInTheDocument();
       expect(screen.getByTestId("account-usage-popover")).toBeInTheDocument();
       expect(screen.getByTestId("account-api-quota")).toHaveTextContent(
-        "¥8,846.86",
+        "8,846.86 积分",
       );
     });
 
@@ -629,28 +684,28 @@ describe("AccountCard (desktop sidebar)", () => {
       fireEvent.click(screen.getByTestId("account-usage-tab-api"));
       const apiRow = screen.getByTestId("account-api-quota");
       expect(apiRow).toHaveTextContent("已用");
-      expect(apiRow).toHaveTextContent("¥1,153.14");
-      // 「剩余」行读「不限额」——该行不出现金额.
+      expect(apiRow).toHaveTextContent("1,153.14 积分");
+      // 「剩余」行读「不限额」——该行不出现数值.
       const rows = apiRow.querySelectorAll(".account-usage-row");
       const remaining = rows[rows.length - 1];
       expect(remaining).toHaveTextContent("剩余");
       expect(remaining).toHaveTextContent("不限额");
-      expect(remaining).not.toHaveTextContent("¥");
+      expect(remaining).not.toHaveTextContent(/[0-9]/);
     });
   });
 
-  describe("余额维度（API 余额面板）", () => {
+  describe("余额维度（积分余额面板）", () => {
     it("ⓘ 的 tooltip 说明余额只在套餐耗尽后才参与计费", () => {
       renderDesktop();
       pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
       fireEvent.click(screen.getByTestId("account-usage-tab-api"));
 
       const info = screen.getByTestId("api-quota-info");
-      expect(info).toHaveAttribute("aria-label", "API 余额说明");
+      expect(info).toHaveAttribute("aria-label", "积分余额说明");
       const tooltip = document.getElementById(
         info.getAttribute("aria-describedby")!,
       );
-      expect(tooltip).toHaveTextContent("将在套餐用量耗尽时使用API余额");
+      expect(tooltip).toHaveTextContent("将在套餐余量耗尽时消耗积分");
     });
 
     it("warns in amber + 文案 when the balance drops below 20% of the limit", () => {
@@ -669,7 +724,7 @@ describe("AccountCard (desktop sidebar)", () => {
       const value = remaining.querySelector(".account-usage-value");
       expect(value).not.toBeNull();
       expect(value!.classList.contains("is-warning")).toBe(true);
-      expect(apiRow).toHaveTextContent("¥50.00");
+      expect(apiRow).toHaveTextContent("50.00 积分");
       expect(apiRow).toHaveTextContent("余额不足20%，建议及时充值");
     });
 
@@ -700,7 +755,7 @@ describe("AccountCard (desktop sidebar)", () => {
       expect(apiRow).toHaveTextContent("已用完");
       expect(apiRow).toHaveTextContent("额度已用完，请联系管理员充值");
       // 剩余封底 0：不出现负数.
-      expect(apiRow).not.toHaveTextContent("¥-");
+      expect(apiRow).not.toHaveTextContent("-");
     });
 
     // issue #2776：`apiQuota.limit` 只表示「此刻若降级到 API 计费还能用多少」，
@@ -721,7 +776,7 @@ describe("AccountCard (desktop sidebar)", () => {
       expect(apiRow).not.toHaveTextContent("额度已用完，请联系管理员充值");
       expect(apiRow.querySelector(".account-usage-value.is-empty")).toBeNull();
       // 只保留数值（封底 0）.
-      expect(apiRow).toHaveTextContent("¥0.00");
+      expect(apiRow).toHaveTextContent("0.00 积分");
       // 套餐维度不受影响（默认页签仍是套餐，结论行不出现）.
       expect(
         screen.queryByTestId("account-plan-conclusion"),
@@ -768,7 +823,7 @@ describe("AccountCard (desktop sidebar)", () => {
       // 拦截结论沿用 proxy 402 的同一句话，不再自行下「已用完」判定.
       const conclusion = screen.getByTestId("account-api-conclusion");
       expect(conclusion).toHaveTextContent(
-        "团队 API 额度已用完，请联系公司管理员充值后使用！",
+        "团队积分额度已用完，请联系公司管理员充值后使用！",
       );
       expect(conclusion.classList.contains("is-error")).toBe(true);
       expect(apiRow).not.toHaveTextContent("额度已用完，请联系管理员充值");
