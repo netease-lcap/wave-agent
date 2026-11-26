@@ -27,6 +27,21 @@
       "Bash(gh run list*)"
     ]
   },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$WAVE_PROJECT_DIR/scripts/worktree-setup.mjs\"",
+            "async": true,
+            "timeout": 600
+          }
+        ]
+      }
+    ]
+  },
   "enabledPlugins": {
     "sdd@builtin": true
   }
