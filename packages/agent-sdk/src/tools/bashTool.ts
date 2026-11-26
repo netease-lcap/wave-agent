@@ -38,7 +38,7 @@ import {
   WRITE_TOOL_NAME,
 } from "../constants/tools.js";
 
-const BASH_DEFAULT_TIMEOUT_MS = 120000;
+export const BASH_DEFAULT_TIMEOUT_MS = 120000;
 const BASH_MAX_TIMEOUT_MS = 600000;
 
 // After the shell exits, its last stdout/stderr chunks may still be in flight:

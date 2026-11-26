@@ -30,6 +30,20 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import {
+  BASH_TOOL_NAME,
+  EDIT_TOOL_NAME,
+  GLOB_TOOL_NAME,
+  GREP_TOOL_NAME,
+  POWERSHELL_TOOL_NAME,
+  TASK_CREATE_TOOL_NAME,
+  TASK_GET_TOOL_NAME,
+  TASK_LIST_TOOL_NAME,
+  TASK_STOP_TOOL_NAME,
+  TASK_UPDATE_TOOL_NAME,
+} from "../constants/tools.js";
+import { BASH_DEFAULT_TIMEOUT_MS } from "../tools/bashTool.js";
+import { POWERSHELL_DEFAULT_TIMEOUT_MS } from "../tools/powershellTool/prompt.js";
 import { fallbackInterpretation } from "../tools/shellExitCode.js";
 import type { ToolContext, ToolResult } from "../tools/types.js";
 import { logger } from "../utils/globalLogger.js";
@@ -55,7 +69,9 @@ import {
   REPL_SHELL_DEFAULT_WAIT_MS,
   REPL_SYNC_WAIT_MS,
   REPL_WATCHDOG_BASE_MS,
+  REPL_WATCHDOG_CEILING_MS,
   REPL_WATCHDOG_FACTOR,
+  REPL_WATCHDOG_SHELL_BONUS_MS,
 } from "./constants.js";
 import {
   acquireReplSandbox,
@@ -338,26 +354,87 @@ function isAskMode(mode: string | undefined): boolean {
   return mode === "default" || mode === "plan";
 }
 
-/**
- * How long one nested call may take before the host gives up on it and hands the
- * error back to the script. A tool that declares its own `timeout` gets the
- * generous multiplier; the file tools, which take none, are measured against the
- * default native timeout so a hung read cannot hold the script.
- */
-function watchdogMsFor(nativeTimeoutMs: number): number {
-  return Math.round(
-    nativeTimeoutMs * REPL_WATCHDOG_FACTOR + REPL_WATCHDOG_BASE_MS,
-  );
+/** Tools measured against their own `timeout` default (Claude Code's `Of`). */
+const SHELL_TOOLS = new Set([BASH_TOOL_NAME, POWERSHELL_TOOL_NAME]);
+
+/** Tools measured against the fixed native timeout (Claude Code's `Ka`). */
+const FIXED_TIMEOUT_TOOLS = new Set([
+  EDIT_TOOL_NAME,
+  GLOB_TOOL_NAME,
+  GREP_TOOL_NAME,
+  TASK_CREATE_TOOL_NAME,
+  TASK_GET_TOOL_NAME,
+  TASK_LIST_TOOL_NAME,
+  TASK_STOP_TOOL_NAME,
+  TASK_UPDATE_TOOL_NAME,
+]);
+
+/** The foreground `timeout` a shell tool gives itself when the call declares none. */
+function shellDefaultTimeoutMs(name: string): number {
+  return name === POWERSHELL_TOOL_NAME
+    ? POWERSHELL_DEFAULT_TIMEOUT_MS
+    : BASH_DEFAULT_TIMEOUT_MS;
 }
 
-/** The `timeout` a nested call declared, or the default the watchdog assumes. */
-function nativeTimeoutOf(args: Record<string, unknown>): number {
-  const declared = args.timeout;
-  return typeof declared === "number" &&
-    Number.isFinite(declared) &&
-    declared > 0
-    ? Math.floor(declared)
-    : REPL_DEFAULT_NATIVE_TIMEOUT_MS;
+/**
+ * The base the watchdog counts from, or `undefined` when this call gets none.
+ *
+ * Three tiers, which are Claude Code's: a shell tool counts from the `timeout` it
+ * was given or, failing that, the two minutes it gives itself; the file-and-task
+ * family counts from the fixed 10000 ms; every other tool — an MCP tool included —
+ * gets no watchdog at all, because the host knows nothing about that tool's budget
+ * and a base invented for it would cut calls that were working. `Read` and
+ * `Write` are in that last group too (Claude Code leaves them out of `Ka`).
+ */
+function nativeTimeoutOf(
+  name: string,
+  args: Record<string, unknown>,
+): number | undefined {
+  if (SHELL_TOOLS.has(name)) {
+    const declared = args.timeout;
+    return typeof declared === "number" &&
+      Number.isFinite(declared) &&
+      declared > 0
+      ? Math.floor(declared)
+      : shellDefaultTimeoutMs(name);
+  }
+  return FIXED_TIMEOUT_TOOLS.has(name)
+    ? REPL_DEFAULT_NATIVE_TIMEOUT_MS
+    : undefined;
+}
+
+/** What one call's watchdog amounts to; absent when the call gets none. */
+interface WatchdogPlan {
+  /** When the call is abandoned. */
+  limitMs: number;
+  /** The arithmetic, spelled out for the failure text. */
+  formula: string;
+}
+
+/**
+ * How long one nested call may take before the host gives up on it, or `undefined`
+ * when that call gets no watchdog.
+ *
+ * A shell tool gets `REPL_WATCHDOG_SHELL_BONUS_MS` on top of the multiplier: a
+ * command can stall in the spawn, the network or a virus scan for reasons its own
+ * timeout never saw, and cutting it throws away the whole command. Past
+ * `REPL_WATCHDOG_CEILING_MS` nothing is armed — the script-level ceiling ends the
+ * script first, so the timer would only fire into the void.
+ */
+function watchdogFor(
+  name: string,
+  nativeTimeoutMs: number,
+): WatchdogPlan | undefined {
+  const bonus = SHELL_TOOLS.has(name) ? REPL_WATCHDOG_SHELL_BONUS_MS : 0;
+  const limitMs =
+    Math.ceil(nativeTimeoutMs * REPL_WATCHDOG_FACTOR) +
+    REPL_WATCHDOG_BASE_MS +
+    bonus;
+  if (limitMs >= REPL_WATCHDOG_CEILING_MS) return undefined;
+  const formula =
+    `${nativeTimeoutMs} ms × ${REPL_WATCHDOG_FACTOR} + ${REPL_WATCHDOG_BASE_MS} ms` +
+    (bonus > 0 ? ` + ${bonus} ms for a shell command` : "");
+  return { limitMs, formula };
 }
 
 /** Bookkeeping timers must never be the reason a process stays alive. */
@@ -372,7 +449,8 @@ function clearTimer(timer: ReturnType<typeof setTimeout> | undefined): void {
 }
 
 /**
- * Run one nested call under its watchdog.
+ * Run one nested call under its watchdog, or — when the tool gets none — just run
+ * it.
  *
  * The underlying call is not cancellable, so the *call* is abandoned rather than
  * killed: the script sees a rejection and keeps going, and the tool may still
@@ -382,11 +460,18 @@ function clearTimer(timer: ReturnType<typeof setTimeout> | undefined): void {
 async function withWatchdog<T>(
   frame: ReplFrame,
   call: () => Promise<T>,
-  nativeTimeoutMs: number,
+  watchdog: WatchdogPlan | undefined,
   label: string,
 ): Promise<T> {
-  const limitMs = watchdogMsFor(nativeTimeoutMs);
   frame.waiting += 1;
+  if (watchdog === undefined) {
+    try {
+      return await call();
+    } finally {
+      frame.waiting -= 1;
+    }
+  }
+  const { limitMs, formula } = watchdog;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await new Promise<T>((resolve, reject) => {
@@ -395,7 +480,7 @@ async function withWatchdog<T>(
           reject(
             new Error(
               `${label} did not return within ${limitMs} ms ` +
-                `(watchdog: ${nativeTimeoutMs} ms × ${REPL_WATCHDOG_FACTOR} + ${REPL_WATCHDOG_BASE_MS} ms). ` +
+                `(watchdog: ${formula}). ` +
                 "That call was abandoned and the script continues; it may still be running host-side.",
             ),
           );
@@ -807,14 +892,16 @@ async function answerToolCall(
   // counts the same as a success (spec「结果摘要列出实际的内层调用」场景 7).
   frame.toolsUsed.push(name);
 
-  const nativeTimeoutMs = nativeTimeoutOf(args);
+  const nativeTimeoutMs = nativeTimeoutOf(name, args);
   const outcome = await withWatchdog(
     frame,
     () =>
       entry?.isMcp === true
         ? callMcpTool(frame, name, args)
         : callBuiltInTool(frame, name, args),
-    nativeTimeoutMs,
+    nativeTimeoutMs === undefined
+      ? undefined
+      : watchdogFor(name, nativeTimeoutMs),
     name,
   );
   return withPlaceholders(outcome.output, hoistImages(frame, outcome.images));
@@ -1143,7 +1230,7 @@ async function answerShellCall(
   const result = await withWatchdog(
     frame,
     () => toolManager.execute("Bash", args, callContext),
-    waitMs,
+    watchdogFor("Bash", waitMs),
     "Bash",
   );
   const taskId =

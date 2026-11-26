@@ -171,12 +171,37 @@ export const REPL_WATCHDOG_FACTOR = 1.5;
 export const REPL_WATCHDOG_BASE_MS = 5_000;
 
 /**
- * The timeout the watchdog assumes for a nested built-in that takes no timeout
- * input (`Read` / `Write` / `Edit` / `Glob` / `Grep`).
+ * The timeout the watchdog assumes for the one family of nested built-ins that
+ * takes no `timeout` input at all (`Edit` / `Glob` / `Grep` / `Task*`).
  *
- * Provenance: Claude Code's 10000 ms default for those calls.
+ * It is *not* a catch-all default: a shell tool is measured against its own two
+ * minutes, and every other tool — an MCP tool included — gets no watchdog,
+ * because no number here could speak for its budget.
+ *
+ * Provenance: Claude Code's 10000 ms third tier (2.1.329
+ * `2456-296296B-EvalTool.js`, `Zo()`: `Ka` = Edit / Glob / Grep / NotebookEdit /
+ * TodoWrite / TaskCreate / TaskGet / TaskList / TaskStop / TaskUpdate → `1e4`).
  */
 export const REPL_DEFAULT_NATIVE_TIMEOUT_MS = 10_000;
+
+/**
+ * Extra room for a shell tool on top of `native × 1.5 + 5000`. A command can sit
+ * in a spawn / network / virus-scan stall that has nothing to do with the timeout
+ * it asked for, and the cost of cutting it is the whole command.
+ *
+ * Provenance: Claude Code's `vh = 30000`, added when the tool is one of `Of`
+ * (`[Bash, PowerShell]`); the file tools do not get it.
+ */
+export const REPL_WATCHDOG_SHELL_BONUS_MS = 30_000;
+
+/**
+ * A watchdog at or above this is not armed at all: past it the script-level
+ * ceiling is what ends the script, so the extra timer would only fire after the
+ * thing it guards is already gone.
+ *
+ * Provenance: Claude Code's `YMn = 600000` (`if (h >= YMn) return;`).
+ */
+export const REPL_WATCHDOG_CEILING_MS = 600_000;
 
 /**
  * Wall-clock ceiling for one background script. Reaching it terminates the script
