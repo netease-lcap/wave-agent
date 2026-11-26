@@ -157,13 +157,36 @@ describe("findDangerousRemoval — targets that end the session", () => {
     );
   });
 
-  it("refuses a target that cannot be resolved before it runs", () => {
-    expect(ruleOf("rm -rf $UNKNOWN")).toBe("unresolvable");
+  it("refuses a variable that can collapse onto a root or a system directory", () => {
+    // `$DIR` empty leaves `/`, and `$DIR/*` leaves the root's contents.
+    expect(ruleOf("rm -rf $DIR/")).toBe("unresolvable");
+    expect(ruleOf('rm -rf "$DIR"/*')).toBe("unresolvable");
+    expect(ruleOf("rm -rf $DIR//build")).toBe("unresolvable");
+    expect(ruleOf("rm -rf $DIR/$OTHER")).toBe("unresolvable");
+    // `$DIR` empty leaves the system directory itself.
+    expect(ruleOf("rm -rf $DIR/etc")).toBe("unresolvable");
+    expect(ruleOf("rm -rf ${DIR}/tmp/*")).toBe("unresolvable");
+    expect(ruleOf("rm -rf $DIR/usr/")).toBe("unresolvable");
+    // These do not mean "unknown", they name the directory this session works in.
     expect(ruleOf("rm -rf $PWD")).toBe("unresolvable");
     expect(ruleOf('rm -rf "$PWD"')).toBe("unresolvable");
+    expect(ruleOf("rm -rf $HOME")).toBe("unresolvable");
     expect(ruleOf("rm -rf $(pwd)")).toBe("unresolvable");
     expect(ruleOf("rm -rf `pwd`")).toBe("unresolvable");
-    expect(ruleOf('rm -rf "$DIR"/*')).toBe("unresolvable");
+  });
+
+  it("leaves a variable inside a path to the ordinary permission rules", () => {
+    // Claude Code reads none of these as this gate's business either: the value
+    // is unknown, but an unknown path *inside* a named directory is not a set
+    // nobody can list. They still get a card, just a waivable one.
+    expect(ruleOf("rm -rf $UNKNOWN")).toBeNull();
+    expect(ruleOf('rm -rf "$DIR"')).toBeNull();
+    expect(ruleOf("rm -rf $DIR/build")).toBeNull();
+    expect(ruleOf("rm -rf build/$DIR")).toBeNull();
+    expect(ruleOf("rm -rf $DIR/.build")).toBeNull();
+    // The literal segments still do the arithmetic, so `$DIR` pops against `..`
+    // like any other segment and a parent stays a parent.
+    expect(ruleOf("rm -rf $DIR/../..")).toBe("working_directory");
   });
 
   it("refuses a glob whose static prefix is the root or a parent", () => {
