@@ -50,14 +50,26 @@
 }
 
 /* Loading indicator shown while the toast's action is being performed
- * (e.g. quit-and-install waiting for the app to exit). */
+ * (e.g. quit-and-install waiting for the app to exit).
+ * 1126 三轮评论收敛到「与语义图标同规格」：
+ *   ①「尺寸应该是 16px，颜色跟随所在全局提示的文本色走」
+ *   ②「看起来还是比其他图标大，其他图标应该是 14px 有个 16px 的容器吧？」
+ *   ③「收到 1.4，边缘圆角」
+ * 语义图标 `ToastGlyph` 的底子：16×16 的 svg，里面 `circle r=6.2 + stroke-width
+ * 1.4`，墨迹外径 = 2×(6.2+0.7) = 13.8 ≈ 14px；路径端点都是 `strokeLinecap: round`。
+ * 所以环也照这套参数画（见 ToastStack.tsx），本层只留容器与外层动画：
+ *   · 容器 16×16，与图标 svg 同宽高 ⇒ 同一行里 loading 与圆勾/叉/ⓘ 互换时不位移；
+ *   · 环由 SVG 画 ⇒ 描边能落到 1.4 且缺口两端是圆头（CSS border 只能整数像素、
+ *     且透明边造成的是方头直角切口，这就是前两版看起来「更大更重」的根因）。
+ * 颜色仍走 `currentColor`（SVG 的 stroke），跟随所在 toast 的 `color`：中性跟正常
+ * 前景，success/error/info 跟各自语义色。旋转放在容器上，SVG 随之转。 */
 .toast-spinner {
   flex-shrink: 0;
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--vscode-notifications-foreground, #cccccc);
-  border-top-color: transparent;
-  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
   animation: toast-spin 0.8s linear infinite;
 }
 

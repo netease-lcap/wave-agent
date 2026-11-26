@@ -103,7 +103,24 @@ const Toast: React.FC<{
       data-testid="toast"
     >
       {toast.loading ? (
-        <span className="toast-spinner" aria-hidden="true" />
+        /* loading 环与语义图标同规格：16 容器 / 墨迹 13.8（circle r=6.2 + stroke
+           1.4 的一半）/ 圆头端点。1126 她两轮口径：「尺寸应该是 16px」「收到 1.4，
+           边缘圆角」—— 所以这里不能再用 CSS border 画（border 的缺口是方头直角），
+           改成与 `ToastGlyph` 同一套 circle 参数的 SVG，肉眼与圆勾/叉/ⓘ 同重。
+           缺口用 dasharray 留 90°（周长 2πr ≈ 38.96，可见 29.22 + 空 9.74）。 */
+        <span className="toast-spinner" aria-hidden="true">
+          <svg width={16} height={16} viewBox="0 0 16 16" fill="none">
+            <circle
+              cx="8"
+              cy="8"
+              r="6.2"
+              stroke="currentColor"
+              strokeWidth={1.4}
+              strokeLinecap="round"
+              strokeDasharray="29.22 9.74"
+            />
+          </svg>
+        </span>
       ) : isTop && toast.type ? (
         <ToastGlyph kind={toast.type} />
       ) : null}
