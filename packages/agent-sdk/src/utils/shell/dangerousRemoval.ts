@@ -53,7 +53,14 @@ export type DangerousRemovalRule =
   /** A backslash-only target (`rm -rf \`): the drive root in Git Bash on Windows. */
   | "backslash_only"
   /** A Windows path Git Bash may read differently, so where it lands is unknown. */
-  | "unplaceable";
+  | "unplaceable"
+  /**
+   * A relative glob behind a `cd` this check cannot follow (`cd $DIR && rm -rf
+   * build/*`): the directory the glob hangs off is unknown, so what it matches is.
+   */
+  | "relative_glob_after_cd"
+  /** A glob crossing more than one directory level (`logs/*` one level deeper), so what it matches is unknown. */
+  | "multi_level_glob";
 
 export interface DangerousRemoval {
   rule: DangerousRemovalRule;
@@ -187,7 +194,8 @@ export function findDangerousRemoval(
     platform: input.platform ?? process.platform,
   };
   const cwd = path.resolve(restoreWindowsPath(input.workdir));
-  return scanCommand(input.command, cwd, judgement, 0);
+  // `false`: at the top level the shell's directory is the session's, by definition.
+  return scanCommand(input.command, cwd, judgement, false, 0);
 }
 
 function normalizeRoots(roots: string[]): string[] {
@@ -197,10 +205,22 @@ function normalizeRoots(roots: string[]): string[] {
   return [...new Set(resolved)];
 }
 
+/**
+ * Walk one command line leaf by leaf, judging each removal against the directory
+ * the shell is in when it runs.
+ *
+ * [cwdUnknown] says that directory is no longer known — a `cd` this check cannot
+ * follow (`cd $DIR`, `cd -`) happened earlier in the line. Relative targets then
+ * still resolve against the *old* directory, which is right for Claude Code's
+ * answer (`cd $DIR && rm -rf build` is judged against the session's directory
+ * there too) but wrong to trust for a glob: a glob names a set, and the set is
+ * the one under a directory nobody knows. `relative_glob_after_cd` is that case.
+ */
 function scanCommand(
   command: string,
   startCwd: string,
   judgement: Judgement,
+  cwdUnknown: boolean,
   depth: number,
 ): DangerousRemoval | null {
   if (depth > MAX_NESTING) return null;
@@ -212,7 +232,7 @@ function scanCommand(
     // a trailing `&` would make the whole guard blink.
     const desugared = desugarBackgroundJobs(command);
     if (desugared !== command) {
-      return scanCommand(desugared, startCwd, judgement, depth);
+      return scanCommand(desugared, startCwd, judgement, cwdUnknown, depth);
     }
     // A backslash at the very end of the line escapes what follows it — nothing,
     // in practice — so the parser rejects the line as unbalanced while bash hands
@@ -223,7 +243,7 @@ function scanCommand(
     // actually removes (`rm -rf \` is the drive root, `ls C:\` removes nothing).
     const repaired = repairTrailingBackslash(command);
     if (repaired !== null) {
-      return scanCommand(repaired, startCwd, judgement, depth);
+      return scanCommand(repaired, startCwd, judgement, cwdUnknown, depth);
     }
     return null;
   }
@@ -235,13 +255,22 @@ function scanCommand(
 
     if (name === "cd") {
       const next = directoryAfterCd(args, cwd);
-      if (next) cwd = next;
+      // A `cd` this check *can* follow re-establishes the directory, so an
+      // earlier unknown one stops mattering here: `cd $DIR && cd /x && rm -rf
+      // build/*` is judged against `/x`.
+      if (next !== null) {
+        cwd = next;
+        cwdUnknown = false;
+      } else {
+        cwdUnknown = true;
+      }
       continue;
     }
 
     const script = inlineShellScript(launcherName(name), args);
     if (script !== undefined) {
-      const hit = scanCommand(script, cwd, judgement, depth + 1);
+      // `bash -c` inherits its parent's directory, known or not.
+      const hit = scanCommand(script, cwd, judgement, cwdUnknown, depth + 1);
       if (hit) return hit;
       continue;
     }
@@ -256,7 +285,13 @@ function scanCommand(
       // The shell's current directory is protected along with the session's
       // roots: `cd /x && rm -rf /x` has to be caught, and so does `rm -rf .`
       // after a `cd` that moved the shell out of the safe zone.
-      const hit = judgeTarget(target, cwd, judgement, removesParents);
+      const hit = judgeTarget(
+        target,
+        cwd,
+        judgement,
+        removesParents,
+        cwdUnknown,
+      );
       if (hit) return hit;
     }
   }
@@ -629,12 +664,18 @@ function writtenWord(rawTarget: string): string {
  * checked in advance at all, which is Claude Code's "unresolvable" family; it is
  * reported rather than skipped, because skipping it is a documented way around
  * every static check.
+ *
+ * Two shapes are about *not knowing* rather than about the path: a glob that
+ * spans more than one directory level (`logs/*`, one level deeper) and a
+ * relative glob behind a `cd` this check cannot follow. Both are reported for the same reason as the
+ * variable — a set nobody can enumerate is a set nobody can vouch for.
  */
 function judgeTarget(
   rawTarget: string,
   cwd: string,
   judgement: Judgement,
   removesParents = false,
+  cwdUnknown = false,
 ): DangerousRemoval | null {
   const scanned = scanWord(rawTarget);
   if (scanned.dynamic) {
@@ -642,6 +683,19 @@ function judgeTarget(
   }
 
   const written = writtenWord(rawTarget);
+
+  // `cd $DIR && rm -rf build/*`: the shell changed into a directory this check
+  // cannot name, so a relative glob hangs off nothing it can resolve. Judged
+  // before the prefix arithmetic below, which would otherwise read the glob
+  // against the directory the shell started in.
+  const unbacked = expandHome(written) ?? written;
+  if (
+    cwdUnknown &&
+    !path.isAbsolute(restoreWindowsPath(unbacked)) &&
+    /[\\/]\*$/.test(unbacked)
+  ) {
+    return { rule: "relative_glob_after_cd", target: rawTarget, resolved: "" };
+  }
 
   // `rm -rf \` — Git Bash reads a lone backslash as the drive root, which is the
   // one target where the spelling and the destruction are furthest apart.
@@ -659,6 +713,11 @@ function judgeTarget(
     : null;
 
   let candidate = verbatim ?? scanned.text;
+  // Decided from the whole target, before the prefix is taken apart: the shapes
+  // that end the walk early below (`*/*`) are exactly the ones it is about.
+  const multiLevel = isMultiLevelGlob(candidate, cwd)
+    ? { rule: "multi_level_glob" as const, target: rawTarget, resolved: "" }
+    : null;
   const globIndex = verbatim === null ? candidate.search(GLOB_CHAR) : -1;
   if (globIndex >= 0) {
     const prefix = candidate.slice(0, globIndex);
@@ -667,15 +726,15 @@ function judgeTarget(
       // `*` is the contents of the current directory, not the directory: this
       // rule is about the directory itself. `/*` keeps its separator and names
       // the root, which is exactly the case worth stopping.
-      if (prefix === "") return null;
+      if (prefix === "") return multiLevel;
       candidate = prefix;
     } else {
       candidate = trimmed;
     }
     // `./*` / `.//*`: the contents of the current directory again.
-    if (candidate === ".") return null;
+    if (candidate === ".") return multiLevel;
   }
-  if (candidate === "") return null;
+  if (candidate === "") return multiLevel;
 
   const expanded = expandHome(candidate);
   if (expanded === null) {
@@ -715,7 +774,78 @@ function judgeTarget(
     const hit = judgeResolvedPath(resolved, rawTarget, protectedRoots);
     if (hit) return hit;
   }
-  return null;
+  // Last, as in Claude Code: a glob that is neither root, ancestor, home nor
+  // system is still a set nobody can list when it crosses two levels.
+  return multiLevel;
+}
+
+/**
+ * Does this glob cross more than one directory level? (`logs/*`, one level
+ * deeper; `*` twice in a row.)
+ *
+ * This is Claude Code's `multi_level_glob`, worked the same way: strip the
+ * trailing `/*` groups off the resolved target, count the segments that went
+ * away, count the glob-bearing segments left in the part relative to the
+ * session directory, and report when the two together exceed one. One level
+ * (`build/*`) is the ordinary "clear this directory"; two or more name a set
+ * whose members — and whose directories — cannot be listed before the command
+ * runs.
+ */
+function isMultiLevelGlob(target: string, cwd: string): boolean {
+  const absolute = path.resolve(cwd, restoreWindowsPath(target));
+  if (!/[\\/]\*$/.test(absolute)) return false;
+  const statics = stripTrailingGlobs(absolute);
+  if (statics === absolute) return false;
+  const removed = countSegments(absolute) - countSegments(statics);
+  const relative = relativeToSession(
+    statics,
+    cwd,
+    path.isAbsolute(restoreWindowsPath(target)),
+  );
+  return removed + countSegments(relative, GLOB_CHAR) > 1;
+}
+
+/** The target with its trailing `/*` groups peeled off, as {@link isMultiLevelGlob} counts them. */
+function stripTrailingGlobs(target: string): string {
+  let current = target;
+  let previous = "";
+  while (previous !== current) {
+    previous = current;
+    const stripped = current.replace(/([\\/]\*+)+[\\/]*$/, "") || "/";
+    if (stripped === current) continue;
+    current = /[\\/]/.test(stripped) ? path.normalize(stripped) : stripped;
+  }
+  return current;
+}
+
+/** A path's segments, optionally only those matching [pattern]. */
+function countSegments(value: string, pattern?: RegExp): number {
+  return value
+    .split(/[\\/]+/)
+    .filter(
+      (segment) =>
+        segment !== "" &&
+        segment !== "." &&
+        (pattern === undefined || pattern.test(segment)),
+    ).length;
+}
+
+/**
+ * The part of an absolute path below [cwd], or the whole thing when it is not
+ * below it — Claude Code's reading in `multi_level_glob`: an absolute target
+ * names its own levels, a relative one has to lose the session prefix before its
+ * remaining levels are counted.
+ */
+function relativeToSession(
+  statics: string,
+  cwd: string,
+  targetIsAbsolute: boolean,
+): string {
+  if (targetIsAbsolute) return statics;
+  const separator = /[\\/]$/.test(cwd) ? cwd : cwd + path.sep;
+  if (statics.startsWith(separator)) return statics.slice(separator.length);
+  if (statics === cwd) return "";
+  return statics;
 }
 
 /** The ways a resolved path can be one we must not delete. */
@@ -756,6 +886,10 @@ export function describeDangerousRemoval(hit: DangerousRemoval): string {
       return `This command deletes a backslash-only target ("${hit.target}"), which Git Bash reads as the drive root on Windows. It needs explicit approval and cannot be covered by an allow rule or a bypass mode. Write the directory you mean as a path, for example /c/work/build or C:/work/build.`;
     case "unplaceable":
       return `This command deletes "${hit.target}", a Windows path Git Bash may read differently from this check, so where it lands is unknown. It needs explicit approval and cannot be covered by an allow rule or a bypass mode. Write the directory you mean as a plain path, for example C:/work/build.`;
+    case "relative_glob_after_cd":
+      return `This command changes directories before the removal, so the relative glob target "${hit.target}" cannot be resolved before it runs. It needs explicit approval and cannot be covered by an allow rule or a bypass mode. Name the directory by its full path instead.`;
+    case "multi_level_glob":
+      return `This command deletes "${hit.target}", a glob that spans more than one directory level, so what it matches cannot be listed before it runs. It needs explicit approval and cannot be covered by an allow rule or a bypass mode. Name one directory's contents (build/*) or the paths themselves.`;
     case "working_directory":
       return `This command deletes ${hit.resolved}, which contains the session's working directory. It needs explicit approval and cannot be covered by an allow rule or a bypass mode.`;
     case "home":
