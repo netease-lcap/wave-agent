@@ -1456,9 +1456,9 @@ export class PermissionManager {
 
   /**
    * Modes that answer every card themselves: `bypassPermissions`, and plan mode
-   * in a session that was authorized to bypass when it was created. Shared by
-   * the automatic allow below and by {@link dangerousRemovalVerdict}, which
-   * Claude Code releases in this mode too (`waivableInBypass`).
+   * in a session that was authorized to bypass when it was created. Used by the
+   * automatic allow below only — {@link dangerousRemovalVerdict} is deliberately
+   * not on this list, so it still asks in these modes.
    */
   private bypassesPermissionChecks(context: ToolPermissionContext): boolean {
     return (
@@ -1474,11 +1474,13 @@ export class PermissionManager {
    *
    * `dontAsk` denies instead of asking — a mode whose whole promise is "do not
    * ask me" cannot answer a card, and Claude Code draws the same line.
-   * `bypassPermissions` releases the check for the same reason, exactly as
-   * Claude Code does (`waivableInBypass: true`, recorded as
-   * `permission_bypass_removal_prompt_waived`); what bypass cannot do is what an
-   * allow rule cannot do either — every other mode asks, above every allow rule.
-   * Wave's "no callback configured" path still turns that `ask` into a deny for
+   * `bypassPermissions` does *not* release it: the question here is not "does a
+   * rule approve this call" but "does this call take the whole workspace with
+   * it", so it shares a band with the root and home targets and only a person
+   * can answer it. Claude Code reaches the same place by keeping the ask for
+   * every `bypassImmune` check; `waivableInBypass` there names a separate,
+   * off-by-default escape hatch that this implementation does not offer. Wave's
+   * "no callback configured" path still turns that `ask` into a deny for
    * headless callers (`wave -p`, SDK hosts without `canUseTool`).
    */
   private dangerousRemovalVerdict(
@@ -1522,20 +1524,6 @@ export class PermissionManager {
         source: "config",
         denyReason: "denied_by_mode",
       };
-    }
-
-    // A mode whose promise is "do not ask me" answers the card itself, which is
-    // the property Claude Code gives this check (`waivableInBypass`). The
-    // judgement above still ran, so the release is observable in the logs rather
-    // than silent. It is not a hole an allow rule can use: `allow` rules and
-    // `acceptEdits` sit *below* this method, and a user's own `ask` rule still
-    // reaches them at step 1.5 because that runs after this returns.
-    if (this.bypassesPermissionChecks(context)) {
-      logger?.info(
-        "Waived the dangerous-removal confirmation in bypass mode",
-        detail,
-      );
-      return null;
     }
 
     logger?.warn("Refusing to remove the session's working directory", detail);

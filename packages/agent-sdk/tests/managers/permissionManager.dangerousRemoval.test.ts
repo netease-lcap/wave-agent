@@ -90,10 +90,12 @@ describe("removing the session's own working directory", () => {
     },
   );
 
-  it("is released by bypassPermissions, as Claude Code does", async () => {
-    // Claude Code marks this check `waivableInBypass`: a mode whose promise is
-    // "do not ask me" answers the card itself. Approving here would mean the
-    // prompt came back in the one mode that exists to suppress it.
+  it("still asks in bypassPermissions, as Claude Code does", async () => {
+    // Claude Code marks this check `bypassImmune`, which keeps the ask in
+    // bypass mode; `waivableInBypass` only names a separate escape hatch (an
+    // env var) that is off by default. A mode whose promise is "do not ask me"
+    // still cannot answer this one: the question is not whether a rule approves
+    // the call, but whether the call takes the whole workspace with it.
     const manager = createManager({});
     const callback = allowOnce();
 
@@ -102,24 +104,25 @@ describe("removing the session's own working directory", () => {
       callback: callback as unknown as PermissionCallback,
     });
 
-    expect(callback).not.toHaveBeenCalled();
+    expect(callback).toHaveBeenCalledTimes(1);
     expect(result.behavior).toBe("allow");
   });
 
-  it("is released in plan mode when the session was created with bypass", async () => {
+  it("still asks in plan mode when the session was created with bypass", async () => {
+    // The authorization lets plan mode answer ordinary cards; it is not a
+    // licence to skip the one card that asks about the whole workspace.
     const manager = createManager({
       configuredPermissionMode: "bypassPermissions",
     });
     manager.captureBypassAuthorization();
     const callback = allowOnce();
 
-    const result = await check(manager, "rm -rf ../..", {
+    await check(manager, "rm -rf ../..", {
       mode: "plan",
       callback: callback as unknown as PermissionCallback,
     });
 
-    expect(callback).not.toHaveBeenCalled();
-    expect(result.behavior).toBe("allow");
+    expect(callback).toHaveBeenCalledTimes(1);
   });
 
   it("still asks in default mode for a session created with bypass", async () => {
