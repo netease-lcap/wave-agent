@@ -290,6 +290,15 @@
   border-radius: var(--cc-radius-md, 8px);
 }
 
+/* 1126 评论（点 `button.desktop-sidebar-search-filter`）：「带背景色的 hover 色都要改成
+   这个颜色」。base 那支走 `--vscode-list-hoverBackground`（桌面浅色 = --cc-fill-hover
+   #EEF0F3），在侧栏导航底 #F7F8FB 上对底只有 ΔE76 2.9；这里只补**浅色**覆写到侧栏
+   同档（--cc-fill-pressed #E7E9ED）。深色不写：那边桥接键是实色 #303436，不是 8% 白，
+   本轮不动。 */
+[data-host="desktop"][data-theme="light"] .desktop-sidebar-search-filter:hover {
+  background: var(--cc-fill-pressed, #e7e9ed);
+}
+
 /* 选中 = 参考 `.desktop-sidebar-more-btn.is-active`：图标转品牌红（base 已有），底色补上 */
 [data-host="desktop"] .desktop-sidebar-search-filter.is-active {
   background-color: #ffebe8;

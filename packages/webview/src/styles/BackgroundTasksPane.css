@@ -16,11 +16,12 @@
   overflow-y: auto;
 }
 
-/* 同上一条（文件 / 差异 / 计划面板的既有规则）：右 pane 底色取「内容面」角色
-   `--cc-bg-inspector`，深色值与原样一致。 */
-[data-host="desktop"] .preview-pane.background-tasks-pane {
-  background: var(--cc-bg-inspector, var(--vscode-panel-background));
-}
+/* 面板底：不在这里定。1030 第五轮（host-desktop.css:7642）已把**所有**
+   `aside.preview-pane` 底统一到会话内容面 `--vscode-panel-background`
+   （浅 #FFFFFF / 深 #111314），选择器 `aside.preview-pane` = (0,3,1)，稳定压过
+   本条若写成 `[data-host="desktop"] .preview-pane.background-tasks-pane` 的 (0,3,0)。
+   1126 背景色审计实测：面板底 浅 #FFFFFF / 深 #111314 = 会话内容面，合规。
+   （原注释写的 `--cc-bg-inspector` 从未生效过，删掉声明免得后人以为面板底归这里管。） */
 
 /* ═══ 字号 / 行高 / 字重口径（1111 走查）═══
    契约 `conversation-typography.md`「文字角色表」+「实现边界：优先复用 --cc-* 既有
@@ -75,9 +76,46 @@
   color: var(--vscode-descriptionForeground);
 }
 
+/* ═══ 详情态返回键（1126 评论：从纯图标键改成「图标 + 面板名」）═══
+   她的两条评论：点 `button.preview-pane-button.background-tasks-back`「这里返回，
+   应该带着后台任务的文案一起」，参照物 = 点 `button.session-board-back`「返回当前
+   会话」「参考这里」。
+   参照物口径（SessionBoard.css:53 + host-desktop.css:4306 那组 0923 / 1126 的定档）：
+     inline-flex / gap 8 / 盒高 30 / 内衬 `0 8px` / 圆角 8 / 透明底 /
+     14px / 500 / `--vscode-foreground`（浅 #202020、深 #E5E7E8）/
+     hover 只出面（桌面浅 `--cc-fill-pressed` #E7E9ED、深 8% 白），字色不动。
+   改前本键是 `.preview-pane-button`（24×24 纯图标，r4），面板名「后台任务」在它右边
+   的标题位上；现在详情态把标题并进返回键 ⇒ 头部读作「‹图标› 后台任务」，点它回列表。
+   列表态没有返回键，标题仍在原位、仍是 14 / 600（`.desktop-panel-toolbar-title`）。
+   图标沿用同一枚 Figma 矢量（`fill: currentColor` ⇒ 自动跟按钮字色，无需单列图标色，
+   这一点与看板的 codicon 不同：那边要单写 `.codicon` 规则才不会停在宿主图标灰）。 */
 .background-tasks-back {
-  font-size: 13px;
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-size: var(--cc-font-size-md, 14px);
+  font-weight: var(--cc-font-weight-medium, 500);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.background-tasks-back:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+/* 桌面档 hover：与看板返回键逐值相同（1126 统一的那一档），深色 8% 白。 */
+[data-host="desktop"] .background-tasks-back:hover {
+  background: var(--cc-fill-pressed, #e7e9ed);
+}
+
+[data-host="desktop"][data-theme="dark"] .background-tasks-back:hover {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 /* ═══ 列表 ═══ */
@@ -403,15 +441,35 @@
 
 /* 命令块与输出块：各自限高、内部纵向滚动（spec desktop-right-panel.md
    「后台任务面板」场景 13 —— 与 CC 的 `max-h-[200px] overflow-y-auto` 同口径），
-   长命令 / 持续增长的输出都把面板本身撑不长。 */
+   长命令 / 持续增长的输出都把面板本身撑不长。
+
+   1126 评论（点 `pre.background-task-output`「检查这里填充的背景色 是否符合设计
+   规范 是否绑定变量并优化」+ 点 `div.background-tasks-pane-body`「这个页面的背景色
+   都检查」）—— 这两块的底原先只写宿主桥接
+   `var(--vscode-textCodeBlock-background, rgba(0, 0, 0, 0.15))`：
+     · 桌面端值本来就对（host-desktop.css:113/:256 把这枚桥接指到 `--cc-bg-code`
+       = 浅 #F7F8FA / 深 #1B1D1E，即规范「代码面」角色），但**产品代码直连的是宿主
+       变量**，宿主没桥接/桥错时静默落到 15% 黑（浅色 = #D9D9D9 一档死灰）；同族的
+       产物面板（ModPanel.css:146）早就直引 `--cc-bg-code`。⇒ 改成先取产品 token、
+       桥接降为回落，桌面端像素零变化，其余宿主行为不变。
+     · 桌面端两块**没有描边**，而对话流里的代码块（`.markdown-content pre`，
+       Message.css:1162）是「`--cc-bg-code` 底 + 1px `--vscode-textBlockQuote-border`
+       + 圆角」。落在白色任务卡上时，底与卡面只差 ΔE76 2.7 ⇒ 浅色几乎看不出块边界
+       （深色 #1B1D1E 对 #202224 卡面同样只有 2.6 的差）。⇒ 补同一条 1px 描边
+       （桌面端 = `--cc-border` 浅 #DCDFE6 / 12% 白深），与对话流代码块同源同语言。
+   圆角见下面「1126 第二轮」那条桌面档：6 → 12（`--cc-radius-lg`）。 */
 .background-task-command,
 .background-task-output {
   box-sizing: border-box;
   max-height: 200px;
   margin: 0;
   padding: 8px;
+  border: 1px solid var(--vscode-textBlockQuote-border, rgba(128, 128, 128, 0.2));
   border-radius: 6px;
-  background: var(--vscode-textCodeBlock-background, rgba(0, 0, 0, 0.15));
+  background: var(
+    --cc-bg-code,
+    var(--vscode-textCodeBlock-background, rgba(0, 0, 0, 0.15))
+  );
   font-family: var(--vscode-editor-font-family, monospace);
   font-size: var(--vscode-editor-font-size, 13px);
   line-height: var(--cc-line-height-sm, 20px);
@@ -424,4 +482,29 @@
 .background-task-output--error {
   max-height: 150px;
   color: var(--cc-state-failed, #d92d20);
+}
+
+/* ═══ 1126 第二轮评论：详情区「带背景处」的圆角按规范来 ═══
+   她点 `div.background-task-detail`「●[bash_bg_1] shellrunning停止命令:…」「这边
+   带背景处的圆角也按规范来」，随后回「一起补齐」把两条待裁一起落：
+   ① 圆角；② 内衬。先扫了一遍这个详情区（18 条任务逐条点进去，浅/深各一遍）里
+   所有「有底色或有描边」的元素，共 4 类：
+     · `.background-task-stop`「停止」  r8 —— 1111 已按按钮契约收口（compact 28 /
+       r8 / `--cc-border-light` 描边），合规，不动；
+     · `.background-task-command`  r6、`.background-task-output`（含 `--error`）
+       r6 —— 带 1px 描边 + 代码面底，属「带边框有底色的内容块」这一族；
+     · `.workflow-run-logs` 日志块 r6（在 WorkflowRunProgress.css:181，本文件外）。
+   规范给这一族的档位是 12（`--cc-radius-lg`）：对话流里同族的 `.markdown-content
+   pre` / `.write-preview-box` / `.diff-viewer-container` / 表格，1109 起就统一在 12
+   （见 host-desktop.css:7829 那段的收口记录）。⇒ 桌面端圆角 6 → 12。
+   内衬同时 8 → 12：那族参照物本来就是「r12 + 内衬 12」（Message.css:1160），圆角
+   到 12 而内衬仍 8 会让首字贴住弧线；代价是命令块 38 → 46 高、输出块可见行数
+   少约 0.4 行（max-height 200 不变）。
+   base 的 6 与内衬 8 保留给 IDE 与远控宿主（沿用旧密度档，本轮只落桌面）。
+   注：`--cc-radius-*` 在本仓库没有定义处，各处都靠 `var(--cc-radius-lg, 12px)`
+   的兜底取值（与 ConfirmDialog.css:141 等写法一致），故这里同样带兜底。 */
+[data-host="desktop"] .background-task-command,
+[data-host="desktop"] .background-task-output {
+  padding: 12px;
+  border-radius: var(--cc-radius-lg, 12px);
 }

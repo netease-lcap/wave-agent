@@ -1516,8 +1516,11 @@ button.reasoning-header {
   margin-top: 6px;
 }
 
+/* 分组说明属「辅助信息」档，12/20（原只写字号，行高落到 normal ≈ 17px，
+   比同档少 3）。 */
 .delivered-files-caption {
   font-size: 12px;
+  line-height: 20px;
   color: var(--vscode-descriptionForeground);
   overflow-wrap: anywhere;
 }
@@ -1553,14 +1556,16 @@ button.reasoning-header {
   min-height: 44px;
 }
 
+/* 等宽 = 代码族，字号取代码角色 13/20（与行内 `code` 同档），不是卡片小字档。
+   40px 行高够装 20px 文字行，行盒尺寸不变。 */
 .delivered-file-name {
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
   font-family: Menlo, monospace;
-  font-size: 12px;
-  line-height: 16px;
+  font-size: 13px;
+  line-height: 20px;
 }
 
 /* Not clickable (e.g. a PDF on the remote page): say so on the card instead of
