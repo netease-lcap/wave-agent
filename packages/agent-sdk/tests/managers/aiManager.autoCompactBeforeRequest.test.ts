@@ -540,4 +540,66 @@ describe("AIManager - pre-request auto compaction", () => {
     expect(compactSpy).toHaveBeenCalledTimes(1);
     expect(aiService.callAgent).toHaveBeenCalledTimes(2);
   });
+
+  // spec core/message-compact.md 场景 6「压缩刚完成…不得基于压缩前的估算值再次
+  // 触发压缩」。折表后的列表是 [摘要, ...保留轮次]，保留轮次带着压缩前那一次响应
+  // 的 usage（真机 505 个压缩点里 497 个的锚点就在阈值上或之上）。只要锚点还认
+  // 它，手动压缩之后用户随便发一句话就会再自动压一次。
+  it("should NOT compact right after a compaction (kept rounds carry the pre-compact usage)", async () => {
+    const messages = [
+      // 摘要块自己带着压缩这次调用的 usage（178k）——折表后它是列表头，
+      // 也是唯一还带着「压缩前量级」数字的消息。不按边界排除它，锚点就落在
+      // 它上面，估算仍超阈值。
+      {
+        role: "assistant",
+        blocks: [{ type: "compact", content: "summary" }],
+        usage: {
+          prompt_tokens: 176_000,
+          completion_tokens: 2_000,
+          total_tokens: 178_000,
+        },
+      },
+      // 折表保留下来的一轮（折进来时已经剥掉压缩前的 usage，见
+      // withoutPreCompactionUsage）
+      {
+        role: "assistant",
+        blocks: [{ type: "text", content: "hi" }],
+      },
+      // 用户手动压缩后新敲的这句
+      {
+        role: "user",
+        blocks: [{ type: "text", content: "继续" }],
+      },
+    ];
+    const container = makeContainer(
+      {
+        MessageManager: mockMsgManager({
+          getMessages: vi.fn().mockReturnValue(messages),
+        }),
+      },
+      200_000,
+    );
+    // 阈值 = 200000 - min(32000, 20000) - 13000 = 167000，压缩前的锚点正好越过它
+    container.register("ConfigurationService", {
+      resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
+      resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
+      resolveContextWindow: vi.fn().mockReturnValue(200_000),
+      resolveMaxOutputTokens: vi.fn().mockReturnValue(32_000),
+      resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
+      resolveLanguage: vi.fn().mockReturnValue(undefined),
+      getEnvironmentVars: vi.fn().mockReturnValue({}),
+    });
+    const aiManager = new AIManager(container, {
+      workdir: "/test",
+      stream: false,
+    });
+    const compactSpy = vi
+      .spyOn(aiManager, "compactConversation")
+      .mockResolvedValue(undefined);
+
+    await aiManager.sendAIMessage();
+
+    expect(compactSpy).not.toHaveBeenCalled();
+    expect(aiService.callAgent).toHaveBeenCalledTimes(1);
+  });
 });

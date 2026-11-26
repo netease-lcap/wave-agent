@@ -6,6 +6,7 @@ import {
   getAutoCompactThreshold,
   contextUsagePercent,
 } from "@/utils/tokenCalculation.js";
+import { withoutPreCompactionUsage } from "@/utils/messageOperations.js";
 import type { Message, Usage } from "@/types/index.js";
 
 function makeMessage(overrides: Partial<Message>): Message {
@@ -372,6 +373,70 @@ describe("estimateContextTokens", () => {
     ];
     // 500 (total_tokens) + 100 (post-anchor text) + 100 (tool result)
     expect(estimateContextTokens(messages)).toBe(700);
+  });
+
+  // 压缩边界：折表把「压缩前那批响应」的轮次留在列表里，它们的 usage 量的
+  // 是已经折掉的历史。把它当锚点，压缩后估算就原样等于压缩前（真机 505 个
+  // 压缩点里 497 个如此），下一次请求前检查立刻又超阈值、再压一遍
+  // （spec core/message-compact.md 场景 6 /「压缩后估算基准」）。
+  it("压缩后不再把压缩前的 usage 当成上下文（估算与显示同一条规则）", () => {
+    const preCompactUsage: Usage = {
+      prompt_tokens: 166_000,
+      completion_tokens: 2_000,
+      total_tokens: 168_000,
+    };
+    const messages = [
+      // 摘要块自己带着压缩这次调用的 usage —— 那是记账，不是上下文大小
+      makeMessage({
+        role: "assistant",
+        blocks: [{ type: "compact", content: "summary" }],
+        usage: {
+          prompt_tokens: 176_000,
+          completion_tokens: 2_000,
+          total_tokens: 178_000,
+        },
+      }),
+      // 折表保留下来的轮次：进来时被剥掉了压缩前的 usage（折表与恢复各剥一次）
+      ...withoutPreCompactionUsage([
+        makeMessage({
+          role: "assistant",
+          usage: preCompactUsage,
+          blocks: [{ type: "text", content: text400 }],
+        }),
+      ]),
+      makeMessage({ blocks: [{ type: "text", content: text400 }] }),
+    ];
+
+    expect(extractLatestTotalTokens(messages)).toBe(0);
+    // 只剩边界之后的正文估算，不是 178_000 / 168_000
+    expect(estimateContextTokens(messages)).toBe(2 * TEXT_TOKENS);
+  });
+
+  it("压缩后拿到新响应的 usage 时，锚点回到实测值", () => {
+    const messages = [
+      makeMessage({
+        role: "assistant",
+        blocks: [{ type: "compact", content: "summary" }],
+        usage: {
+          prompt_tokens: 176_000,
+          completion_tokens: 2_000,
+          total_tokens: 178_000,
+        },
+      }),
+      makeMessage({ blocks: [{ type: "text", content: text400 }] }),
+      makeMessage({
+        role: "assistant",
+        usage: {
+          prompt_tokens: 20_000,
+          completion_tokens: 500,
+          total_tokens: 20_500,
+        },
+        blocks: [],
+      }),
+    ];
+
+    expect(extractLatestTotalTokens(messages)).toBe(20_500);
+    expect(estimateContextTokens(messages)).toBe(20_500);
   });
 
   it("should use the most recent usage anchor only", () => {

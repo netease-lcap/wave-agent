@@ -1424,12 +1424,12 @@ export class AIManager {
         this.getModManager()?.notifyMods("session.compact", {
           trigger,
           tokensBefore,
-          // `tokensAfter` 单独用文本估算，**不能**再用 `estimateContextTokens`：
-          // 它锚定「最后一条带 usage 的消息」，而压缩后保留下来的那两轮仍带着
-          // 压缩前的 usage，于是它会原样返回压缩前的数字（真机实测 before 与
-          // after 完全相等）。压缩刚结束也还没有新请求的 usage 可锚定，所以这里
-          // 只数新历史的消息文本——它天然小于 `tokensBefore`（后者还含系统
-          // 提示词、工具 schema）。
+          // `tokensAfter` 只数新历史的消息文本：压缩刚结束还没有任何实测 usage，
+          // 这个数回答的就是「留下的上下文正文有多大」——它天然小于
+          // `tokensBefore`（后者还含系统提示词、工具 schema）。`estimateContextTokens`
+          // 现在已经按压缩边界取锚点（折表也剥掉了保留轮次的旧 usage），它在这里
+          // 会退化成同一个文本估算；仍写成显式的一次估算，免得日后锚点规则再变
+          // 时把这个事件字段带偏。
           tokensAfter: roughTokenCountForMessages(
             this.messageManager.getMessages(),
           ),

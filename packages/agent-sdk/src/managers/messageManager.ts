@@ -13,6 +13,7 @@ import {
   type AddNotificationMessageParams,
   generateMessageId,
   sliceFromLastCompact,
+  withoutPreCompactionUsage,
   firstUserTextOf,
   findFirstUserText,
 } from "../utils/messageOperations.js";
@@ -885,9 +886,12 @@ export class MessageManager {
     // List and context are the same thing: the conversation starts at the last
     // compact boundary, so a resumed session shows [summary, ...kept rounds]
     // and the transcript keeps the rest for features that need it.
-    this.setMessages(sliceFromLastCompact(sessionData.messages), {
-      countLifetime: false,
-    });
+    // 转录里保留轮次仍带着压缩前那批响应的 usage（切得掉消息，切不掉数字）：
+    // 恢复后它们是上下文，那串数就过期了，与折表时一样剥掉。
+    this.setMessages(
+      withoutPreCompactionUsage(sliceFromLastCompact(sessionData.messages)),
+      { countLifetime: false },
+    );
     // 载入器已经在扫描时数好了整条线程的条数与首个用户输入（那时压缩前的消息
     // 还在手边）；手工构造的会话数据没有这两项，就按传进来的数组算。
     this.threadMessageCount =
@@ -1198,8 +1202,14 @@ export class MessageManager {
       ...(usage && { usage }),
     };
 
-    // Build new message array: keep the compacted message and last messages
-    const newMessages: Message[] = [compactMessage, ...lastThreeMessages];
+    // Build new message array: keep the compacted message and last messages.
+    // 保留轮次带着压缩前那批响应的 usage，折进来时必须剥掉：那串数字量的是已经
+    // 折掉的历史，留着会让用量环与下一次的请求前估算都读成「压缩前有多大」，于是
+    // 环降不下来、下一次输入又触发一次压缩（spec core/message-compact.md 场景 6）。
+    const newMessages: Message[] = [
+      compactMessage,
+      ...withoutPreCompactionUsage(lastThreeMessages),
+    ];
 
     // APPEND only the compact block to the session file (append-only, like
     // Claude Code). The preserved last API rounds were already written before
@@ -1230,6 +1240,9 @@ export class MessageManager {
     this.setMessages(newMessages, { countLifetime: false });
     this.savedMessageCount = newMessages.length;
     this.threadMessageCount += 1;
+    // 用量环跟着归零（与 /clear 同款）：压缩后的新上下文还没有任何实测 usage，
+    // 留着压缩前的总数就是「压缩完仍显示 100%」。下一次真实响应回来会重新填。
+    this.setlatestTotalTokens(0);
 
     // Trim recent file read cache so contents compacted away are released
     this.trimRecentFileReads();
