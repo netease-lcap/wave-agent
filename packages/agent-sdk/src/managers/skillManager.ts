@@ -34,6 +34,7 @@ import type { PermissionManager } from "./permissionManager.js";
 import type { HookManager } from "./hookManager.js";
 import type { ModManager } from "./modManager.js";
 import { getBuiltinSkillsDir } from "../utils/configPaths.js";
+import { BUILTIN_SKILL_HOOKS } from "../builtin/index.js";
 import { isArtifactEnabled } from "../services/artifactAvailability.js";
 
 import { Container } from "../utils/container.js";
@@ -1029,7 +1030,28 @@ export class SkillManager extends EventEmitter {
       pluginRoot: skill.pluginRoot,
     });
 
-    return skillPath + this.skillWarningNotice(skill) + mainContent;
+    return (
+      skillPath +
+      this.skillWarningNotice(skill) +
+      mainContent +
+      this.renderBuiltinArgumentSummary(skill, argsString)
+    );
+  }
+
+  /**
+   * 内置技能自带的参数解析结果，接在正文之后交给模型。
+   *
+   * 只查内置来源：文件来源（用户 / 项目 / 插件）拿不到代码钩子，markdown 侧也不留
+   * 字段——见 `builtin/skillHooks.ts`。挂在这里而不是调用点，是为了让
+   * `renderSkillContent`（压缩后的重注入）渲染出与调用时同一份文本。
+   */
+  private renderBuiltinArgumentSummary(
+    skill: Skill,
+    argsString: string,
+  ): string {
+    if (skill.type !== "builtin") return "";
+    const summary = BUILTIN_SKILL_HOOKS[skill.name]?.describeArgs?.(argsString);
+    return summary ? `\n\n## Arguments\n\n${summary}\n` : "";
   }
 
   /**
