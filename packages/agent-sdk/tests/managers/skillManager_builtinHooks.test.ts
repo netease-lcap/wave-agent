@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { SkillManager } from "../../src/managers/skillManager.js";
 import { Container } from "../../src/utils/container.js";
+import { AGENT_TOOL_NAME } from "../../src/constants/tools.js";
 import type { Skill } from "../../src/types/index.js";
 
 // 内置技能落盘成 SKILL.md 再扫回来，代码在这一步本来会丢；`BUILTIN_SKILL_HOOKS`
@@ -24,10 +25,15 @@ function makeSkill(overrides: Partial<Skill>): Skill {
   };
 }
 
-function render(skill: Skill, argsString = ""): string {
-  const manager = new SkillManager(new Container(), {
-    workdir: "/fake/project",
-  });
+// 空容器 = 这一轮没有任何已注册工具，也就是「Agent 工具不在」那种会话。
+function render(skill: Skill, argsString = "", toolNames?: string[]): string {
+  const container = new Container();
+  if (toolNames) {
+    container.register("ToolManager", {
+      getTools: () => toolNames.map((name) => ({ name })),
+    } as never);
+  }
+  const manager = new SkillManager(container, { workdir: "/fake/project" });
   return manager.renderSkillContent(skill, argsString);
 }
 
@@ -50,6 +56,27 @@ describe("builtin skill code hooks", () => {
   it("says nothing for a builtin skill that has no hook", () => {
     const content = render(makeSkill({ name: "verify" }), "high");
     expect(content).not.toContain("## Arguments");
+  });
+
+  it("switches to the single-pass section when the Agent tool is absent", () => {
+    const content = render(makeSkill({}), "", ["Read", "Grep"]);
+    expect(content).toContain("single pass, inline");
+    expect(content).toContain(AGENT_TOOL_NAME);
+  });
+
+  it("keeps the baseline when the Agent tool is registered", () => {
+    const content = render(makeSkill({}), "", [AGENT_TOOL_NAME, "Read"]);
+    expect(content).not.toContain("single pass, inline");
+  });
+
+  it("puts the override sections after the parsed arguments", () => {
+    const content = render(makeSkill({}), "--fix 42", ["Read"]);
+    const argsAt = content.indexOf("\n\n## Arguments\n");
+    expect(argsAt).toBeGreaterThan(-1);
+    expect(content.indexOf("## Applying fixes (--fix)")).toBeGreaterThan(
+      argsAt,
+    );
+    expect(content.indexOf("single pass, inline")).toBeGreaterThan(argsAt);
   });
 
   it("marks an implied level as the default", () => {

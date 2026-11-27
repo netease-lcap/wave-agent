@@ -6,7 +6,7 @@ import {
   READ_TOOL_NAME,
 } from "../../constants/tools.js";
 import { parseCommandArguments } from "../../utils/commandArgumentParser.js";
-import type { BuiltinSkillHook } from "../skillHooks.js";
+import type { BuiltinSkillHook, SkillPromptContext } from "../skillHooks.js";
 
 export const code_reviewSkill: Record<string, string> = {
   "skills/code-review/SKILL.md": `---
@@ -149,9 +149,6 @@ Examples of false positives to exclude:
 
 ## After the review
 
-If \`--fix\` was passed, apply the findings you just reported, then say
-which files you changed.
-
 After the findings are reported: if \`verify\` has not run this session and
 the diff has a runtime surface (not test-only or docs-only), invoke the
 \`verify\` skill with the Skill tool now — this review checks that the diff
@@ -259,7 +256,64 @@ function formatArgsSummary(args: CodeReviewArgs): string {
   return lines.join("\n");
 }
 
+/**
+ * `--fix` 段落，逐字取自 CC 2.1.332 的 `wi()`（`--fix` 为真、走 ReportFindings 的分支）。
+ */
+const FIX_SECTION = `
+## Applying fixes (--fix)
+
+The \`--fix\` flag was passed. After producing the findings list, apply the
+findings to the working tree instead of stopping at the report: fix each one
+directly — correctness bugs and reuse/simplification/efficiency cleanups alike.
+Skip any finding whose fix would change intended behavior, require changes well
+outside the reviewed diff, or that you judge to be a false positive — note the
+skip rather than arguing with it. Finish with a brief summary of what was fixed
+and what was skipped.
+`;
+
+/**
+ * Agent 工具不可用时的覆盖段。
+ *
+ * CC 在同一个位置换掉**整段**正文（`di(cell, agentToolAvailable, …)` → `dt({…})`，
+ * 单遍内联版）。我方正文要给用户看，所以只追加一段覆盖说明，并点明它盖住了哪两节，
+ * 否则基线里那句「Use the Agent tool to launch all agents concurrently」会跟它打架。
+ */
+const SINGLE_PASS_SECTION = `
+## Instead of Phase 3 and Phase 4 — single pass, inline
+
+The \`${AGENT_TOOL_NAME}\` tool is not available in this session, so you cannot launch
+review agents. Do that work yourself, in this same context:
+
+- Walk the angles listed under Phase 3 one after another instead of in parallel.
+  Do not skip any angle that applies at your effort level.
+- Do the Phase 4 scoring yourself: re-read the diff for each issue and state the
+  confidence score it would have received, with the evidence that sets it.
+`;
+
+/**
+ * `/code-review` 的段落选择。
+ *
+ * 与 `parseCodeReviewArgs` 分开：解析只认参数，这里再加上运行时事实。顺序按
+ * 工作流的先后：先讲这一轮怎么做（单遍内联），再讲做完之后怎么办（`--fix`）。
+ */
+export function buildCodeReviewPrompt(
+  raw: string,
+  ctx: SkillPromptContext,
+): string {
+  const sections: string[] = [];
+  if (!ctx.toolNames.includes(AGENT_TOOL_NAME)) {
+    sections.push(SINGLE_PASS_SECTION);
+  }
+  if (parseCodeReviewArgs(raw).args.fix) {
+    sections.push(FIX_SECTION);
+  }
+  return sections.map((section) => section.trim()).join("\n\n");
+}
+
 /** 第一个接上代码钩子的内置技能：`/code-review` 的参数由这个表负责解释。 */
 export const code_reviewSkillHooks: Record<string, BuiltinSkillHook> = {
-  "code-review": { describeArgs: (raw) => parseCodeReviewArgs(raw).summary },
+  "code-review": {
+    describeArgs: (raw) => parseCodeReviewArgs(raw).summary,
+    buildPrompt: buildCodeReviewPrompt,
+  },
 };
