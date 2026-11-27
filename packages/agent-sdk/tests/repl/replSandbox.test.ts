@@ -203,6 +203,31 @@ describe("repl sandbox: long-lived context", () => {
     expect((await sandbox.run("return b", opts())).value).toBe("2");
   });
 
+  it("keeps a script's own top-level `p` out of the wrapper's binding", async () => {
+    // The wrapper that hands the run's promise back to the host used to name its
+    // local `const p`, and that binding sat between the script body and the
+    // context global: a synchronous `const p` landed in its TDZ (ReferenceError),
+    // and one written after an `await` assigned to a const (TypeError). `p` is the
+    // first name a model reaches for when it holds a path — 19 runs on 2026-11-27.
+    const sandbox = open();
+    const immediate = await sandbox.run('const p = "C:/a"', opts());
+    expect(immediate).toMatchObject({ ok: true });
+    expect((await sandbox.run("return p", opts())).value).toBe("C:/a");
+
+    const afterAwait = await sandbox.run(
+      "const first = await Promise.resolve(1)\nconst p = first + 1\nreturn p",
+      opts(),
+    );
+    expect(afterAwait).toMatchObject({ ok: true, value: "2" });
+  });
+
+  it("refuses a script that declares the wrapper's own binding", async () => {
+    const sandbox = open();
+    const refused = await sandbox.run("const __replRun = 1", opts());
+    expect(refused).toMatchObject({ ok: false, rejected: true });
+    expect(refused.error).toContain("ReplGlobalOverwrite");
+  });
+
   it("reuses the context through acquire/release and drops it on release", async () => {
     counter += 1;
     const key = `repl-shared-${counter}`;
