@@ -7,7 +7,9 @@ import {
   act,
   fireEvent,
   sendHostMessage,
+  pinMessageListViewport,
 } from "./test-utils";
+import { MockDataGenerator } from "../fixtures/mockData";
 
 /**
  * 上翻取更早（spec ui/message-rendering-system.md「首屏一页，上翻按需取更早」）：
@@ -418,5 +420,107 @@ describe("填窗：内容撑不满视口时继续往前取", () => {
     await waitFor(() => {
       expect(earlierRequests(vscode)).toHaveLength(4);
     });
+  });
+});
+
+/**
+ * 聚焦视图把一轮收成一张卡（spec ui/focus-view.md），卡的 key 取自这一轮的用户
+ * 消息 —— 首屏要是正好从一轮中间切开，开头那半轮找不到自己的用户消息，key 就退回
+ * 轮首那条助手消息；等上翻把那条用户消息取回来，这张卡整个换了身份。
+ *
+ * 换身份本身没问题，问题是视口当时正停在这张卡上：内核认不回锚点时会「按末尾重钉」，
+ * 用户被从顶部甩到底部（真机实测远控页 scrollTop 0 → 1157，正好是末尾）。所以这条
+ * 用例钉两件事：卡还在原来那个位置，并且没有被写到底。
+ */
+describe("聚焦视图上翻取更早：折叠卡换了身份也不甩到底", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.localStorage.clear();
+  });
+
+  it("取回新一轮的用户消息后视口不跳", async () => {
+    window.localStorage.setItem("wave.chat.focusView", "1");
+
+    // 首屏从第一轮中间切开：这一轮的「问」还在上一页里。
+    const loaded = [
+      MockDataGenerator.createAssistantMessageWithTool("", "Read", "{}", "ok"),
+    ];
+    for (let i = 1; i <= 10; i++) {
+      loaded.push(MockDataGenerator.createUserMessage(`问 ${i}`, `u${i}`));
+      loaded.push(
+        MockDataGenerator.createAssistantMessageWithTool(
+          "",
+          "Read",
+          "{}",
+          "ok",
+        ),
+      );
+      loaded.push(MockDataGenerator.createAssistantMessage(`答 ${i}`, `a${i}`));
+    }
+
+    const { vscode } = renderChatApp();
+    act(() => {
+      sendHostMessage(
+        fixtures.setInitialState({ messages: loaded, hasEarlier: false }),
+      );
+    });
+    await waitFor(() =>
+      expect(screen.getAllByTestId("focus-fold").length).toBeGreaterThan(2),
+    );
+    // 真排版、真滚动：折叠卡一张几十像素，十轮就够撑出可滚动的视口。
+    const container = pinMessageListViewport(
+      screen.getByTestId("messages-container"),
+      600,
+    );
+    act(() => {
+      sendHostMessage(
+        fixtures.setInitialState({ messages: loaded, hasEarlier: true }),
+      );
+    });
+    await act(async () => {});
+    expect(container.scrollHeight).toBeGreaterThan(container.clientHeight * 2);
+
+    // 先到底（钉着），再滚到顶（松手）—— 用户上翻就是这么走过来的。
+    act(() => {
+      container.scrollTop = container.scrollHeight;
+      fireEvent.scroll(container);
+    });
+    await act(async () => {});
+    act(() => {
+      container.scrollTop = 0;
+      fireEvent.scroll(container);
+    });
+    await act(async () => {});
+
+    const topOfCard = () =>
+      Math.round(
+        screen.queryAllByTestId("focus-fold-head")[0].getBoundingClientRect()
+          .top - container.getBoundingClientRect().top,
+      );
+    const cardTopBefore = topOfCard();
+
+    await waitFor(() => {
+      expect(earlierRequests(vscode)).toHaveLength(1);
+    });
+    act(() => {
+      sendHostMessage(
+        fixtures.earlierMessages(
+          [MockDataGenerator.createUserMessage("上一页的问", "u0")],
+          earlierRequests(vscode)[0].requestId,
+          { hasMore: false },
+        ),
+      );
+    });
+    await waitFor(() => {
+      expect(container.textContent).toContain("上一页的问");
+    });
+
+    // 卡还在视口顶原来那个位置：上面插进来的那一行把内容推下去多少，视口就跟着
+    // 走多少。
+    expect(topOfCard()).toBe(cardTopBefore);
+    // 也没被甩到底（旧实现就是 0 → 末尾）。
+    expect(container.scrollTop + container.clientHeight).toBeLessThan(
+      container.scrollHeight - 2,
+    );
   });
 });

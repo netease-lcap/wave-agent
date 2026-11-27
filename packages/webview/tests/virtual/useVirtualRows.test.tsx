@@ -80,3 +80,31 @@ describe("useVirtualRows 挂载状态", () => {
     second.unmount();
   });
 });
+
+describe("useVirtualRows 锚点", () => {
+  it("视口顶那一行的 key 被换掉：视口跟着内容走，不甩到底", () => {
+    // 上翻取回一页 / 聚焦视图折叠卡换身份的形状：上面插进新行，且原来视口顶那
+    // 一行的 key 变了，下面一行都没动。锚点记着下一行的起点，照着它补偿即可。
+    const before = rowKeys("a");
+    const first = mount(before);
+    userScroll(first.container, 1000);
+    userScroll(first.container, 700); // 往上滚 ⇒ 松手
+    expect(first.apiRef.current?.isPinned()).toBe(false);
+    expect(first.container.scrollTop).toBe(700);
+
+    const after = [
+      "p-0",
+      "p-1",
+      ...before.slice(0, 7),
+      "changed",
+      ...before.slice(8),
+    ];
+    first.rerender(<Harness keys={after} apiRef={first.apiRef} />);
+
+    // a8 的起点 800 → 1000：视口跟着往下推 200，看的还是原来那几行；
+    // 掉到「按末尾重钉」的话这里是 1600（2200 - 视口 600）。
+    expect(first.container.scrollTop).toBe(900);
+    expect(first.apiRef.current?.isPinned()).toBe(false);
+    first.unmount();
+  });
+});

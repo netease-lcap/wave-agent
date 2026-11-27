@@ -473,8 +473,10 @@ export function useVirtualRows(options: UseVirtualRowsOptions): VirtualRows {
         const anchor = anchorRef.current;
         const delta = anchor ? compensationFor(previous, next, anchor) : 0;
         if (delta === undefined) {
-          // 锚点行没了（rewind 截断、整表替换）：认不回原位，按末尾重新定位。
-          // CC 也是这个退法，只多记一条 rec-lost。
+          // 连锚点行和它下面那一行都认不回来（rewind 截断、整表替换）：按末尾
+          // 重新定位。CC 在这一档只记一条 `rec-lost` 就不动视口
+          // （`shared-4-CF5qF0Y3.js:2919`），我们这里多用于整表替换 / 换会话，
+          // 落到底部才是期望的位置。
           pinnedRef.current = true;
           scrollToEnd("auto");
         } else if (delta !== 0) {

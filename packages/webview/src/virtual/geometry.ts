@@ -30,6 +30,13 @@ export interface Anchor {
   key: string;
   /** 视口顶边在这行里偏移了多少 px。 */
   offsetInItem: number;
+  /**
+   * 紧挨在锚点行**之后**那一行的 key，以及它记账那一刻的起点（绝对偏移）。锚点行
+   * 自己换了身份时靠它认回原位 —— 抄的是 CC 的 `nextKey` / `nextStart`
+   * （`shared-4-CF5qF0Y3.js:2927` 记、`:2910` 用）。末行没有下一行，两个字段都缺。
+   */
+  nextKey?: string;
+  nextStart?: number;
 }
 
 export interface RangeOptions {
@@ -166,23 +173,31 @@ export function anchorAt(
     for (let i = index + 1; i < metrics.keys.length; i++) {
       if (metrics.offsets[i] > limit) break;
       if (isMeasured(metrics.keys[i]))
-        return {
-          key: metrics.keys[i],
-          offsetInItem: scrollTop - metrics.offsets[i],
-        };
+        return anchorWithNext(metrics, i, scrollTop - metrics.offsets[i]);
     }
   }
-  return {
-    key: containing,
-    offsetInItem: scrollTop - metrics.offsets[index],
-  };
+  return anchorWithNext(metrics, index, scrollTop - metrics.offsets[index]);
 }
 
 /**
- * 锚点在新账本里的偏移；锚点行不在了返回 undefined（rewind 截断、整表替换），
- * 由调用方决定退化成什么——CC 的做法是记一条 `rec-lost` 然后按末尾重钉
- * （`shared-4:2919`），而不是硬撑一个假锚点。
+ * 把「第几行 + 行内偏移」补齐成完整锚点：顺手记下下一行是谁、起点在哪。锚点行
+ * 自己换了 key 时（见 `compensationFor`）就靠这一份邻位信息认回原位。
  */
+function anchorWithNext(
+  metrics: RowMetrics,
+  index: number,
+  offsetInItem: number,
+): Anchor {
+  const anchor: Anchor = { key: metrics.keys[index], offsetInItem };
+  const nextKey = metrics.keys[index + 1];
+  if (nextKey !== undefined) {
+    anchor.nextKey = nextKey;
+    anchor.nextStart = metrics.offsets[index + 1];
+  }
+  return anchor;
+}
+
+/** 锚点在新账本里的偏移；锚点行不在了返回 undefined（见 `compensationFor`）。 */
 export function offsetForAnchor(
   metrics: RowMetrics,
   anchor: Anchor,
@@ -192,7 +207,16 @@ export function offsetForAnchor(
   return metrics.offsets[index] + anchor.offsetInItem;
 }
 
-/** 内容/尺寸变化要让视口搬多少；锚点行消失时返回 undefined。 */
+/**
+ * 内容/尺寸变化要让视口搬多少；**连下一行都认不回来**时返回 undefined。
+ *
+ * 锚点行自己不在新账本里，不等于「认不回原位」：锚点还记着紧挨其后那一行的起点，
+ * 拿它当基准同样能把视口钉住（CC 的 `nextKey` / `nextStart`，`shared-4-CF5qF0Y3.js`
+ * `:2910`）。上翻取回一页正是这个形状 —— 上面插进一页、视口下面一行都没动，只有
+ * 视口顶那一行换了身份（聚焦视图的折叠卡 key 取这一轮的用户消息，而这一页正好把
+ * 它带回来）。没有这条退路时会一路掉到「按末尾重钉」，读者被从顶部甩到底部（真机
+ * 实测远控页 `scrollTop` 0 → 1157 即末尾，2026-11-27）。
+ */
 export function compensationFor(
   previous: RowMetrics,
   next: RowMetrics,
@@ -201,6 +225,11 @@ export function compensationFor(
   const before = offsetForAnchor(previous, anchor);
   if (before === undefined) return undefined;
   const after = offsetForAnchor(next, anchor);
-  if (after === undefined) return undefined;
-  return after - before;
+  if (after !== undefined) return after - before;
+  if (anchor.nextKey === undefined || anchor.nextStart === undefined) {
+    return undefined;
+  }
+  const nextIndex = next.keys.indexOf(anchor.nextKey);
+  if (nextIndex < 0) return undefined;
+  return next.offsets[nextIndex] - anchor.nextStart;
 }
