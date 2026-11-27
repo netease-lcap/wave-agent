@@ -313,14 +313,17 @@
   height: 18px;
 }
 
-/* 卡内「单行 run」：这一轮只有一块可展开内容（如只有思考的一轮），同一行既
-   带 `--first` 又带 `--last`。上面两条收口规则会同时命中、后者整段覆盖前者，
-   线变成 top:0 + height:21px —— 于是节点上方凭空多出一截 21px 的线，看着像从
-   卡头拉下来的（2026-11-27 设计师走查）。没有可连的对象就整条关掉，语义与
-   `.timeline-run--single` 一致。 */
+/* 卡内「单行 run」且是卡内**唯一**一块（如只有思考的一轮）：同一行既带 `--first`
+   又带 `--last`，上面两条收口规则会同时命中、后者整段覆盖前者，线变成
+   top:0 + height:21px —— 节点上方凭空多出一截，看着像从卡头拉下来的；下面也没有
+   可连的对象。两头都空，整条关掉，语义与 `.timeline-run--single` 一致。
+   只要卡里还有别的块（如「思考 → 工具 → 压缩」里的压缩块），就不能关：收口规则
+   给的「行顶 → 节点中心」那一段正是把上一块画到行底的线接上的补丁，关掉就出现
+   21px 的断口（2026-11-27 设计师走查）。所以限定 `:only-child`。 */
 .messages-container--virtual
   .focus-fold
   .focus-fold-body
+  > :only-child
   .timeline-row--first.timeline-row--last::after {
   display: none;
 }

@@ -1352,12 +1352,14 @@
   bottom: auto;
   height: 21px;
 }
-/* 卡内单行 run（既 --first 又 --last）：没有可连的对象，同口径整条关掉 ——
-   否则上面两条收口互相覆盖成「点上方多一截 21px 的线」。 */
+/* 卡内单行 run（既 --first 又 --last）且是卡内**唯一**一块：上方没有可连的对象，
+   同口径整条关掉 —— 否则上面两条收口互相覆盖成「点上方多一截 21px 的线」。卡里
+   还有别的块时要留着那段「行顶 → 节点中心」，它是把上一块的线接上的补丁。 */
 [data-host="desktop"]
   .messages-container--virtual
   .focus-fold
   .focus-fold-body
+  > :only-child
   .timeline-row--first.timeline-row--last::after {
   display: none;
 }
