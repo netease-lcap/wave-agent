@@ -1024,14 +1024,15 @@ describe("remote page shim", () => {
   });
 
   /**
-   * 切回**这次打开期间看过**的那条：记忆里留着它的尾页，所以不必先空着等两个
-   * 往返——内容当场在位（不挂占位），同一拍照旧整表对齐，权威内容以对齐回包为准
-   * （spec remote-web 场景 10「切回看过的那条」）。
+   * 切回**这次打开期间看过**的那条，也照样从占位起步：页面不在内存里留任何会话
+   * 内容（2026-11-28 拿掉了那层「记住最近 8 条会话尾页」的记忆），所以「切回来
+   * 会更快」这件事不存在——每条会话都是同一套「清空 + 占位 + 重拉」
+   * （spec remote-web 场景 10）。
    */
-  test("switching back to a conversation already seen paints it from memory, then re-aligns", async () => {
+  test("switching back to a conversation already seen starts from the overlay too", async () => {
     const { page } = await openPage();
 
-    // 先离开 s-new：它的尾页（SEED）进了记忆。
+    // 先离开 s-new，切到 s-old 并把它读完：s-new 的尾页不再被谁留着。
     page.api.postMessage({ command: "restoreSession", sessionId: "s-old" });
     await flush();
     await page.answer("listDaemonSessions", { sessions: SESSIONS });
@@ -1044,18 +1045,18 @@ describe("remote page shim", () => {
     });
     await page.answer("listPendingPermissions", { requests: [] });
 
-    // 切回 s-new：一个回包都还没有，屏上已经是它的尾页，而且没有占位。
+    // 切回 s-new：一个回包都还没有，屏上是空 + 占位，不是它的旧尾页。
     page.api.postMessage({ command: "restoreSession", sessionId: "s-new" });
     await flush();
     expect(lastPosted(page)).toMatchObject({
       command: "setInitialState",
-      messages: [SEED],
+      messages: [],
+      isRestoring: true,
       session: { id: "s-new" },
       currentSession: { id: "s-new" },
     });
-    expect(lastPosted(page).isRestoring).toBeUndefined();
 
-    // 对齐仍然整表重取：记忆只管「先有内容」，权威尾页以这一拍为准。
+    // 内容要等这一拍回来：整表替换成权威尾页，占位随之揭开。
     await page.answer("listDaemonSessions", { sessions: SESSIONS });
     await page.answer("getSessionInfo", {
       sessionId: "s-new",
@@ -1068,48 +1069,12 @@ describe("remote page shim", () => {
     const snapshots = page.posted.filter(
       (posted) => posted.command === "setInitialState",
     );
-    expect(snapshots[snapshots.length - 1]).toMatchObject({
+    const settled = snapshots[snapshots.length - 1];
+    expect(settled).toMatchObject({
       command: "setInitialState",
       messages: [{ id: "m9" }],
     });
-  });
-
-  /**
-   * 对齐失败不该把记忆里那份擦掉：屏上内容是真的（只是可能旧），擦掉等于把
-   * 「切过去就有内容」换成一张空屏 + 一行原因。
-   */
-  test("a re-alignment that fails leaves the remembered content on screen", async () => {
-    const { page } = await openPage();
-
-    page.api.postMessage({ command: "restoreSession", sessionId: "s-old" });
-    await flush();
-    await page.answer("listDaemonSessions", { sessions: SESSIONS });
-    await page.answer("getSessionInfo", {
-      sessionId: "s-old",
-      permissionMode: "default",
-    });
-    await page.answer("getMessages", {
-      messages: [{ id: "old-1", role: "user", blocks: [] }],
-    });
-    await page.answer("listPendingPermissions", { requests: [] });
-
-    page.api.postMessage({ command: "restoreSession", sessionId: "s-new" });
-    await flush();
-    await page.answer("listDaemonSessions", { sessions: SESSIONS });
-    await page.answer("getSessionInfo", {
-      sessionId: "s-new",
-      permissionMode: "default",
-    });
-    await page.answer("listPendingPermissions", { requests: [] });
-    await page.refuse("getMessages", "boom");
-
-    const snapshots = page.posted.filter(
-      (posted) => posted.command === "setInitialState",
-    );
-    expect(snapshots[snapshots.length - 1].messages).toEqual([SEED]);
-    expect(document.getElementById("remote-status")?.textContent).toContain(
-      "拉取会话失败",
-    );
+    expect(settled.isRestoring).toBeUndefined();
   });
 
   test("a session that is no longer running is refused, not silently opened", async () => {

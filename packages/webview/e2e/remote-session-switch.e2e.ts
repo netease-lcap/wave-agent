@@ -7,13 +7,13 @@ import { fileURLToPath } from "node:url";
 import type { Page } from "@playwright/test";
 
 /**
- * 切会话的「记忆」在真远控页产物里的那一半（spec remote-web.md 场景 10
- * 「切回看过的那条」）：
+ * 切会话的那一瞬在真远控页产物里的样子（spec remote-web.md 场景 10）：
  *
- * - 切到**没看过**的会话：正文换成本页的恢复占位（`chat-restoring-overlay`），
- *   上一条的消息当场从屏上消失；
- * - 切回**这次打开期间看过**的那条：不出现占位，记住的尾页当场在位，随后由对齐
- *   回包整表换成权威内容。
+ * - 切到另一条：正文换成本页的恢复占位（`chat-restoring-overlay`），上一条的
+ *   消息当场从屏上消失；
+ * - 切回**这次打开期间看过**的那条也一样：页面不在内存里留任何会话内容
+ *   （2026-11-28 拿掉了那层记忆），所以照样从占位起步，随后由回包整表换成权威
+ *   内容。
  *
  * 台子与 `remote-page-slash-filter.e2e.ts` 同一副（真 `remote/dist` + 真
  * Chromium + 假中继）。区别只在这里的 `getMessages` 可以**被挂住**：不卡住回包
@@ -195,7 +195,7 @@ async function openRemotePage(page: Page) {
   await expect(page.getByTestId("message-input")).toBeVisible();
 }
 
-test("切回这次看过的那条：不出现占位，记忆的尾页当场在位", async ({ page }) => {
+test("切到另一条再切回来：两次都从占位起步，不留旧内容", async ({ page }) => {
   held = [];
   holdTails = false;
   await openRemotePage(page);
@@ -215,17 +215,19 @@ test("切回这次看过的那条：不出现占位，记忆的尾页当场在�
   await expect(page.getByText("A 的消息")).toBeVisible();
   await expect(page.getByTestId("chat-restoring-overlay")).toHaveCount(0);
 
-  // 切回 s-b —— 两条都已经「看过」。
+  // 切回 s-b —— 这条刚刚看过，但页面不在内存里留任何会话内容：照样占位，绝不
+  // 把刚才那份 B 的尾页先画出来。
   holdTails = true;
   await page.getByTestId("session-switch-btn").click();
   await page.getByTestId("remote-session-row-select-s-b").click();
-  // 这一条就是本轮改动：一个回包都没回来，屏上已经是 B 的尾页，没有占位。
-  await expect(page.getByText("B 的消息")).toBeVisible();
-  await expect(page.getByTestId("chat-restoring-overlay")).toHaveCount(0);
+  await expect(page.getByTestId("chat-restoring-overlay")).toBeVisible();
+  await expect(page.getByText("B 的消息")).toHaveCount(0);
+  await expect(page.getByText("A 的消息")).toHaveCount(0);
 
-  // 对齐回来（权威内容变了）→ 整表替换。
+  // 放行：权威内容上屏，占位揭开。
   await releaseTails(tailOf("B 的消息（已更新）"));
   await expect(page.getByText("B 的消息（已更新）")).toBeVisible();
+  await expect(page.getByTestId("chat-restoring-overlay")).toHaveCount(0);
 });
 
 /**
