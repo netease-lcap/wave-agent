@@ -278,17 +278,26 @@ request, print the findings to the terminal and note that \`--comment\` was
 ignored.
 `;
 
-/** CC 的 `ui()`：同一件事发到 GitLab，顺带说清 glab 没有行内评论的单条命令。 */
+/**
+ * CC 的 `ui()`：同一件事发到 GitLab，顺带说清 glab 没有行内评论的单条命令。
+ * 逐字取自 CC 2.1.332 的 `ui()`（`1064-239356B-Hsr.js`，2.1.325 同形）。
+ */
 function renderGitlabCommentSection(target: ReviewTarget | undefined): string {
   const ref =
     target?.platform === "gitlab"
       ? ` ${target.command.replace(/^glab mr diff /, "")}`
       : "";
+  // CC 的 `ui()`：命令里有 `-R` 时项目已经写明；只给 `!12` / 裸数字时 `glab`
+  // 拿的是当前目录所属的项目，`cd` 到别处就发错仓库了，所以补一句要它待在
+  // 那个项目的 checkout 里。
+  const anchor = ref.includes(" -R ")
+    ? ""
+    : " from inside that project's checkout";
   return `## Posting to GitLab (--comment)
 
 The \`--comment\` flag was passed. After producing the findings list, if the
 review target is a GitLab merge request, post the findings as one general MR
-note via \`glab mr note${ref} -m "<body>"\` (every finding with its file:line,
+note via \`glab mr note${ref} -m "<body>"\`${anchor} (every finding with its file:line,
 the issue, and the suggested fix). glab has no single verb for line-anchored
 comments; those require \`glab api projects/:id/merge_requests/:iid/discussions\`,
 so post the general note unless the user asks for inline threads. If glab is not
