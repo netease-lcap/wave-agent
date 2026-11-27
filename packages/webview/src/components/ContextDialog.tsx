@@ -6,7 +6,8 @@
  * 那个百分比用量环上的非模态浮层**（点环或运行 `/context` 都能打开，不遮对话、
  * 不挡输入框），内容是分段占用条 + 分类行（色块 + 名称 + tokens + 百分比）+ 可
  * 折叠明细。**分类判据一律用 `category.id` / `category.kind`，绝不用 `name`**
- * ——显示名会变，SDK 的类型注释里对这条写了出处。
+ * ——显示名会变，SDK 的类型注释里对这条写了出处。显示名也在这层映射成中文
+ * （`CATEGORY_LABELS`）：SDK 送的 `name` 与 CLI 的报告共用，不能就地翻译。
  *
  * 定位复用 `useAnchoredMenuStyle`（下 → 翻上 → 收到可用高度内部滚动），与侧边栏
  * 会话菜单同一套；关闭走点外部 + Esc（点环本身不算外部，见 `anchorRef`）。
@@ -78,8 +79,43 @@ const CATEGORY_COLORS: Record<string, string> = {
   free: "#2f2f2f",
 };
 
+/**
+ * 分类显示名。SDK 下发的 `name` 是英文，且被 CLI 的 /context 报告共用
+ * （`formatContextBreakdown` 的输出和它的测试钉着原文），所以中文化只在这一层
+ * 按 `id` 映射 —— 与文件头「判据一律用 `id`，绝不用 `name`」同一条规矩。
+ * 遇到未知 id 就退回 SDK 的名字，不会显示空白。
+ */
+const CATEGORY_LABELS: Record<string, string> = {
+  systemPrompt: "系统提示词",
+  systemTools: "系统工具",
+  mcpTools: "MCP 工具",
+  memory: "记忆文件",
+  skills: "技能",
+  agents: "自定义代理",
+  messages: "对话消息",
+  buffer: "自动压缩预留",
+  free: "剩余空间",
+};
+
+/** 记忆来源（SDK 给的是 `project` / `user` / `local` / `rules`）。 */
+const MEMORY_TYPE_LABELS: Record<string, string> = {
+  project: "项目",
+  user: "用户",
+  local: "个人",
+  rules: "规则",
+};
+
+function categoryLabel(category: ContextCategory): string {
+  return CATEGORY_LABELS[category.id] ?? category.name;
+}
+
 function formatTokens(tokens: number): string {
   return tokens.toLocaleString("en-US");
+}
+
+/** 某个 tokens 值占窗口的比例，如 `83.5%`（阈值那一行用）。 */
+function windowShareLabel(tokens: number, window: number): string {
+  return `${Number(((tokens / window) * 100).toFixed(1))}%`;
 }
 
 function percentLabel(category: ContextCategory, window: number): string {
@@ -108,7 +144,7 @@ function detailRows(
   return [
     ...head,
     {
-      name: `Other (${rest.length} items)`,
+      name: `其他（${rest.length} 项）`,
       tokens: rest.reduce((sum, item) => sum + item.tokens, 0),
     },
   ];
@@ -289,12 +325,10 @@ const ContextDialog: React.FC<
       );
     }
     if (!breakdown) {
-      return (
-        <div className="context-placeholder">Loading context breakdown…</div>
-      );
+      return <div className="context-placeholder">正在读取上下文构成…</div>;
     }
 
-    // 「Send a message to see context usage.」：会话还没有任何对话消息时，
+    // 「发一条消息后即可看到上下文占用」：会话还没有任何对话消息时，
     // 分段条只会画成整条 free，不如直接说清楚。
     const hasConversation = breakdown.categories.some(
       (category) => category.id === "messages",
@@ -302,7 +336,7 @@ const ContextDialog: React.FC<
     if (!hasConversation && !breakdown.measured) {
       return (
         <div className="context-placeholder">
-          Send a message to see context usage.
+          发一条消息后即可看到上下文占用。
         </div>
       );
     }
@@ -318,7 +352,7 @@ const ContextDialog: React.FC<
           </span>
         </div>
 
-        <div className="context-meter" role="img" aria-label="Context usage">
+        <div className="context-meter" role="img" aria-label="上下文占用">
           {breakdown.categories.map((category) => (
             <div
               key={category.id}
@@ -327,7 +361,7 @@ const ContextDialog: React.FC<
                 flexGrow: Math.max(category.tokens, 0),
                 backgroundColor: CATEGORY_COLORS[category.id] ?? "#555",
               }}
-              title={`${category.name}: ${formatTokens(category.tokens)} tokens`}
+              title={`${categoryLabel(category)}: ${formatTokens(category.tokens)} tokens`}
             />
           ))}
         </div>
@@ -345,7 +379,9 @@ const ContextDialog: React.FC<
                   backgroundColor: CATEGORY_COLORS[category.id] ?? "#555",
                 }}
               />
-              <span className="context-legend-name">{category.name}</span>
+              <span className="context-legend-name">
+                {categoryLabel(category)}
+              </span>
               <span className="context-legend-tokens">
                 {formatTokens(category.tokens)}
               </span>
@@ -358,24 +394,29 @@ const ContextDialog: React.FC<
 
         {breakdown.autoCompactThreshold > 0 && (
           <div className="context-threshold">
-            Auto-compact at {formatTokens(breakdown.autoCompactThreshold)}{" "}
-            tokens
+            自动压缩于 {formatTokens(breakdown.autoCompactThreshold)} tokens
+            {breakdown.contextWindow > 0
+              ? `（占窗口 ${windowShareLabel(
+                  breakdown.autoCompactThreshold,
+                  breakdown.contextWindow,
+                )}）`
+              : ""}
           </div>
         )}
 
         <div className="context-groups">
-          {renderGroup("mcp", "MCP tools", breakdown.mcpTools)}
-          {renderGroup("system", "System tools", breakdown.systemTools)}
+          {renderGroup("mcp", "MCP 工具", breakdown.mcpTools)}
+          {renderGroup("system", "系统工具", breakdown.systemTools)}
           {renderGroup(
             "memory",
-            "Memory files",
+            "记忆文件",
             breakdown.memoryFiles.map((file) => ({
-              name: `${file.type} · ${file.path}`,
+              name: `${MEMORY_TYPE_LABELS[file.type] ?? file.type} · ${file.path}`,
               tokens: file.tokens,
             })),
           )}
-          {renderGroup("skills", "Skills", breakdown.skills)}
-          {renderGroup("agents", "Custom agents", breakdown.agents)}
+          {renderGroup("skills", "技能", breakdown.skills)}
+          {renderGroup("agents", "自定义代理", breakdown.agents)}
         </div>
 
         {breakdown.errors.length > 0 && (
@@ -389,10 +430,8 @@ const ContextDialog: React.FC<
         )}
 
         <div className="context-footer">
-          Last updated {loadedAt ? formatClock(loadedAt) : "—"}.
-          {busy
-            ? " Refreshes when this turn ends."
-            : " Send a message to refresh."}
+          最后更新 {loadedAt ? formatClock(loadedAt) : "—"}。
+          {busy ? "本轮结束后自动刷新。" : "发一条消息即可刷新。"}
         </div>
       </>
     );
@@ -403,12 +442,12 @@ const ContextDialog: React.FC<
       ref={popoverAttachRef}
       className="context-popover"
       role="dialog"
-      aria-label="Context window"
+      aria-label="上下文窗口"
       data-testid="context-dialog"
       style={popoverStyle}
     >
       <div className="context-popover-header">
-        <span className="context-popover-title">Context window</span>
+        <span className="context-popover-title">上下文窗口</span>
         <button
           type="button"
           className="context-popover-close"

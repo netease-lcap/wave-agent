@@ -140,8 +140,8 @@ import {
   type MessageWindowResult,
 } from "../remote/messageWindow.js";
 import {
-  percentOf,
   remoteWire,
+  ringPercentOf,
   toBackgroundTaskSummaries,
 } from "../remote/remoteNotifications.js";
 import { getWorkspaceDiff } from "../utils/workspaceDiff.js";
@@ -1667,11 +1667,10 @@ export class AgentBridge {
   private emitContextUsage(agent: Agent): void {
     const tokens = agent.latestTotalTokens;
     const max = agent.getContextWindow();
-    const maxOutput = agent.getMaxOutputTokens?.() ?? 32_000;
     if (tokens > 0 && max > 0) {
       this.emit(
         "contextUsage",
-        remoteWire.contextUsage(tokens, max, maxOutput),
+        remoteWire.contextUsage(tokens, max),
         agent.sessionId,
       );
     }
@@ -1687,9 +1686,8 @@ export class AgentBridge {
   private contextUsagePercentOf(agent: Agent): number | undefined {
     const tokens = agent.latestTotalTokens;
     const max = agent.getContextWindow();
-    const maxOutput = agent.getMaxOutputTokens?.() ?? 32_000;
     if (tokens > 0 && max > 0) {
-      return percentOf(tokens, max, maxOutput);
+      return ringPercentOf(tokens, max);
     }
     return undefined;
   }
@@ -3903,11 +3901,10 @@ export class AgentBridge {
         // so the webview button shows real usage without waiting for a turn —
         // aligned with the CLI, which reads the same callback (spec 场景 5/6).
         const max = ctx.agent?.getContextWindow() ?? 0;
-        const maxOutput = ctx.agent?.getMaxOutputTokens?.() ?? 32_000;
         if (max > 0) {
           this.emit(
             "contextUsage",
-            remoteWire.contextUsage(tokens, max, maxOutput),
+            remoteWire.contextUsage(tokens, max),
             ctx.registeredSessionId,
           );
         }

@@ -760,9 +760,12 @@ test("onLatestTotalTokensChange emits contextUsage notification", async () => {
 
   callbacks.onLatestTotalTokensChange!(50000);
 
+  // 环的百分比是窗口分母（50000 / 200000），与 /context 面板同一个数 —— CLI 那行
+  // `N% until auto-compact` 才用压缩阈值分母（见 remoteNotifications 的
+  // remainingPercentOf，方向是剩余）。
   expect(notifications).toContainEqual({
     method: "contextUsage",
-    params: { percent: 30 },
+    params: { percent: 25 },
     sessionId: "test-session-id",
   });
 });
@@ -1414,7 +1417,7 @@ test("getMessages carries the session's context-usage percentage", async () => {
   const sessionId = (result as { sessionId: string }).sessionId;
   const r = await bridge.handleRequest("getMessages", {}, sessionId);
 
-  expect(r).toMatchObject({ contextUsagePercent: 30 }); // 50000 / 167000
+  expect(r).toMatchObject({ contextUsagePercent: 25 }); // 50000 / 200000
 });
 
 test("getMessages omits contextUsagePercent when the session has no tokens yet", async () => {
@@ -4122,7 +4125,7 @@ test("restoreSession to the live session replays the current contextUsage so the
   expect(mockAgent.restoreSession).not.toHaveBeenCalled();
   expect(notifications).toContainEqual({
     method: "contextUsage",
-    params: { percent: 30 }, // 50000 / 167000 (default auto-compact threshold)
+    params: { percent: 25 }, // 50000 / 200000 (window denominator)
     sessionId,
   });
 });
@@ -4151,7 +4154,7 @@ test("restoreSession to a DIFFERENT session re-emits contextUsage even when the 
   expect(mockAgent.restoreSession).toHaveBeenCalledWith("other-session");
   expect(notifications).toContainEqual({
     method: "contextUsage",
-    params: { percent: 30 }, // 50000 / 167000 (default auto-compact threshold)
+    params: { percent: 25 }, // 50000 / 200000 (window denominator)
     sessionId,
   });
 });

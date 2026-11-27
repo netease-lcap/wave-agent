@@ -31,7 +31,6 @@ function makeBreakdown(overrides: Record<string, unknown> = {}) {
     usedTokens: 60_000,
     measured: true,
     usedPercent: 30,
-    ringPercent: 34,
     categories: [
       {
         id: "systemPrompt",
@@ -209,7 +208,7 @@ describe("/context command", () => {
     });
 
     const mcpRow = screen.getByTestId("context-category-mcpTools");
-    expect(mcpRow.textContent).toContain("MCP tools");
+    expect(mcpRow.textContent).toContain("MCP 工具");
     expect(mcpRow.textContent).toContain("20,000");
     expect(mcpRow.textContent).toContain("10.0%");
 
@@ -219,6 +218,32 @@ describe("/context command", () => {
     );
     expect(screen.getByTestId("context-category-buffer").textContent).toContain(
       "—",
+    );
+  });
+
+  it("面板中文化：标题、分类名、阈值脚注都不再是英文", async () => {
+    const { vscode } = renderChatApp();
+    await openContext();
+    await act(async () => {
+      sendCommand("contextBreakdownResponse", {
+        requestId: lastRequestId(vscode),
+        breakdown: makeBreakdown(),
+      });
+    });
+
+    // 分类名按 id 映射（SDK 的 name 与 CLI 报告共用，不能就地翻译）。
+    expect(document.querySelector(".context-popover-title")?.textContent).toBe(
+      "上下文窗口",
+    );
+    expect(
+      screen.getByTestId("context-category-systemPrompt").textContent,
+    ).toContain("系统提示词");
+    expect(screen.getByTestId("context-category-free").textContent).toContain(
+      "剩余空间",
+    );
+    // 阈值那行补上「占窗口多少」——CLI 报告本来就有这半句，面板此前没有。
+    expect(document.querySelector(".context-threshold")?.textContent).toContain(
+      "自动压缩于 179,000 tokens（占窗口 89.5%）",
     );
   });
 
@@ -263,10 +288,10 @@ describe("/context command", () => {
     );
     // 分类行也按 id 出现（不是靠名字匹配）。
     expect(screen.getByTestId("context-category-skills").textContent).toContain(
-      "Skills",
+      "技能",
     );
     expect(screen.getByTestId("context-category-agents").textContent).toContain(
-      "Custom agents",
+      "自定义代理",
     );
   });
 
@@ -297,7 +322,7 @@ describe("/context command", () => {
       .getByTestId("context-group-system")
       .querySelectorAll(".context-detail-row");
     expect(rows).toHaveLength(6);
-    expect(rows[5].textContent).toContain("Other (4 items)");
+    expect(rows[5].textContent).toContain("其他（4 项）");
   });
 
   it("新会话（没有消息、也没有实测）显示空态而不是 0% 的分段条", async () => {
@@ -327,7 +352,7 @@ describe("/context command", () => {
     });
 
     expect(screen.getByTestId("context-dialog").textContent).toContain(
-      "Send a message to see context usage.",
+      "发一条消息后即可看到上下文占用。",
     );
   });
 

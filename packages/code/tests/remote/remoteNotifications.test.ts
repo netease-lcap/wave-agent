@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
-  percentOf,
+  remainingPercentOf,
   remoteNotifications,
   remoteWire,
+  ringPercentOf,
 } from "../../src/remote/remoteNotifications.js";
 import {
   NotificationCoalescer,
@@ -148,8 +149,9 @@ describe("remoteNotifications", () => {
     // Absent tokens must not become an explicit `undefined` on the frame — the
     // CLI host knows the flag but not always the count.
     expect(remoteWire.loadingChange(false)).toEqual({ loading: false });
+    // 环的口径是窗口分母：50k / 200k = 25%（与 /context 面板同一个数）。
     expect(remoteWire.contextUsage(50_000, 200_000)).toEqual({
-      percent: 30,
+      percent: 25,
     });
     expect(remoteWire.permissionModeChange("plan")).toEqual({ mode: "plan" });
     expect(
@@ -173,12 +175,24 @@ describe("remoteNotifications", () => {
     expect(remoteWire.messagesChangeSignal()).toEqual({});
   });
 
-  it("should round the context ring's percentage the same way everywhere", () => {
-    expect(percentOf(50_000, 200_000, 32_000)).toBe(30);
+  it("should keep the ring on the window and the CLI line on the threshold", () => {
+    // CLI 那行是同一分母（阈值）的**剩余**方向：50000 / 167000 ⇒ 还剩 70%。
+    expect(remainingPercentOf(50_000, 200_000, 32_000)).toBe(70);
+    // 到阈值 / 超过阈值都是 0 —— 组件把它渲染成 "auto-compact next"。
+    expect(remainingPercentOf(167_000, 200_000, 32_000)).toBe(0);
+    expect(remainingPercentOf(200_000, 200_000, 32_000)).toBe(0);
+    // 未知窗口：数字不可算，调用方负责不渲染（不会是 "auto-compact next"）。
+    expect(remainingPercentOf(1_000, 0, 32_000)).toBe(0);
+    // 环：窗口分母，与 /context 面板、宿主的两条读路径同一个数。
+    expect(ringPercentOf(50_000, 200_000)).toBe(25);
+    expect(ringPercentOf(167_000, 200_000)).toBe(84);
     // Capped, so an over-budget session reads 100 rather than growing the ring.
-    expect(percentOf(400_000, 200_000, 32_000)).toBe(100);
+    expect(ringPercentOf(400_000, 200_000)).toBe(100);
     // Unknown cap: a number, not a special case (the read paths return it as-is).
-    expect(percentOf(1_000, 0, 32_000)).toBe(0);
+    expect(ringPercentOf(1_000, 0)).toBe(0);
+    // 阈值口径的**已用**方向还在 SDK 的 contextUsagePercent 里（mods 的
+    // `$.session.usage().context.percent` 用它），CLI 不再显示它 —— 两者分母
+    // 相同、方向相反，界面上只出现 CLI 的「剩余」这一个。
   });
 
   it("should emit frames the remote channel's own window merges", () => {

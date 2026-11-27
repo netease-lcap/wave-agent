@@ -41,7 +41,7 @@ export interface ContextBreakdown {
   model: string;
   /** 上下文窗口（百分比分母） */
   contextWindow: number;
-  /** 自动压缩阈值；用量环的 100% 就落在这里 */
+  /** 自动压缩阈值（绝对 token 数；到点就开始压缩，与百分比列无关） */
   autoCompactThreshold: number;
   maxOutputTokens: number;
   /**
@@ -51,10 +51,11 @@ export interface ContextBreakdown {
   usedTokens: number;
   /** `usedTokens` 是否来自实测（false = 纯本地估值） */
   measured: boolean;
-  /** 已用占总窗口的百分比（与分类百分比同一分母） */
+  /**
+   * 已用占总窗口的百分比（与分类百分比、输入框旁的用量环同一分母）。
+   * 注意它到不了 100 —— 自动压缩在窗口的 ~83.5% 就触发。
+   */
   usedPercent: number;
-  /** 用量环口径的百分比（分母为压缩阈值），便于与输入框旁的环对齐 */
-  ringPercent: number;
   categories: ContextCategory[];
   /** MCP 工具明细，按体积降序 */
   mcpTools: Array<{ serverName: string; name: string; tokens: number }>;
