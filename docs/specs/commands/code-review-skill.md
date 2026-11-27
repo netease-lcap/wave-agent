@@ -165,7 +165,7 @@ order: 130
 - **如果 `main` 分支在本地不存在怎么办？** 先走 `git diff origin/HEAD...HEAD`（默认分支叫别的名字就换名），它给不出东西时退回 `git diff main...HEAD`，连基准都认不出时才退回 `git diff HEAD~1`，仅审查最后一次提交。
 - **如果分支 diff 是空的、但工作区有改动怎么办？** 把工作区算进来（`git diff HEAD`），不要因为拿不到提交区间就告诉用户「没有可审查的内容」。
 - **如果发现是误报怎么办？** 核实阶段把事实有误、或已在别处被守卫的候选判为 `REFUTED` 并丢弃；skill 还列出显式排除的误报类别（预先存在的问题、linter 级别的挑剔、有意更改等）。
-- **如果 AI 尝试自动触发 skill 怎么办？** frontmatter 中的 `disable-model-invocation: true` 阻止 AI 自动调用 skill；它仅通过 `/code-review` 由用户调用。
+- **如果 AI 自己决定跑一次审查怎么办？** 允许——frontmatter 不设 `disable-model-invocation`，与 CC 的 `/code-review` 一致（它的注册对象里也没有这个字段），用户手动敲与模型自动调用两条路都通。模型自动调用时拿不到用户写的那串参数，评的是当前工作区 diff（`git diff origin/HEAD...HEAD`，空则 `git diff HEAD`），不会去解析 PR/MR。
 - **如果 `--fix` 之后再次交付清单怎么办？** 那是同一份清单的更新，不是追加的第二份：交付的条目与第一次同一批，只是每条多了处理结果，界面据此更新已有条目的状态。
 - **如果核实 agent 与审查 agent 意见不一致怎么办？** 核实 agent 的结论对保留与否具有权威性；审查 agent 自己的评估不参与该判定。
 - **如果 PR 链接指向自建实例（GitHub Enterprise）怎么办？** 只有主机名认得出是 `github.com` 时才敢拼 `-R owner/repo` 与 `gh api repos/…`（那是 github.com 的端点拼法）；自建实例上整条 URL 交给 `gh pr diff`，连 `pr diff` 的替代命令也不给。这条与「非公网一律当 GitLab」**不冲突**：默认值只作用于裸数字，链接一律按 URL 形状（`/pull/` 还是 `/-/merge_requests/`）判定。
