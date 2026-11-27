@@ -105,7 +105,11 @@ ls <touched-dir>/.claude/skills/ 2>/dev/null
   package/app dir (\`apps/desktop/.wave/skills/verifier-<scope>/SKILL.md\`) in
   a monorepo where verification is per-package — capturing the
   build/launch/drive recipe that worked, so the next session skips
-  this cold start. Name it \`verifier-<scope>\`, not \`verify\`: a project skill called \`verify\` replaces the built-in one wholesale, and the built-in body is the methodology you would be discarding. Keep it short: the commands that worked, the
+  this cold start. Name it \`verifier-<scope>\`, not \`verify\`: at the repo
+  root a project skill called \`verify\` replaces the built-in one
+  wholesale, and in a package subdirectory a same-named one is ignored
+  outright - either way the built-in body is the methodology you would be
+  discarding. Keep it short: the commands that worked, the
   flows worth driving, any gotchas. A project verifier-* skill already
   exists → edit it only when it steered you wrong: a documented
   command failed or turned out wrong, or a needed step it doesn't

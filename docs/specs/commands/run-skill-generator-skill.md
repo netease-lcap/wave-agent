@@ -102,6 +102,7 @@ order: 176
 - **项目没有交互表面**（纯库）：驱动就是导入调用冒烟脚本，不需要终端复用或截图。
 - **技能放置层级**：单项目仓库放仓库根，多应用仓库放在被改动最频繁的那个单元目录下；目录名与 frontmatter `name` 一致，它就是斜杠命令。
 - **Windows 没有 tmux**：TUI / GUI 的抓帧改用 node-pty 真 ConPTY；Linux 无显示服务时 GUI 需要 `xvfb-run`。
+- **模型不会自发调用本技能**：CC 的注册对象带 `disableModelInvocation: true`（同一批的 `/run` 不带），本仓用 SKILL.md frontmatter 的 `disable-model-invocation: true` 表达同一意图，只允许用户用 `/run-skill-generator` 触发。
 
 ## 范围之外
 

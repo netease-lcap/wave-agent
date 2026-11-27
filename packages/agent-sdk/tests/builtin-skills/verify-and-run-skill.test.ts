@@ -28,11 +28,14 @@ describe("builtin verify / run-skill-generator", () => {
     expect(content.startsWith("---\n")).toBe(true);
   });
 
-  it.each(SKILLS)("$dir keeps the upstream name as its slash command", ({ dir, name }) => {
-    const content = BUILTIN_CONTENT[dir + "/SKILL.md"];
-    expect(content).toContain("\nname: " + name + "\n");
-    expect(content).toContain("\ndescription: ");
-  });
+  it.each(SKILLS)(
+    "$dir keeps the upstream name as its slash command",
+    ({ dir, name }) => {
+      const content = BUILTIN_CONTENT[dir + "/SKILL.md"];
+      expect(content).toContain("\nname: " + name + "\n");
+      expect(content).toContain("\ndescription: ");
+    },
+  );
 
   it.each(SKILLS)("$dir only links references it ships", ({ dir }) => {
     const body = BUILTIN_CONTENT[dir + "/SKILL.md"];
@@ -60,8 +63,9 @@ describe("builtin verify / run-skill-generator", () => {
     expect(body).toContain("Verification is runtime observation.");
     expect(body).toContain("Don't run tests.");
     expect(body).toContain("When in doubt, FAIL.");
-    // The project-side recipe must not be persisted under the built-in name: in
-    // this repo a project skill with a built-in name takes the built-in over.
+    // The project-side recipe must not be persisted under the built-in name: a
+    // repo-root skill of that name takes the built-in over, and one dropped in a
+    // package subdirectory is skipped.
     expect(body).not.toContain(".wave/skills/verify/SKILL.md");
   });
 
@@ -70,7 +74,9 @@ describe("builtin verify / run-skill-generator", () => {
       const key = "examples/" + name;
       const fromRun = BUILTIN_CONTENT["skills/run/" + key];
       expect(fromRun, key).toBeTruthy();
-      expect(fromRun).toBe(BUILTIN_CONTENT["skills/run-skill-generator/" + key]);
+      expect(fromRun).toBe(
+        BUILTIN_CONTENT["skills/run-skill-generator/" + key],
+      );
     }
   });
 
@@ -80,6 +86,25 @@ describe("builtin verify / run-skill-generator", () => {
     expect(body).toContain("chromium-cli --session app");
     // The note at the top is the only wave-side addition.
     expect(body).toContain("built into Claude Code, not wave");
+  });
+
+  it("code-review hands off to verify by skill name, not a slash string", () => {
+    const body = BUILTIN_CONTENT["skills/code-review/SKILL.md"];
+    // There is no slash-command tool and the Skill tool takes a bare name, so a
+    // bare "/verify" in this text is not something the model can act on.
+    expect(body).toContain("with the Skill tool");
+    expect(body).not.toContain("invoke `/verify`");
+  });
+
+  it("run-skill-generator is user-invoked only, /run stays model-invocable", () => {
+    // CC registers run-skill-generator with disableModelInvocation: true, and /run
+    // without it - the flags are part of the port, not wave's own choice.
+    expect(BUILTIN_CONTENT["skills/run-skill-generator/SKILL.md"]).toContain(
+      "disable-model-invocation: true",
+    );
+    expect(BUILTIN_CONTENT["skills/run/SKILL.md"]).not.toContain(
+      "disable-model-invocation",
+    );
   });
 
   it("run-skill-generator keeps its definition of done", () => {

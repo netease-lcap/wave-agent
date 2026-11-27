@@ -4,6 +4,7 @@ export const runSkillGeneratorSkill: Record<string, string> = {
   "skills/run-skill-generator/SKILL.md": `---
 name: run-skill-generator
 description: Author or improve the run-<unit> skill - a per-project skill that tells agents how to build, launch, and drive this project's app. Use when the user asks to set up the project, get it running, write run instructions, or verify build/run steps work from a clean environment.
+disable-model-invocation: true
 ---
 
 Your job is to produce a **skill** at \`<unit>/.wave/skills/run-<unit-name>/\`
@@ -60,7 +61,7 @@ Typical output is a skill directory containing both:
 \`\`\`
 <unit>/.wave/skills/run-<unit>/
   SKILL.md         <- SHORT. Points at the driver. Has the frontmatter
-                     that lets Claude auto-load it when someone asks
+                     that lets a future agent auto-load it when someone asks
                      to "run <unit>" or "screenshot <unit>".
   driver.mjs       <- (or driver.py, smoke.sh, ... - or none: web apps
                      use Playwright off-the-shelf, and the heredoc
@@ -239,7 +240,7 @@ Short. Point at the driver. Use [template.md](\${WAVE_SKILL_DIR}/template.md) as
 starting structure - it has the frontmatter shape.
 
 **The frontmatter matters.** The \`name:\` becomes the slash command
-(\`/run-billing\`). The \`description:\` is what Claude scans to decide
+(\`/run-billing\`). The \`description:\` is what a future agent scans to decide
 whether to auto-load this skill - put the **verbs an agent would
 actually type** in it: "run," "start," "build," "test," "screenshot."
 Generic descriptions ("helpful utilities for billing") won't match.
@@ -478,8 +479,8 @@ NOTE ON THE FRONTMATTER ABOVE:
 - Replace <unit-name> in both \`name:\` and \`description:\`. The \`name:\`
   becomes the slash command (/run-<unit-name>) and must match the
   directory name.
-- The \`description:\` is what Claude scans to decide whether to load this
-  skill automatically. Keep the verbs - "start," "run," "build," "test,"
+- The \`description:\` is what a future agent scans to decide whether to load
+  this skill automatically. Keep the verbs - "start," "run," "build," "test,"
   "screenshot" - they're what an asking agent will actually type.
 
 NOTE ON THE DRIVER:

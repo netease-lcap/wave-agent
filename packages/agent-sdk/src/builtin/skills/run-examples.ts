@@ -822,6 +822,9 @@ the one-liner too:
 
 export function runExamplesUnder(skillsRoot: string): Record<string, string> {
   return Object.fromEntries(
-    Object.entries(runExampleFiles).map(([name, body]) => [`${skillsRoot}/examples/${name}`, body])
+    Object.entries(runExampleFiles).map(([name, body]) => [
+      `${skillsRoot}/examples/${name}`,
+      body,
+    ]),
   );
 }

@@ -143,7 +143,10 @@ Examples of false positives to exclude:
 
 ## After the review
 
-After the findings are reported: if \`/verify\` has not run this session and the diff has a runtime surface (not test-only or docs-only), invoke \`/verify\` now — this review checks that the diff reads right; \`/verify\` checks that it runs right.
+After the findings are reported: if \`verify\` has not run this session and
+the diff has a runtime surface (not test-only or docs-only), invoke the
+\`verify\` skill with the Skill tool now — this review checks that the diff
+reads right; \`verify\` checks that it runs right.
 
 ## Input
 
