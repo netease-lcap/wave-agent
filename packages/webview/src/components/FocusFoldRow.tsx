@@ -1,7 +1,6 @@
 import React, { type ReactNode } from "react";
 import type { FocusFoldItem } from "../utils/focusItems";
 import { QueueChevronIcon } from "./HeaderIcons";
-import { TOOL_STATUS_COLORS } from "../utils/statusColors";
 import type { Message } from "../types";
 import "../styles/FocusFoldRow.css";
 
@@ -48,17 +47,8 @@ export const FocusFoldRow: React.FC<FocusFoldRowProps> = ({
   renderMessage,
 }) => {
   const meta = foldMeta(item);
-  // 圆点与时间线同族：跑完了绿、有失败红、还在跑蓝（与工具/文本块的状态色同源），
-  // 这样「一张卡 + 卡外答复」连起来是一条同色的时间线，而不是一颗灰点挂在绿点上方。
-  const dotColor =
-    item.errorCount > 0
-      ? TOOL_STATUS_COLORS.error
-      : item.live
-        ? TOOL_STATUS_COLORS.running
-        : TOOL_STATUS_COLORS.success;
   return (
     <div
-      style={{ ["--dot-color" as string]: dotColor }}
       className={
         "focus-fold" +
         (item.live ? " is-live" : "") +
@@ -74,7 +64,6 @@ export const FocusFoldRow: React.FC<FocusFoldRowProps> = ({
         data-testid="focus-fold-head"
         onClick={onToggle}
       >
-        <span className="focus-fold-dot" aria-hidden="true" />
         <span className="focus-fold-label">{foldLabel(item)}</span>
         {meta && <span className="focus-fold-meta">{meta}</span>}
         {/* 与思考块 / 压缩块同一颗折叠图标（QueueChevronIcon，16px 盒）。

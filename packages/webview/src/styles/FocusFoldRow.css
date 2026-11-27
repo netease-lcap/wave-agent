@@ -1,5 +1,6 @@
 /* Focus 视图：一轮活动收成的那一行（docs/specs/ui/focus-view.md）。
-   视觉与时间线的 .timeline-row 同族：行首一个圆点，收起时只有卡头。 */
+   收起态不带时间线节点：聚焦视图下「点 = 一次真实活动」，而卡头只是这一轮的
+   目录条，不是一次活动（2026-11-27 设计师走查定档）。卡内展开的行才有点与线。 */
 .focus-fold {
   display: flex;
   flex-direction: column;
@@ -8,24 +9,29 @@
 .focus-fold-head {
   display: flex;
   align-items: center;
-  /* 与时间线行同一档几何：圆点 6px、圆点与文字间距 6px（.timeline-row 的
-     padding-left: 12px 减去 6px 圆点），两张卡与卡外答复的圆点在一条竖线上。 */
+  /* 卡头没有圆点，也不再带底板（hover 只换文字色），所以左侧不再为「圆点 +
+     间距」留内衬：文案直接贴到卡片左缘，与卡内时间线同一条基准线
+     （2026-11-27 定档）。 */
   gap: 6px;
   width: 100%;
   min-height: 30px;
-  padding: 4px 8px 4px 0;
+  padding: 4px 8px;
   background: transparent;
   border: 0;
   border-radius: 4px;
-  color: var(--vscode-foreground);
+  /* 文案与正文同一角色（字号见宿主的覆盖，桌面端 14）。常态比正文浅一档 ——
+     取输入框的占位符色，它是「待读的一行摘要」而不是此刻要读的正文；hover 才
+     升到正文色，且不加底板（2026-11-27 定档，设计师选占位符档）。 */
+  color: var(--vscode-input-placeholderForeground, #858b8f);
   font: inherit;
   font-size: 12px;
   text-align: left;
   cursor: pointer;
+  transition: color 0.12s ease;
 }
 
 .focus-fold-head:hover {
-  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.12));
+  color: var(--vscode-foreground);
 }
 
 .focus-fold-head:focus-visible {
@@ -33,54 +39,23 @@
   outline-offset: 1px;
 }
 
-.focus-fold-dot {
-  flex: none;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  /* 颜色由组件按这一轮的状态给（--dot-color，与 .timeline-row::before 同源）。 */
-  background: var(--dot-color, var(--vscode-descriptionForeground, #8a8a86));
-}
-
-.focus-fold.is-live .focus-fold-dot {
-  animation: focus-fold-pulse 1.6s ease-in-out infinite;
-}
-
-/* 失败过的轮：圆点保持原色，靠文案里的失败计数表达（与时间线圆点语义一致，
-   不给折叠行引入新的颜色档）。 */
-@keyframes focus-fold-pulse {
-  0%,
-  100% {
-    opacity: 0.25;
-    transform: scale(0.85);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .focus-fold.is-live .focus-fold-dot {
-    animation: none;
-    opacity: 1;
-  }
+/* 失败过的轮：卡头的状态色没有圆点可挂了，改落在行尾的失败计数上
+   （与时间线圆点同一档语义红）。 */
+.focus-fold.has-error .focus-fold-meta {
+  color: var(--cc-state-failed, #d92d20);
+  opacity: 1;
 }
 
 .focus-fold-label {
   /* 不撑满整行：文案按自己的宽度排，读起来是「一段被收起来的过程」，而不是
-     一行两端对齐的表格。左侧的圆点与箭头宽度固定，文案变长只是自己往后长、
-     超宽缩成省略号（min-width: 0），两个标记都不跟着动。 */
+     一行两端对齐的表格。文案变长只是自己往后长、超宽缩成省略号
+     （min-width: 0），箭头不跟着动。 */
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--vscode-descriptionForeground, #6a6a66);
-}
-
-.focus-fold.is-live .focus-fold-label {
-  color: var(--vscode-foreground);
+  /* 不再单设颜色：继承卡头的正文色（进行态与结算态同色，2026-11-27 定档）。 */
 }
 
 .focus-fold-meta {
@@ -93,12 +68,13 @@
 /* 与思考块 / 压缩块同一颗折叠图标（QueueChevronIcon，16px 盒）：收起指右、
    展开 rotate(90deg) 指下。规则与 .reasoning-chevron / .expanded 同源，改动
    一处就三处一起变。位置在文案之后（见 FocusFoldRow.tsx），文案变宽时它会
-   跟着挪一点，与 CC 桌面端同款行为。 */
+   跟着挪一点，与 CC 桌面端同款行为。
+   不单设 color：图标 path 是 fill="currentColor"，跟着卡头文字一起走常态浅 /
+   hover 正文色（2026-11-27 定档）。 */
 .focus-fold-chevron {
   width: 16px;
   height: 16px;
   flex: none;
-  color: var(--vscode-descriptionForeground);
   transition: transform 0.15s ease;
 }
 
@@ -109,6 +85,6 @@
 .focus-fold-body {
   display: flex;
   flex-direction: column;
-  /* 卡内行左侧留出一点缩进，让「这些是被折叠的细节」看得见。 */
-  padding-left: 15px;
+  /* 不再额外缩进：卡内时间线的点在卡头文案同一条左缘上，展开前后不会横向
+     错位（2026-11-27 定档）。 */
 }

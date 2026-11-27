@@ -245,8 +245,72 @@
   height: 18px;
 }
 
-.messages-container--virtual .timeline-run--single .timeline-row::after {
+/* single run 不画竖线：这条规则必须只落在**行自己**上（直接子级），不能用后代
+   选择器 —— 聚焦视图的折叠卡所在的 virtual-row 也可能被判成 single（卡不算圆点
+   后，一轮只剩卡外答复一个点），后代选择器会把展开卡里那些真实活动的竖线一起
+   关掉。 */
+.messages-container--virtual
+  .timeline-run--single
+  > [data-message-id]
+  > .timeline-row::after {
   display: none;
+}
+
+/* ---------- 聚焦视图：节点只在展开的折叠卡里 ----------
+   收起态的一轮是「卡头（目录条）+ 卡外轮尾答复」两段文字，没有可连的东西：
+   两个点中心只隔 36px、中间一段 21px 的线，看不出连接感，只留下噪点
+   （2026-11-27 设计师走查定档）。所以卡外的助手行不再画节点与竖线，点与线
+   全部留给展开卡内的真实活动。
+
+   用户消息本来就没有 `.timeline-row`（它的 text 块不走 renderBlock 的 wrap
+   分支），所以这里只针对助手行。卡内行挂在 `.focus-fold-body` 下、父级不是
+   `.virtual-row`，不会被这条命中。 */
+.messages-container[data-focus-view="true"]
+  .virtual-row
+  > [data-message-id]
+  > .timeline-row::before,
+.messages-container[data-focus-view="true"]
+  .virtual-row
+  > [data-message-id]
+  > .timeline-row::after {
+  display: none;
+}
+
+/* 节点没了，给节点让出的那 20px 左内衬也一并收掉：卡外答复的正文贴到卡片
+   左缘（465.5），与卡头文案、展开卡内的时间线同一条基准线（2026-11-27 定档）。
+   只覆盖卡外直接子级行 —— 卡内的行仍保留内衬，那条线还在它们左侧。 */
+.messages-container[data-focus-view="true"]
+  .virtual-row
+  > [data-message-id]
+  > .timeline-row {
+  padding-left: 0;
+}
+
+/* 展开的卡内：把这一轮当成**一条**连续的 run —— 整体第一行从自己的节点中心
+   开始、整体最后一行到自己的节点中心结束、中间行满高。原先卡内每一条第 1 块
+   都命中 `.timeline-run--start .timeline-row--first` 的 `top: 21px`（折叠卡所
+   在的 virtual-row 就带 `timeline-run--start`），于是每一段都从半空起笔、断成
+   一截一截。这里先把卡内所有行归零，再只给整体首/末行收口。 */
+.messages-container--virtual .focus-fold .focus-fold-body .timeline-row::after {
+  top: 0;
+  bottom: 0;
+  height: auto;
+}
+.messages-container--virtual
+  .focus-fold
+  .focus-fold-body
+  > :first-child
+  .timeline-row--first::after {
+  top: 18px;
+}
+.messages-container--virtual
+  .focus-fold
+  .focus-fold-body
+  > :last-child
+  .timeline-row--last::after {
+  top: 0;
+  bottom: auto;
+  height: 18px;
 }
 
 /* ---------- 「回到最新」入口 ---------- */

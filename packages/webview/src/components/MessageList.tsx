@@ -676,7 +676,10 @@ export const MessageList = forwardRef<
       if (dots <= 1) {
         for (let i = runStart; i <= end; i++) {
           classes[i] = "timeline-run--single";
-          paddings[i] = 14;
+          // 与多点 run 同一档间距：轮内行贴紧、只有轮末留 14。少判这一条，折叠卡
+          // 与它下面那条轮尾答复之间会各留 14 + 14（卡头不再算点后，一轮常常只剩
+          // 答复一个点，正好落到 single 分支）—— 收起态每轮中间就多出 28px 空档。
+          paddings[i] = i === end ? 14 : 0;
         }
       } else {
         classes[runStart] = "timeline-run--start";
@@ -695,10 +698,11 @@ export const MessageList = forwardRef<
     };
     items.forEach((item, i) => {
       if (item.kind === "fold") {
-        // 折叠行本身就是这一轮活动的圆点：它替代了卡内那些块的圆点，所以这里
-        // 固定算一个，展开与否都只算一个。
+        // 折叠卡**不**算一个圆点（2026-11-27 设计师定档）：卡头只是这一轮的
+        // 目录条，不是一次真实活动，收起态也不画时间线节点。所以一轮若只剩卡
+        // 外那条轮尾答复，「点」就只有它一个，run 落到 single、竖线自然不画；
+        // 反过来若这里仍记一个点，卡外答复就成了一颗孤点。
         if (runStart === -1) runStart = i;
-        dots += 1;
         return;
       }
       const message = item.message;
@@ -1336,6 +1340,10 @@ export const MessageList = forwardRef<
       id="messagesContainer"
       className={`messages-container${isStreaming ? " streaming" : ""}${isCompacting ? " compacting" : ""} messages-container--virtual`}
       data-testid="messages-container"
+      // 聚焦视图下折叠卡以外的助手行不画时间线节点（点只属于卡内那些真实
+      // 活动）。把它做成容器上的一个状态位，而不是让 CSS 用 `:has(.focus-fold)`
+      // 去猜 —— 插件端 JCEF 的 Chromium 版本不保证支持 `:has()`。
+      data-focus-view={focusView ? "true" : undefined}
       // 程序性焦点目标（关闭查找条后把焦点还给正文）：-1 不进入 Tab 序列，
       // 只是让 `focus()` 有落点。
       tabIndex={-1}

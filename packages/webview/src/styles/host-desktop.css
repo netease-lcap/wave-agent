@@ -1135,20 +1135,16 @@
   border-color: var(--cc-bg-conversation, #111314);
 }
 
-/* 聚焦视图的折叠卡头节点走同一档：12px + 描边、圆点与文案之间留 8px
-   （= 时间线行 padding-left 20 减节点 12），这样「一张卡 + 卡外答复」的节点
-   在一条竖线上、大小也一致；插件端保持 base 的 6px 小点（那时时间线也是 6px）。 */
+/* 聚焦视图的折叠卡头没有圆点（2026-11-27 定档：收起态不参与时间线），左内衬
+   补回「节点 12 + 间距 8」那一档，让卡头文案与卡外答复正文左缘对齐。文案按
+   正文角色取 14px（= `.message-content` 的正文档），行高 22 + 上下 4 → 卡头
+   仍是 30px；不再有 hover 底色（2026-11-27 定档：只用 cursor 与箭头示意可点）。 */
 [data-host="desktop"] .focus-fold-head {
   gap: 8px;
-}
-[data-host="desktop"] .focus-fold-dot {
-  width: 12px;
-  height: 12px;
-  border: 2px solid #ffffff;
-  box-sizing: border-box;
-}
-[data-host="desktop"][data-theme="dark"] .focus-fold-dot {
-  border-color: var(--cc-bg-conversation, #111314);
+  /* 左内衬 0：文案贴卡片左缘（见 FocusFoldRow.css 的同款说明）。 */
+  padding-left: 0;
+  font-size: 14px;
+  line-height: 22px;
 }
 
 /* Composer 输入文字：Figma 14px / 行高 22px（base 12px/16px 偏小） */
@@ -1322,6 +1318,37 @@
   .messages-container--virtual
   .timeline-run--end
   .timeline-row--last::after {
+  bottom: auto;
+  height: 21px;
+}
+
+/* 展开卡内接成一条（与 MessageList.css 里那组同源，只是桌面端节点是 12px、
+   中心在 21px，收口档跟着 21）。特异性要比上面两条 `timeline-run--*` 规则高，
+   所以多带一层 `.focus-fold`。 */
+[data-host="desktop"]
+  .messages-container--virtual
+  .focus-fold
+  .focus-fold-body
+  .timeline-row::after {
+  top: 0;
+  bottom: 0;
+  height: auto;
+}
+[data-host="desktop"]
+  .messages-container--virtual
+  .focus-fold
+  .focus-fold-body
+  > :first-child
+  .timeline-row--first::after {
+  top: 21px;
+}
+[data-host="desktop"]
+  .messages-container--virtual
+  .focus-fold
+  .focus-fold-body
+  > :last-child
+  .timeline-row--last::after {
+  top: 0;
   bottom: auto;
   height: 21px;
 }
