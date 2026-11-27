@@ -141,6 +141,10 @@ Examples of false positives to exclude:
 - You must cite the file and line range for each finding.
 - Make a todo list first.
 
+## After the review
+
+After the findings are reported: if \`/verify\` has not run this session and the diff has a runtime surface (not test-only or docs-only), invoke \`/verify\` now — this review checks that the diff reads right; \`/verify\` checks that it runs right.
+
 ## Input
 
 $ARGUMENTS
