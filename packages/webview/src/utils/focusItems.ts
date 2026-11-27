@@ -1,4 +1,6 @@
+import { SEND_USER_FILE_TOOL_NAME } from "wave-agent-sdk/constants";
 import type { Message, MessageBlock } from "../types";
+import { readDeliveredFiles } from "./deliveredFiles";
 
 /**
  * Focus 视图的布局项。
@@ -53,8 +55,28 @@ export interface FocusItems {
 
 const isToolBlock = (block: MessageBlock): boolean => block.type === "tool";
 
-function hasToolBlock(message: Message): boolean {
-  return (message.blocks ?? []).some(isToolBlock);
+/**
+ * 这一块是不是「已经交付成功的文件卡片」（spec ui/focus-view.md「交付内容」）。
+ *
+ * 交付内容属于「结果」而不是「过程」：折进摘要里用户既看不见也点不到，交付就
+ * 等于没发生。判据与 Message 的渲染分支同源 —— 同一个工具名、同一份解析
+ * （`readDeliveredFiles`），只有这一块已经结束、没报错、且真解析出文件才算。
+ * 还在跑、失败、被拒、被中断的一律当普通过程，留在卡内。
+ */
+function isDeliveredFileBlock(block: MessageBlock): boolean {
+  if (block.type !== "tool") return false;
+  if (block.name !== SEND_USER_FILE_TOOL_NAME) return false;
+  if (block.stage !== "end" || block.error || block.success === false) {
+    return false;
+  }
+  return readDeliveredFiles(block).files.length > 0;
+}
+
+/** 这一轮里还能被折起来的工具块 —— 已经交付成功的文件卡片不算。 */
+function hasFoldableToolBlock(message: Message): boolean {
+  return (message.blocks ?? []).some(
+    (block) => isToolBlock(block) && !isDeliveredFileBlock(block),
+  );
 }
 
 /** 最后一块还没结束的工具名（文案「正在执行 X…」用它）。 */
@@ -105,7 +127,9 @@ function countToolBlocks(messages: Message[]): {
   let errors = 0;
   for (const message of messages) {
     for (const block of message.blocks ?? []) {
-      if (block.type !== "tool") continue;
+      // 已经把文件交到用户手里的那次调用不计入摘要：卡片就摆在卡外，再数一遍
+      // 会让卡头的「N 次工具调用」和展开后看到的行数对不上。
+      if (block.type !== "tool" || isDeliveredFileBlock(block)) continue;
       calls++;
       if (block.error || block.success === false) errors++;
     }
@@ -140,24 +164,90 @@ function replyStartIndex(message: Message): number {
   return keptStart < 0 ? textStart : Math.min(textStart, keptStart);
 }
 
+/** 一条消息留在卡外的那半。 */
+interface KeptPart {
+  message: Message;
+  /** 它是原来的哪一条消息（这条消息在可见消息里的下标）。 */
+  sourceIndex: number;
+  /** 是不是这一轮的最后一条消息。 */
+  isTail: boolean;
+  /** 原消息还有一半留在卡里（这条消息横跨两行）。 */
+  hasFoldedPart: boolean;
+}
+
+interface TurnSplit {
+  folded: Message[];
+  kept: KeptPart[];
+  /** 卡内最后一条消息的原下标（摘要覆盖到哪条为止）；没有卡内内容时为 -1。 */
+  foldedEndIndex: number;
+}
+
 /**
- * 只保留一段块的消息副本，用于把一条消息拆成「卡内过程 + 卡外答复」。
+ * 把一轮拆成「卡内」与「卡外」两半（spec ui/focus-view.md 场景 2 +「交付内容」）。
+ *
+ * 两类块留卡外：**轮尾答复段**（末条消息里从 `tailStart` 起的块）与**已经交付成功
+ * 的文件卡片**（`isDeliveredFileBlock`）。其余进卡。交付卡片不受 `tailStart`
+ * 约束 —— 它可能出现在轮中间，只要交付已经完成就该让用户看到，而不是等这一轮
+ * 结束（模型交付完常常还会接着干活）。
  *
  * 渲染层仍按整条消息渲染（`<Message message={…} />` 只认 `blocks`），所以折叠
- * 不需要给 `Message` 加参数；卡外那半沿用的原 id（保持 `data-measured-message-id`
- * 等锚点不变），卡内这半加后缀，避免同一视图里出现两条同 id 的消息行。
+ * 不需要给 `Message` 加参数。一条消息被拆开时：**末条**的卡外那半留原 id（那是
+ * 这一轮露在外面的答复/卡片，`data-measured-message-id` 等锚点跟着它）、卡内那半
+ * 加 `:process`；**更早的**消息主体仍在卡里，所以反过来 —— 卡内留原 id，卡外那半
+ * 加 `:kept`。两种都只为了一件事：同一视图里不出现两条同 id 的消息行。
  */
-function sliceBlocks(
-  message: Message,
-  start: number,
-  end: number,
-  suffix: string,
-): Message {
-  return {
-    ...message,
-    id: message.id + suffix,
-    blocks: (message.blocks ?? []).slice(start, end),
-  };
+function splitTurn(
+  run: Message[],
+  tailStart: number,
+  startMessageIndex: number,
+): TurnSplit {
+  const folded: Message[] = [];
+  const kept: KeptPart[] = [];
+  let foldedEndIndex = -1;
+  run.forEach((message, offset) => {
+    const isTail = offset === run.length - 1;
+    const foldedBlocks: MessageBlock[] = [];
+    const keptBlocks: MessageBlock[] = [];
+    (message.blocks ?? []).forEach((block, blockIndex) => {
+      const inTailReply = isTail && tailStart >= 0 && blockIndex >= tailStart;
+      if (inTailReply || isDeliveredFileBlock(block)) {
+        keptBlocks.push(block);
+      } else {
+        foldedBlocks.push(block);
+      }
+    });
+    if (keptBlocks.length === 0) {
+      folded.push(message);
+      foldedEndIndex = startMessageIndex + offset;
+      return;
+    }
+    if (foldedBlocks.length === 0) {
+      kept.push({
+        message,
+        sourceIndex: startMessageIndex + offset,
+        isTail,
+        hasFoldedPart: false,
+      });
+      return;
+    }
+    folded.push({
+      ...message,
+      id: message.id + (isTail ? ":process" : ""),
+      blocks: foldedBlocks,
+    });
+    foldedEndIndex = startMessageIndex + offset;
+    kept.push({
+      message: {
+        ...message,
+        id: message.id + (isTail ? "" : ":kept"),
+        blocks: keptBlocks,
+      },
+      sourceIndex: startMessageIndex + offset,
+      isTail,
+      hasFoldedPart: true,
+    });
+  });
+  return { folded, kept, foldedEndIndex };
 }
 
 function hasReasoningBlock(messages: Message[]): boolean {
@@ -172,13 +262,17 @@ function hasReasoningBlock(messages: Message[]): boolean {
  * 把可见消息折叠成布局项。
  *
  * 折叠的单位是**一轮**：一条用户消息之后、下一条用户消息之前的连续助手消息。
- * 一轮里最后一条助手消息若已结束且**不含工具块**，它里面的答复（最后一个非空
- * 文本块，以及 notice / compact 说明行）留在卡外，排在它前面的块（思考等）仍进
- * 摘要；这条消息没有任何可留卡外的块（纯思考收尾），或这一轮还在跑 / 最后一次
- * 响应又调了工具时，整轮进摘要，卡外没有答复文本。
+ * 一轮里最后一条助手消息若已结束且**不含可折叠的工具块**（已经交付成功的
+ * `SendUserFile` 不算），它里面的答复（最后一个非空文本块，以及 notice /
+ * compact 说明行）留在卡外，排在它前面的块（思考等）仍进摘要；这条消息没有
+ * 任何可留卡外的块（纯思考收尾），或这一轮还在跑 / 最后一次响应又调了工具时，
+ * 整轮进摘要，卡外没有答复文本。
  *
- * 不折叠的情况只有两种：关闭 focus 视图，以及这一轮没有可折叠的活动（只有一条
- * 纯文本答复）。
+ * **交付内容不参与折叠**：成功交付的文件卡片不管落在哪条消息、哪个位置，都留在
+ * 卡外（spec「交付内容」）—— 它是「结果」，折进去用户就点不到了。
+ *
+ * 不折叠的情况：关闭 focus 视图，以及这一轮没有可折叠的活动（只有一条纯文本
+ * 答复，或只把文件交出来）。
  *
  * `isStreaming` 是「这一轮真的在跑」这个**运行时信号**（宿主 `onLoadingChange`
  * 推过来的那一颗）。折叠行的进行态必须由它说了算，不能只看末条消息长什么样：
@@ -209,28 +303,36 @@ export function buildFocusItems(
   };
 
   const pushFold = (
-    run: Message[],
+    folded: Message[],
+    /** 这一轮占了几条消息（含留在卡外的那些），按它回填行坐标。 */
+    coveredCount: number,
+    /** 卡内最后一条消息的原下标 —— 摘要覆盖到的位置。 */
+    endMessageIndex: number,
     startMessageIndex: number,
     turnKey: string,
     live: boolean,
   ) => {
-    const { calls, errors } = countToolBlocks(run);
+    const { calls, errors } = countToolBlocks(folded);
     let runningToolName: string | undefined;
-    for (let index = run.length - 1; index >= 0 && !runningToolName; index--) {
-      runningToolName = openToolName(run[index]);
+    for (
+      let index = folded.length - 1;
+      index >= 0 && !runningToolName;
+      index--
+    ) {
+      runningToolName = openToolName(folded[index]);
     }
-    for (let offset = 0; offset < run.length; offset++) {
+    for (let offset = 0; offset < coveredCount; offset++) {
       rowIndexByMessageIndex[startMessageIndex + offset] = items.length;
     }
     items.push({
       kind: "fold",
       key: "focus-fold:" + turnKey,
-      messages: run,
+      messages: folded,
       startMessageIndex,
-      endMessageIndex: startMessageIndex + run.length - 1,
+      endMessageIndex,
       callCount: calls,
       errorCount: errors,
-      hasReasoning: hasReasoningBlock(run),
+      hasReasoning: hasReasoningBlock(folded),
       live,
       runningToolName,
     });
@@ -260,7 +362,7 @@ export function buildFocusItems(
     // 排在它前面的块（思考等）仍归本轮折叠。没有这样的块（纯思考收尾）就整轮进卡。
     const ended =
       endsWithErrorNotice(lastMessage) ||
-      (!hasToolBlock(lastMessage) && !messageIsLive(lastMessage));
+      (!hasFoldableToolBlock(lastMessage) && !messageIsLive(lastMessage));
     const replyStart = ended ? replyStartIndex(lastMessage) : -1;
     // 折叠行的 key 用**这一轮的用户消息**，不用首尾消息 id：进行中的一轮
     // 每来一条新消息尾部就会变，首尾 id 会让 key 跟着漂、把用户刚展开的卡
@@ -269,20 +371,12 @@ export function buildFocusItems(
     const previous = index > 0 ? messages[index - 1] : undefined;
     const turnKey =
       previous && previous.role !== "assistant" ? previous.id : run[0].id;
-    // 卡内消息：末条之前的全部；末条自己若只有一部分是答复，前半段也进卡。
-    const folded =
-      !ended || replyStart < 0
-        ? run
-        : replyStart === 0
-          ? run.slice(0, -1)
-          : [
-              ...run.slice(0, -1),
-              sliceBlocks(lastMessage, 0, replyStart, ":process"),
-            ];
-    if (folded.length <= 0) {
-      run.forEach((runMessage, offset) =>
-        pushMessage(runMessage, index + offset),
-      );
+    // 卡内 / 卡外两半：交付成功的文件卡片不管落在哪条消息里都留卡外
+    // （「交付内容」），轮尾答复段按块切（场景 2）。见 splitTurn。
+    const { folded, kept, foldedEndIndex } = splitTurn(run, replyStart, index);
+    if (folded.length === 0) {
+      // 这一轮没有可折叠的活动（例如只有一条把文件交出来的响应）：不出摘要行。
+      kept.forEach((part) => pushMessage(part.message, part.sourceIndex));
     } else {
       // 进行态的口径是**整轮**，不是「此刻有没有未结束的块」：工具刚跑完、
       // 模型还没开始下一段响应时，所有块都是 end，但这一轮并没结束。按块级
@@ -299,22 +393,32 @@ export function buildFocusItems(
       // 的用户消息，它一定结束了（哪怕它自己是以中断形状收尾的）。少了这一条，
       // 一条历史中断轮会在后面那轮跑着的时候冒充进行态。
       const isTailRun = runEnd >= messages.length;
-      pushFold(folded, index, turnKey, isTailRun && !ended && isStreaming);
-      // 卡外只留答复段。答复起点不在 0 时，前面的块已经在卡内，这里切掉它们。
-      if (ended && replyStart > 0) {
-        // 这条消息横跨两行：过程半在刚推上去的卡里，答复在下面这一行。
-        processRowByMessageIndex[index + run.length - 1] = items.length - 1;
-        pushMessage(
-          sliceBlocks(
-            lastMessage,
-            replyStart,
-            (lastMessage.blocks ?? []).length,
-            "",
-          ),
-          index + run.length - 1,
-        );
-      } else if (ended && replyStart === 0) {
-        pushMessage(lastMessage, index + run.length - 1);
+      pushFold(
+        folded,
+        run.length,
+        foldedEndIndex,
+        index,
+        turnKey,
+        isTailRun && !ended && isStreaming,
+      );
+      const foldRow = items.length - 1;
+      for (const part of kept) {
+        // 末条消息：行坐标指向卡外那半（答复与交付卡片露在这里），卡内那半由
+        // processRowByMessageIndex 单独记 —— reveal 要一并展开，否则会「跳过来
+        // 看到答复、思考仍收着」（场景 8）。更早的消息主体仍在卡里：行坐标不动，
+        // 卡外那半只是多出来的一行。
+        if (part.isTail) {
+          rowIndexByMessageIndex[part.sourceIndex] = items.length;
+          if (part.hasFoldedPart) {
+            processRowByMessageIndex[part.sourceIndex] = foldRow;
+          }
+        }
+        items.push({
+          kind: "message",
+          key: part.message.id,
+          message: part.message,
+          messageIndex: part.sourceIndex,
+        });
       }
     }
     index = runEnd;
