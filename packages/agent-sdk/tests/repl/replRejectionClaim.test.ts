@@ -1,7 +1,9 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   claimUnhandledRejection,
+  installUnhandledRejectionClaim,
   markStoppedError,
+  rethrowUnhandledRejection,
   REPL_STOPPED_REJECTION_NOTE,
   REPL_UNREAD_REJECTION_NOTE,
 } from "../../src/repl/replRejectionClaim.js";
@@ -55,8 +57,12 @@ function nextUnhandled(): Promise<[unknown, unknown]> {
   });
 }
 
+/** Installed listeners, in install order — removed again after each test. */
+const disposers: Array<() => void> = [];
+
 afterEach(() => {
   while (keys.length > 0) releaseReplSandbox(keys.pop() as string);
+  while (disposers.length > 0) (disposers.pop() as () => void)();
 });
 
 describe("repl rejection claim", () => {
@@ -101,5 +107,65 @@ describe("repl rejection claim", () => {
     const stopped = new Error("stopped");
     markStoppedError(stopped);
     expect(claimUnhandledRejection(stopped)).toBe(REPL_STOPPED_REJECTION_NOTE);
+  });
+});
+
+/**
+ * The wiring every session-holding process installs: ask first, and only crash
+ * on what the REPL does not claim. The process semantics matter here — with a
+ * listener installed Node's default is gone, so the host's own crash path is
+ * the only thing left to decide what happens.
+ */
+describe("installUnhandledRejectionClaim", () => {
+  function install() {
+    const report = vi.fn();
+    const crash = vi.fn();
+    disposers.push(installUnhandledRejectionClaim({ report, crash }));
+    return { report, crash };
+  }
+
+  it("reports a rejection the REPL owns instead of crashing", async () => {
+    const host = install();
+    const event = nextUnhandled();
+    const sandbox = open();
+    const outcome = await sandbox.run("Promise.reject(new Error('boom')); 0", {
+      toolNames: [],
+      timeoutMs: 2_000,
+    });
+    expect(outcome.ok).toBe(true);
+    // The event really reached the process: what is under test is what the
+    // installed listener did with it, not the claim table alone.
+    await event;
+
+    expect(host.report).toHaveBeenCalledWith(REPL_UNREAD_REJECTION_NOTE);
+    expect(host.crash).not.toHaveBeenCalled();
+  });
+
+  it("crashes on a rejection the REPL does not own", async () => {
+    const host = install();
+    const hostBug = new Error("a host bug");
+    void Promise.reject(hostBug);
+
+    await vi.waitFor(() => {
+      expect(host.crash).toHaveBeenCalledWith(hostBug);
+    });
+    expect(host.report).not.toHaveBeenCalled();
+  });
+
+  it("leaves the process alone once the disposer ran", () => {
+    const before = process.listeners("unhandledRejection").length;
+    const host = install();
+    expect(process.listeners("unhandledRejection").length).toBe(before + 1);
+
+    (disposers.pop() as () => void)();
+    expect(process.listeners("unhandledRejection").length).toBe(before);
+    expect(host.crash).not.toHaveBeenCalled();
+  });
+
+  it("offers a host with no crash handler of its own Node's default", () => {
+    const reason = new Error("a host bug");
+    // Thrown from inside the listener, this lands exactly where Node's own
+    // unhandled-rejection default puts it: an uncaught exception, exit 1.
+    expect(() => rethrowUnhandledRejection(reason)).toThrow(reason);
   });
 });
