@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   renderChatApp,
@@ -50,6 +51,33 @@ describe("聚焦视图", () => {
       MockDataGenerator.createUserMessage("第二问", "u2"),
       MockDataGenerator.createAssistantMessage("第二轮的答复", "a4"),
     ];
+  }
+
+  /** 一条 `SendUserFile` 响应：结果里带一个已落盘的文件（卡片据此渲染）。 */
+  function deliveryMessage() {
+    const message = MockDataGenerator.createAssistantMessageWithTool(
+      "",
+      "SendUserFile",
+      "{}",
+      "已交付",
+    );
+    const blocks = (message.blocks ?? []).map((block) =>
+      block.type === "tool"
+        ? {
+            ...block,
+            data: {
+              attachments: [
+                {
+                  path: join("fake", "project", "report.md"),
+                  name: "report.md",
+                  kind: "text",
+                },
+              ],
+            },
+          }
+        : block,
+    );
+    return { ...message, blocks };
   }
 
   async function renderWith(
@@ -403,6 +431,35 @@ describe("聚焦视图", () => {
     // 失败提示是「轮尾答复」：不含工具块，按轮尾规则留在卡外。折叠不能把
     // 报错吞进摘要里 —— 用户必须在流里看见这一轮失败了。
     expect(transcriptText()).toContain("模型报错了");
+    expect(screen.getByTestId("focus-fold").textContent).toContain(
+      "1 次工具调用",
+    );
+  });
+
+  it("交付的文件卡片不进折叠卡：不展开就能看到、能点", async () => {
+    // spec ui/focus-view.md「交付内容」：交付是「结果」不是「过程」。模型交付完
+    // 常常就收工，按「末条带工具块就整轮进卡」的老规则，卡片会被折进去 ——
+    // 用户既看不见也点不到，交付等于没发生。
+    window.localStorage.setItem(FOCUS_KEY, "1");
+    await renderWith([
+      MockDataGenerator.createUserMessage("帮我出报告", "u1"),
+      MockDataGenerator.createAssistantMessageWithTool(
+        "",
+        "Read",
+        "{}",
+        "文件内容",
+      ),
+      deliveryMessage(),
+    ]);
+
+    await waitFor(() =>
+      expect(screen.getAllByTestId("focus-fold")).toHaveLength(1),
+    );
+    // 卡是收着的，但卡片在卡外：文件名看得见、卡片可点。
+    expect(screen.queryAllByTestId("focus-fold-body")).toHaveLength(0);
+    expect(transcriptText()).toContain("report.md");
+    expect(document.querySelectorAll(".delivered-file")).toHaveLength(1);
+    // 已交付的那次调用不计入摘要的调用数（卡片已经独立可见）。
     expect(screen.getByTestId("focus-fold").textContent).toContain(
       "1 次工具调用",
     );

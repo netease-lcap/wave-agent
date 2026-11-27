@@ -1,4 +1,6 @@
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { SEND_USER_FILE_TOOL_NAME } from "wave-agent-sdk/constants";
 import type { Message, MessageBlock } from "wave-agent-sdk/types";
 import { buildFocusItems } from "../../src/utils/focusItems";
 
@@ -32,6 +34,29 @@ const tool = (
     id,
     name: "Bash",
     stage,
+    ...extra,
+  }) as unknown as MessageBlock;
+
+/** 一次 `SendUserFile` 调用：结果里带一个已落盘的文件。 */
+const delivery = (
+  id: string,
+  stage: "running" | "end" = "end",
+  extra: Record<string, unknown> = {},
+): MessageBlock =>
+  ({
+    type: "tool",
+    id,
+    name: SEND_USER_FILE_TOOL_NAME,
+    stage,
+    data: {
+      attachments: [
+        {
+          path: join("fake", "project", "report.md"),
+          name: "report.md",
+          kind: "text",
+        },
+      ],
+    },
     ...extra,
   }) as unknown as MessageBlock;
 
@@ -409,5 +434,131 @@ describe("buildFocusItems", () => {
       "fold",
     ]);
     expect(rowIndexByMessageIndex).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it("轮尾只有一次成功交付时，卡片留在卡外、也不计入工具调用数", () => {
+    // spec ui/focus-view.md「交付内容」：交付是「结果」不是「过程」。模型交付完
+    // 常常就收工 —— 末条以工具块收尾，按老规则整轮进卡，卡片用户根本看不见。
+    const messages = [
+      user("u1"),
+      assistant("a1", [tool("t1", "end")]),
+      assistant("a2", [delivery("d1")]),
+    ];
+    const { items, rowIndexByMessageIndex } = buildFocusItems(
+      messages,
+      true,
+      false,
+    );
+
+    expect(items.map((item) => item.kind)).toEqual([
+      "message",
+      "fold",
+      "message",
+    ]);
+    const fold = items[1];
+    if (fold.kind !== "fold") throw new Error("expected fold");
+    expect(fold.messages.map((message) => message.id)).toEqual(["a1"]);
+    expect(fold.callCount).toBe(1);
+    expect(fold.endMessageIndex).toBe(1);
+    // 卡外那行就是原消息（锚点不变），里面是那张卡片。
+    const card = items[2];
+    if (card.kind !== "message") throw new Error("expected message");
+    expect(card.message.id).toBe("a2");
+    expect(card.message.blocks).toHaveLength(1);
+    // 末条消息的行坐标指向卡外那半。
+    expect(rowIndexByMessageIndex).toEqual([0, 1, 2]);
+  });
+
+  it("轮中间的交付也留卡外，同一条消息的其余块仍收在卡里", () => {
+    const messages = [
+      user("u1"),
+      assistant("a1", [tool("t1", "end"), delivery("d1"), tool("t2", "end")]),
+      assistant("a2", [text("答复")]),
+    ];
+    const { items, rowIndexByMessageIndex } = buildFocusItems(
+      messages,
+      true,
+      false,
+    );
+
+    expect(items.map((item) => item.kind)).toEqual([
+      "message",
+      "fold",
+      "message",
+      "message",
+    ]);
+    const fold = items[1];
+    if (fold.kind !== "fold") throw new Error("expected fold");
+    // 卡内那半沿用原 id（主体仍在卡里），卡外那半加后缀。
+    expect(fold.messages.map((message) => message.id)).toEqual(["a1"]);
+    expect(fold.messages[0].blocks.map((block) => block.type)).toEqual([
+      "tool",
+      "tool",
+    ]);
+    expect(fold.callCount).toBe(2);
+    const card = items[2];
+    if (card.kind !== "message") throw new Error("expected message");
+    expect(card.message.id).toBe("a1:kept");
+    expect(card.message.blocks).toHaveLength(1);
+    // 更早那条消息的行坐标不动：它的主体在卡里。
+    expect(rowIndexByMessageIndex).toEqual([0, 1, 3]);
+  });
+
+  it("交付与答复同在一条消息里时，两者都留卡外并按原顺序排列", () => {
+    const messages = [
+      user("u1"),
+      assistant("a1", [tool("t1", "end")]),
+      assistant("a2", [delivery("d1"), text("答复")]),
+    ];
+    const { items } = buildFocusItems(messages, true, false);
+
+    expect(items.map((item) => item.kind)).toEqual([
+      "message",
+      "fold",
+      "message",
+    ]);
+    const tail = items[2];
+    if (tail.kind !== "message") throw new Error("expected message");
+    expect(tail.message.id).toBe("a2");
+    expect(tail.message.blocks.map((block) => block.type)).toEqual([
+      "tool",
+      "text",
+    ]);
+  });
+
+  it("交付失败或还在跑的 SendUserFile 按普通过程处理，仍收在卡里", () => {
+    const failed = buildFocusItems(
+      [
+        user("u1"),
+        assistant("a1", [delivery("d1", "end", { success: false })]),
+      ],
+      true,
+      false,
+    ).items;
+    expect(failed.map((item) => item.kind)).toEqual(["message", "fold"]);
+    const failedFold = failed[1];
+    if (failedFold.kind !== "fold") throw new Error("expected fold");
+    expect(failedFold.callCount).toBe(1);
+    expect(failedFold.errorCount).toBe(1);
+
+    const running = buildFocusItems(
+      [user("u1"), assistant("a1", [delivery("d1", "running")])],
+      true,
+      true,
+    ).items;
+    expect(running.map((item) => item.kind)).toEqual(["message", "fold"]);
+    const runningFold = running[1];
+    if (runningFold.kind !== "fold") throw new Error("expected fold");
+    expect(runningFold.runningToolName).toBe(SEND_USER_FILE_TOOL_NAME);
+  });
+
+  it("一轮只有一次交付时不出摘要行（没有可折叠的活动）", () => {
+    const messages = [user("u1"), assistant("a1", [delivery("d1")])];
+    const { items } = buildFocusItems(messages, true, false);
+
+    expect(items.map((item) => item.kind)).toEqual(["message", "message"]);
+    const card = items[1];
+    if (card.kind !== "message") throw new Error("expected message");
+    expect(card.message.id).toBe("a1");
   });
 });
