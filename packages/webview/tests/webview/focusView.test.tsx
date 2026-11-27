@@ -122,8 +122,8 @@ describe("聚焦视图", () => {
     // 卡外的两问一答（第一轮答复 + 第二轮）照常显示。
     await waitFor(() => expect(transcriptText()).toContain("第一轮的答复"));
     expect(transcriptText()).toContain("第二轮的答复");
-    // 卡内消息收起时不渲染。
-    expect(screen.queryByTestId("focus-fold-body")).toBeNull();
+    // 卡内活动收起时没有自己的行（只有卡头那一行）。
+    expect(document.querySelectorAll("[data-in-fold]")).toHaveLength(0);
   });
 
   it("点卡头展开这一轮，再点收起", async () => {
@@ -134,20 +134,53 @@ describe("聚焦视图", () => {
     );
 
     fireEvent.click(screen.getByTestId("focus-fold-head"));
+    // 展开 = 这一轮的两条活动各自回到虚拟列表（对齐 CC 的行粒度），
+    // 不是把整轮塞进卡头那一行里。
     await waitFor(() =>
-      expect(screen.getByTestId("focus-fold-body")).toBeInTheDocument(),
+      expect(document.querySelectorAll("[data-in-fold]")).toHaveLength(2),
     );
     expect(
       screen.getByTestId("focus-fold-head").getAttribute("aria-expanded"),
     ).toBe("true");
+    // 时间线的两端落在卡内的真实活动上：起笔给第一条卡内行（卡头不画点），
+    // 收口给最后一条卡内行（卡外答复不画点，线不能拉到它那里）。
+    expect(
+      document.querySelector("[data-in-fold].timeline-run--lead"),
+    ).not.toBeNull();
+    expect(
+      document.querySelector("[data-in-fold].timeline-run--tail"),
+    ).not.toBeNull();
 
     fireEvent.click(screen.getByTestId("focus-fold-head"));
     await waitFor(() =>
-      expect(screen.queryByTestId("focus-fold-body")).toBeNull(),
+      expect(document.querySelectorAll("[data-in-fold]")).toHaveLength(0),
     );
     expect(
       screen.getByTestId("focus-fold-head").getAttribute("aria-expanded"),
     ).toBe("false");
+  });
+
+  it("卡内只有一条活动时整段竖线关掉（两头都没有可连的对象）", async () => {
+    // 一轮只有一次工具调用：展开后卡内就一行，它的上下都没有别的节点。线若照
+    // 常画就是从节点往下的一截孤立短线 —— 宁可关掉（与 single run 同一档）。
+    window.localStorage.setItem(FOCUS_KEY, "1");
+    await renderWith([
+      MockDataGenerator.createUserMessage("第一问", "u1"),
+      MockDataGenerator.createAssistantMessageWithTool("", "Read", "{}", "ok"),
+      MockDataGenerator.createAssistantMessage("第一轮的答复", "a3"),
+    ]);
+    await waitFor(() =>
+      expect(screen.getAllByTestId("focus-fold")).toHaveLength(1),
+    );
+
+    fireEvent.click(screen.getByTestId("focus-fold-head"));
+    await waitFor(() =>
+      expect(document.querySelectorAll("[data-in-fold]")).toHaveLength(1),
+    );
+    expect(
+      document.querySelector("[data-in-fold].timeline-run--single"),
+    ).not.toBeNull();
+    expect(document.querySelector(".timeline-run--lead")).toBeNull();
   });
 
   it("轮尾那条消息里思考与答复并存时，思考收进卡、卡外只留答复", async () => {
@@ -183,11 +216,12 @@ describe("聚焦视图", () => {
 
     fireEvent.click(screen.getByTestId("focus-fold-head"));
     await waitFor(() =>
-      expect(screen.getByTestId("focus-fold-body")).toBeInTheDocument(),
+      expect(document.querySelectorAll("[data-in-fold]")).toHaveLength(2),
     );
-    // 展开卡后思考才出现，且仍在卡内。
+    // 展开卡后思考才出现，且落在卡内那几行里（思考块的正文要再点开，
+    // 这里只锚它作为一行已经渲染出来）。
     expect(document.querySelectorAll(".reasoning-block")).toHaveLength(1);
-    expect(screen.getByTestId("focus-fold-body").textContent).toContain("思考");
+    expect(transcriptText()).toContain("思考");
   });
 
   it("一轮里上百次工具调用也只收成一行，DOM 行数仍然有界", async () => {
@@ -222,6 +256,40 @@ describe("聚焦视图", () => {
     );
   });
 
+  it("一轮 200 次工具调用展开后，DOM 里仍只有视口内那几行", async () => {
+    // 展开不是「把 200 条一次性挂出来」：这一轮变成 201 个虚拟行，仍然只挂
+    // 视口内的那几行（对齐 CC 桌面端 —— 展开就是把 step 放回列表）。
+    window.localStorage.setItem(FOCUS_KEY, "1");
+    const messages = [MockDataGenerator.createUserMessage("干一大票", "u1")];
+    for (let i = 0; i < 200; i++) {
+      messages.push(
+        MockDataGenerator.createAssistantMessageWithTool(
+          "",
+          "Read",
+          "{}",
+          "ok",
+        ),
+      );
+    }
+    messages.push(MockDataGenerator.createAssistantMessage("答复", "a-end"));
+
+    await renderWith(messages);
+    await waitFor(() =>
+      expect(screen.getAllByTestId("focus-fold")).toHaveLength(1),
+    );
+
+    fireEvent.click(screen.getByTestId("focus-fold-head"));
+    const container = screen.getByTestId("messages-container");
+    await waitFor(() =>
+      expect(container.querySelectorAll(".virtual-row").length).toBeLessThan(
+        50,
+      ),
+    );
+    expect(container.querySelectorAll("[data-in-fold]").length).toBeLessThan(
+      50,
+    );
+  });
+
   it("搜索命中落在被折叠的活动里时，这一轮自动展开并滚到命中", async () => {
     window.localStorage.setItem(FOCUS_KEY, "1");
     await renderWith([
@@ -238,7 +306,7 @@ describe("聚焦视图", () => {
     await waitFor(() =>
       expect(screen.getAllByTestId("focus-fold")).toHaveLength(1),
     );
-    expect(screen.queryByTestId("focus-fold-body")).toBeNull();
+    expect(document.querySelectorAll("[data-in-fold]")).toHaveLength(0);
 
     act(() => {
       fireEvent.keyDown(window, { key: "f", ctrlKey: true });
@@ -252,12 +320,13 @@ describe("聚焦视图", () => {
         "1/1",
       ),
     );
+    // 卡展开后，命中所在的那条活动有自己的行了（虚拟列表里的一行）。
     await waitFor(() =>
-      expect(screen.getByTestId("focus-fold-body")).toBeInTheDocument(),
+      expect(
+        document.querySelectorAll("[data-in-fold]").length,
+      ).toBeGreaterThan(0),
     );
-    expect(screen.getByTestId("focus-fold-body").textContent).toContain(
-      "needle 在这一步",
-    );
+    expect(transcriptText()).toContain("needle 在这一步");
   });
 
   it("搜索命中落在轮尾那条消息的思考里时，装思考的那张卡也跟着展开", async () => {
@@ -284,7 +353,7 @@ describe("聚焦视图", () => {
       expect(screen.getAllByTestId("focus-fold")).toHaveLength(1),
     );
     // 起始态：思考收在卡里，卡外只有答复。
-    expect(screen.queryByTestId("focus-fold-body")).toBeNull();
+    expect(document.querySelectorAll("[data-in-fold]")).toHaveLength(0);
     expect(transcriptText()).toContain("这一轮的答复");
 
     act(() => {
@@ -300,7 +369,9 @@ describe("聚焦视图", () => {
     );
     // 命中在卡内的思考里：这张卡必须自己展开，否则命中的那段文本根本没渲染。
     await waitFor(() =>
-      expect(screen.getByTestId("focus-fold-body")).toBeInTheDocument(),
+      expect(
+        document.querySelectorAll("[data-in-fold]").length,
+      ).toBeGreaterThan(0),
     );
     expect(document.querySelectorAll(".reasoning-block")).toHaveLength(1);
   });
@@ -318,7 +389,7 @@ describe("聚焦视图", () => {
     );
     fireEvent.click(screen.getByTestId("focus-fold-head"));
     await waitFor(() =>
-      expect(screen.getByTestId("focus-fold-body")).toBeInTheDocument(),
+      expect(document.querySelectorAll("[data-in-fold]")).toHaveLength(2),
     );
 
     // 同一轮又跑完一次工具：卡的内容变长，但「展开着」这个事实必须留着。
@@ -338,7 +409,8 @@ describe("聚焦视图", () => {
     await waitFor(() =>
       expect(screen.getAllByTestId("focus-fold")).toHaveLength(1),
     );
-    expect(screen.getByTestId("focus-fold-body")).toBeInTheDocument();
+    // 展开着的那三条活动又各自成行（新长出来的一条也进来了）。
+    expect(document.querySelectorAll("[data-in-fold]")).toHaveLength(3);
     // 这一轮还没结束：卡头保持进行态，轮内不出任何计数（避免文案来回抖）。
     const text = screen.getByTestId("focus-fold").textContent ?? "";
     expect(text).toMatch(/正在(执行|思考)/);
@@ -456,7 +528,7 @@ describe("聚焦视图", () => {
       expect(screen.getAllByTestId("focus-fold")).toHaveLength(1),
     );
     // 卡是收着的，但卡片在卡外：文件名看得见、卡片可点。
-    expect(screen.queryAllByTestId("focus-fold-body")).toHaveLength(0);
+    expect(document.querySelectorAll("[data-in-fold]")).toHaveLength(0);
     expect(transcriptText()).toContain("report.md");
     expect(document.querySelectorAll(".delivered-file")).toHaveLength(1);
     // 已交付的那次调用不计入摘要的调用数（卡片已经独立可见）。

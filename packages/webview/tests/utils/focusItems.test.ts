@@ -147,7 +147,9 @@ describe("buildFocusItems", () => {
     ]);
     const fold = items[1];
     if (fold.kind !== "fold") throw new Error("expected fold");
-    // 卡内最后一份是 a2 的前段（只有思考），id 加后缀避免同一视图出现两条同 id。
+    // 卡内最后一份是 a2 的前段（只有思考）。这条消息横跨两行（思考在卡里、
+    // 答复在卡外），两半都各自成行，所以两半都换 id 后缀 —— 同一视图里不能
+    // 出现两条同 id 的行（虚拟列表的 key 与测量锚点都会撞）。
     expect(fold.messages.map((message) => message.id)).toEqual([
       "a1",
       "a2:process",
@@ -156,14 +158,14 @@ describe("buildFocusItems", () => {
       "reasoning",
     ]);
     expect(fold.hasReasoning).toBe(true);
-    // 卡外那半含答复、仍用原 id。
+    // 卡外那半含答复，带 :kept 后缀（reveal 的锚点跟着它）。
     const tail = items[2];
     if (tail.kind !== "message") throw new Error("expected message");
-    expect(tail.message.id).toBe("a2");
+    expect(tail.message.id).toBe("a2:kept");
     expect(tail.message.blocks.map((block) => block.type)).toEqual(["text"]);
     // 行坐标按消息算：这条消息的答复在卡外，所以它整条指向卡外那一行。
     expect(rowIndexByMessageIndex).toEqual([0, 1, 2]);
-    // 但它还有一半在卡里（思考那条 a2:process）。reveal 只按上面那份坐标展开
+    // 但它还有一半在卡里（思考那半）。reveal 只按上面那份坐标展开
     // 会「跳过来看到答复、思考仍收着」，所以过程半的卡行坐标单独给一份：
     // 只有被拆开的那条（a2，下标 2）有，指向卡那一行（1）。
     expect(processRowByMessageIndex).toEqual([-1, -1, 1]);
@@ -489,8 +491,9 @@ describe("buildFocusItems", () => {
     ]);
     const fold = items[1];
     if (fold.kind !== "fold") throw new Error("expected fold");
-    // 卡内那半沿用原 id（主体仍在卡里），卡外那半加后缀。
-    expect(fold.messages.map((message) => message.id)).toEqual(["a1"]);
+    // 两半各自成行，各自换后缀：卡内那半是 :process，卡外那半是 :kept
+    // （reveal 的锚点跟着卡外那半）。
+    expect(fold.messages.map((message) => message.id)).toEqual(["a1:process"]);
     expect(fold.messages[0].blocks.map((block) => block.type)).toEqual([
       "tool",
       "tool",
@@ -550,6 +553,74 @@ describe("buildFocusItems", () => {
     const runningFold = running[1];
     if (runningFold.kind !== "fold") throw new Error("expected fold");
     expect(runningFold.runningToolName).toBe(SEND_USER_FILE_TOOL_NAME);
+  });
+
+  it("展开的卡把这一轮的活动拆成各自的行，行坐标各指自己的行", () => {
+    // 对齐 CC 桌面端：展开 = 把收起的活动放回列表，每条活动各自是虚拟列表的一
+    // 行（行高与挂载都按行算）。卡头仍占一行，卡外答复不动。
+    const messages = [
+      user("u1"),
+      assistant("a1", [tool("t1", "end")]),
+      assistant("a2", [tool("t2", "end")]),
+      assistant("a3", [text("这一轮的答复")]),
+    ];
+    const { items, rowIndexByMessageIndex, processRowByMessageIndex } =
+      buildFocusItems(messages, true, false, new Set(["focus-fold:u1"]));
+
+    expect(items.map((item) => item.kind)).toEqual([
+      "message",
+      "fold",
+      "message",
+      "message",
+      "message",
+    ]);
+    expect(rowIndexByMessageIndex).toEqual([0, 2, 3, 4]);
+    // 展开态整条消息就是自己的行，「过程半」这份坐标不再需要。
+    expect(processRowByMessageIndex).toEqual([-1, -1, -1, -1]);
+    const inFoldKeys: string[] = [];
+    for (const item of items) {
+      if (item.kind === "message" && item.foldKey) {
+        inFoldKeys.push(item.key);
+        expect(item.foldKey).toBe("focus-fold:u1");
+      }
+    }
+    expect(inFoldKeys).toEqual(["a1", "a2"]);
+  });
+
+  it("展开态卡内只放过程半，轮尾答复仍留在卡外", () => {
+    // 展开不改变「哪一半属于卡内」：卡内是这一轮被折叠的活动（思考），答复一直
+    // 是卡外那一行（spec 场景 2 与 4）。两半各自成行、各自带后缀。
+    const messages = [
+      user("u1"),
+      assistant("a1", [tool("t1", "end")]),
+      assistant("a2", [
+        { type: "reasoning", content: "想一想", stage: "end" },
+        { type: "text", content: "这一轮的答复", stage: "end" },
+      ]),
+    ];
+    const { items, rowIndexByMessageIndex, processRowByMessageIndex } =
+      buildFocusItems(messages, true, false, new Set(["focus-fold:u1"]));
+
+    expect(items.map((item) => item.kind)).toEqual([
+      "message",
+      "fold",
+      "message",
+      "message",
+      "message",
+    ]);
+    const inFold: Message[] = [];
+    for (const item of items) {
+      if (item.kind === "message" && item.foldKey) inFold.push(item.message);
+    }
+    expect(inFold.map((message) => message.id)).toEqual(["a1", "a2:process"]);
+    expect(inFold[1].blocks.map((block) => block.type)).toEqual(["reasoning"]);
+    const outside = items[4];
+    if (outside.kind !== "message") throw new Error("expected message");
+    expect(outside.message.id).toBe("a2:kept");
+    expect(outside.foldKey).toBeUndefined();
+    // 整条消息的行坐标指卡外那半；过程半单独一份（reveal 用它展开卡）。
+    expect(rowIndexByMessageIndex).toEqual([0, 2, 4]);
+    expect(processRowByMessageIndex).toEqual([-1, -1, 3]);
   });
 
   it("一轮只有一次交付时不出摘要行（没有可折叠的活动）", () => {

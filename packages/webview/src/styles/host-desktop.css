@@ -1321,46 +1321,23 @@
   height: 21px;
 }
 
-/* 展开卡内接成一条（与 MessageList.css 里那组同源，只是桌面端节点是 12px、
-   中心在 21px，收口档跟着 21）。特异性要比上面两条 `timeline-run--*` 规则高，
-   所以多带一层 `.focus-fold`。 */
+/* 桌面端节点 12px、中心在 21px：展开卡第一条活动行的起笔跟着 21
+   （base 那条给的是 18）。 */
 [data-host="desktop"]
   .messages-container--virtual
-  .focus-fold
-  .focus-fold-body
-  .timeline-row::after {
-  top: 0;
-  bottom: 0;
-  height: auto;
-}
-[data-host="desktop"]
-  .messages-container--virtual
-  .focus-fold
-  .focus-fold-body
-  > :first-child
-  .timeline-row--first::after {
+  .timeline-run--lead
+  > [data-message-id]
+  > .timeline-row--first::after {
   top: 21px;
 }
 [data-host="desktop"]
   .messages-container--virtual
-  .focus-fold
-  .focus-fold-body
-  > :last-child
-  .timeline-row--last::after {
+  .timeline-run--tail
+  > [data-message-id]
+  > .timeline-row--last::after {
   top: 0;
   bottom: auto;
   height: 21px;
-}
-/* 卡内单行 run（既 --first 又 --last）且是卡内**唯一**一块：上方没有可连的对象，
-   同口径整条关掉 —— 否则上面两条收口互相覆盖成「点上方多一截 21px 的线」。卡里
-   还有别的块时要留着那段「行顶 → 节点中心」，它是把上一块的线接上的补丁。 */
-[data-host="desktop"]
-  .messages-container--virtual
-  .focus-fold
-  .focus-fold-body
-  > :only-child
-  .timeline-row--first.timeline-row--last::after {
-  display: none;
 }
 
 /* 思考块：Figma 标题 14px/600 #1F2329、正文 14px/400 #6C7076、

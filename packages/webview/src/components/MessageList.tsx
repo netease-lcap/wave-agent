@@ -240,6 +240,19 @@ export const MessageList = forwardRef<
   }, [messages]);
 
   /**
+   * 哪些折叠行当前展开着。只活在页面生命周期里：刷新、切会话、切走聚焦视图都
+   * 回到「全部收起」（spec ui/focus-view.md 场景 4）。
+   */
+  const [expandedFolds, setExpandedFolds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  useEffect(() => {
+    if (!focusView) {
+      setExpandedFolds((prev) => (prev.size === 0 ? prev : new Set()));
+    }
+  }, [focusView]);
+
+  /**
    * 聚焦视图：可见消息先过一层布局项（spec ui/focus-view.md）。折叠只改这里 ——
    * 虚拟列表的行、行高、时间线都跟着 items 走，消息本身一个字都不动。
    */
@@ -247,8 +260,18 @@ export const MessageList = forwardRef<
     // `isStreaming` 是折叠行进行态的**运行时信号**：只看末条消息形状的话，
     // 中断那一轮（工具块被 finalize 成 end、SDK 不再补消息）会永久停在
     // 「正在思考…」（spec ui/focus-view.md「失败与中断」要求按已结束处理）。
-    () => buildFocusItems(visibleMessages, !!focusView, !!isStreaming),
-    [visibleMessages, focusView, isStreaming],
+    //
+    // 展开的卡要把卡里的活动拆成独立的行，所以布局项也依赖 `expandedFolds`：
+    // 一行收起态卡与「卡头 + N 条活动行」是两次不同的布局，不是同一批行上的
+    // 渲染差异（见 utils/focusItems 的展开分支）。
+    () =>
+      buildFocusItems(
+        visibleMessages,
+        !!focusView,
+        !!isStreaming,
+        expandedFolds,
+      ),
+    [visibleMessages, focusView, isStreaming, expandedFolds],
   );
   const items = focusLayout.items;
   const itemsRef = useRef<FocusItem[]>(items);
@@ -263,19 +286,6 @@ export const MessageList = forwardRef<
     focusLayout.processRowByMessageIndex,
   );
   processRowByMessageIndexRef.current = focusLayout.processRowByMessageIndex;
-
-  /**
-   * 哪些折叠行当前展开着。只活在页面生命周期里：刷新、切会话、切走聚焦视图都
-   * 回到「全部收起」（spec ui/focus-view.md 场景 4）。
-   */
-  const [expandedFolds, setExpandedFolds] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
-  useEffect(() => {
-    if (!focusView) {
-      setExpandedFolds((prev) => (prev.size === 0 ? prev : new Set()));
-    }
-  }, [focusView]);
 
   const keys = useMemo(() => items.map((item) => item.key), [items]);
 
@@ -331,15 +341,12 @@ export const MessageList = forwardRef<
       if (item.kind === "message") {
         return estimateRowHeight(item.message, { textWidth });
       }
-      const head = FOCUS_FOLD_HEAD_HEIGHT_PX;
-      if (!expandedFolds.has(item.key)) return head;
-      let total = head;
-      for (const message of item.messages) {
-        total += estimateRowHeight(message, { textWidth });
-      }
-      return total;
+      // 卡头恒为一行：展开态的活动各自是独立的行，高度由各自的消息估算与实测
+      // 负责。把整轮的消息高度加起来当一行的估高，既估不准（工具输出差着数量
+      // 级），也让整轮只有一行 —— 虚拟列表没得窗口化。
+      return FOCUS_FOLD_HEAD_HEIGHT_PX;
     },
-    [items, expandedFolds, textWidth],
+    [items, textWidth],
   );
 
   /** 行的定位容器，手势期的视觉补偿写在这上面（见 useVirtualRows）。 */
@@ -395,12 +402,18 @@ export const MessageList = forwardRef<
   /**
    * 把「消息下标」落成「行下标」并滚到位。目标若在一个折叠行里（搜索命中、大纲
    * 点到被收起来的一轮），先把那行展开 —— 否则点了一下只看到一张收起的卡
-   * （spec ui/focus-view.md 场景 8）。展开不改变行顶位置，所以同一帧里滚动不会偏。
+   * （spec ui/focus-view.md 场景 8）。
    *
    * 一条消息可以横跨**两行**（轮尾那条：思考进卡、答复留卡外）。那时上面的行坐标
    * 指向卡外的答复行，过程半还收在上一张卡里 —— 命中落在思考上就「跳过去看到
    * 答复、思考仍收着」，等于没定位到。所以过程半所在的卡也一起展开。
+   *
+   * 展开会改变**行数**（卡头一行 → 卡头 + N 条活动行），当帧算出来的行号下一帧
+   * 就失效了：所以「命中落在被折起来的活动里」这条路径只记下目标，等布局项重建
+   * 后按新坐标滚（见下面的 useLayoutEffect）。
    */
+  const pendingRevealRef = useRef<number | null>(null);
+
   const revealMessageRow = useCallback(
     (messageIndex: number) => {
       const rowIndex = rowIndexByMessageIndexRef.current[messageIndex];
@@ -414,6 +427,7 @@ export const MessageList = forwardRef<
         if (process?.kind === "fold") foldKeys.push(process.key);
       }
       if (foldKeys.length > 0) {
+        pendingRevealRef.current = messageIndex;
         setExpandedFolds((prev) => {
           const missing = foldKeys.filter((key) => !prev.has(key));
           if (missing.length === 0) return prev;
@@ -421,11 +435,27 @@ export const MessageList = forwardRef<
           for (const key of missing) next.add(key);
           return next;
         });
+        return;
       }
       scrollToIndex(rowIndex, "center", "auto");
     },
     [scrollToIndex],
   );
+
+  // 展开落位：只有布局项重建、目标消息有了自己的行以后才能滚 —— 按展开前的行号
+  // 滚过去只会停在卡头上。
+  useLayoutEffect(() => {
+    const pending = pendingRevealRef.current;
+    if (pending === null) return;
+    const rowIndex = rowIndexByMessageIndexRef.current[pending];
+    if (rowIndex === undefined) {
+      pendingRevealRef.current = null;
+      return;
+    }
+    if (itemsRef.current[rowIndex]?.kind !== "message") return;
+    pendingRevealRef.current = null;
+    scrollToIndex(rowIndex, "center", "auto");
+  }, [items, scrollToIndex]);
 
   // Refs mirroring the current data for stable callbacks (event handlers and
   // the imperative handle must not capture a stale render).
@@ -753,10 +783,14 @@ export const MessageList = forwardRef<
       if (runStart === -1) return;
       if (dots <= 1) {
         for (let i = runStart; i <= end; i++) {
-          classes[i] = "timeline-run--single";
-          // 与多点 run 同一档间距：轮内行贴紧、只有轮末留 AFTER_TURN_GAP。少判这一条，
-          // 折叠卡与它下面那条轮尾答复之间会各留一份（卡头不再算点后，一轮常常
-          // 只剩答复一个点，正好落到 single 分支）—— 收起态每轮中间就翻倍。
+          // single 的标记只给真实活动行：卡头没有 `.timeline-row`，给它也没用；
+          // 而展开卡里那唯一一条活动（独立虚拟行）必须自己拿到这个 class，才关
+          // 得掉自己那段两头都空的竖线。
+          if (items[i].kind === "message") {
+            classes[i] = "timeline-run--single";
+          }
+          // 间距仍按整段 run 算（卡头也算一行）：整轮进卡时卡头就是 run 的末行，
+          // 少了它这一份，轮间留白会塌成一半。
           paddings[i] = i === end ? AFTER_TURN_GAP : 0;
         }
       } else {
@@ -769,6 +803,35 @@ export const MessageList = forwardRef<
         }
         if (runStart === end) {
           classes[runStart] = "timeline-run--start timeline-run--end";
+        }
+        // 展开卡里，run 的两端与卡的两端并不重合：卡头不算圆点、卡外的轮尾
+        // 答复行也不画节点。竖线只能落在**卡内**的真实活动上 ——
+        //   · 第一条卡内行前面是卡头：它的 `--first` 命中不到「从节点中心
+        //     起笔」，线会从行顶开始、比节点高 18/21px → `--lead`；
+        //   · 最后一条卡内行后面是卡外答复（无节点）：线若一路拉到行底就是一条
+        //     通向空处的线 → `--tail` 在它身上收口；
+        //   · 卡内只有一条活动时，两头都没有可连的对象，整段关掉（同 `--single`
+        //     的语义：宁可什么都不画，也不留一段孤立短线）。
+        // 普通视图没有卡，卡内行数为 0，三个分支都不触发、行为不变。
+        const cardRows: number[] = [];
+        for (let i = runStart; i <= end; i++) {
+          const item = items[i];
+          if (item.kind === "message" && item.foldKey) cardRows.push(i);
+        }
+        const addClass = (row: number, name: string) => {
+          classes[row] = classes[row] ? classes[row] + " " + name : name;
+        };
+        if (cardRows.length === 1) {
+          addClass(cardRows[0], "timeline-run--single");
+        } else if (cardRows.length > 1) {
+          const firstCardRow = cardRows[0];
+          const lastCardRow = cardRows[cardRows.length - 1];
+          if (firstCardRow !== runStart) {
+            addClass(firstCardRow, "timeline-run--lead");
+          }
+          if (lastCardRow !== end) {
+            addClass(lastCardRow, "timeline-run--tail");
+          }
         }
       }
       runStart = -1;
@@ -1475,158 +1538,160 @@ export const MessageList = forwardRef<
       <div
         ref={containerRef}
         id="messagesContainer"
-      className={`messages-container${isStreaming ? " streaming" : ""}${isCompacting ? " compacting" : ""} messages-container--virtual`}
-      data-testid="messages-container"
-      // 聚焦视图下折叠卡以外的助手行不画时间线节点（点只属于卡内那些真实
-      // 活动）。把它做成容器上的一个状态位，而不是让 CSS 用 `:has(.focus-fold)`
-      // 去猜 —— 插件端 JCEF 的 Chromium 版本不保证支持 `:has()`。
-      data-focus-view={focusView ? "true" : undefined}
-      // 程序性焦点目标（关闭查找条后把焦点还给正文）：-1 不进入 Tab 序列，
-      // 只是让 `focus()` 有落点。
-      tabIndex={-1}
-    >
-      {/* The scroll surface is the whole pane; the capped, centered column
+        className={`messages-container${isStreaming ? " streaming" : ""}${isCompacting ? " compacting" : ""} messages-container--virtual`}
+        data-testid="messages-container"
+        // 聚焦视图下折叠卡以外的助手行不画时间线节点（点只属于卡内那些真实
+        // 活动）。把它做成容器上的一个状态位，而不是让 CSS 用 `:has(.focus-fold)`
+        // 去猜 —— 插件端 JCEF 的 Chromium 版本不保证支持 `:has()`。
+        data-focus-view={focusView ? "true" : undefined}
+        // 程序性焦点目标（关闭查找条后把焦点还给正文）：-1 不进入 Tab 序列，
+        // 只是让 `focus()` 有落点。
+        tabIndex={-1}
+      >
+        {/* The scroll surface is the whole pane; the capped, centered column
           lives in this inner wrapper (see MessageList.css). Rows resolve
           against it (position: relative), so its offset from the scroll
           surface must stay 0 — the 10px padding is inside it. */}
-      {/* 左边缘的刻度大纲（spec ui/transcript-outline.md）。零高度、粘在滚动
+        {/* 左边缘的刻度大纲（spec ui/transcript-outline.md）。零高度、粘在滚动
           面上，住在内容列左侧的留白里；不是列的子元素（列 overflow-x: clip
           会把越出列的刻度裁掉）。 */}
-      <TranscriptOutline
-        items={outlineItems}
-        activeId={outlineActive}
-        visibleIds={visibleOutlineIds}
-        pendingId={pendingJumpId}
-        failedId={failedJumpId}
-        columnWidth={columnWidth}
-        columnInset={columnInset}
-        viewportHeight={listViewportHeight}
-        onJump={scrollToMessage}
-      />
-      <div className="messages-column" ref={columnRef}>
-        {find.open && (
-          <TranscriptFindBar
-            find={{ ...find, current: findCurrentIndex + 1 }}
-            total={findTotal}
-            error={findRegex.error}
-            onQueryChange={(query) =>
-              setFind((prev) => ({ ...prev, query, current: 1 }))
-            }
-            onStep={stepFind}
-            onToggle={(key) =>
-              setFind((prev) => ({ ...prev, [key]: !prev[key], current: 1 }))
-            }
-            onClose={closeFind}
-          />
-        )}
-        {stickyMessage && (
-          <div className="sticky-user-wrapper">
-            <div className="sticky-user-cap" />
-            <div
-              className="sticky-user-message"
-              data-testid="sticky-user-message"
-              onClick={() => scrollToMessage(stickyMessage.id)}
-            >
-              <div className="sticky-user-content">{stickyMessage.text}</div>
+        <TranscriptOutline
+          items={outlineItems}
+          activeId={outlineActive}
+          visibleIds={visibleOutlineIds}
+          pendingId={pendingJumpId}
+          failedId={failedJumpId}
+          columnWidth={columnWidth}
+          columnInset={columnInset}
+          viewportHeight={listViewportHeight}
+          onJump={scrollToMessage}
+        />
+        <div className="messages-column" ref={columnRef}>
+          {find.open && (
+            <TranscriptFindBar
+              find={{ ...find, current: findCurrentIndex + 1 }}
+              total={findTotal}
+              error={findRegex.error}
+              onQueryChange={(query) =>
+                setFind((prev) => ({ ...prev, query, current: 1 }))
+              }
+              onStep={stepFind}
+              onToggle={(key) =>
+                setFind((prev) => ({ ...prev, [key]: !prev[key], current: 1 }))
+              }
+              onClose={closeFind}
+            />
+          )}
+          {stickyMessage && (
+            <div className="sticky-user-wrapper">
+              <div className="sticky-user-cap" />
+              <div
+                className="sticky-user-message"
+                data-testid="sticky-user-message"
+                onClick={() => scrollToMessage(stickyMessage.id)}
+              >
+                <div className="sticky-user-content">{stickyMessage.text}</div>
+              </div>
+              <div className="sticky-user-scrim" />
             </div>
-            <div className="sticky-user-scrim" />
-          </div>
-        )}
-        <>
-          {/* In-flow spacer carrying the virtualized total height. It must keep
+          )}
+          <>
+            {/* In-flow spacer carrying the virtualized total height. It must keep
               its space in the flex column (flex-shrink: 0). */}
-          <div
-            className="virtual-spacer"
-            style={{ height: totalSize }}
-            aria-hidden="true"
-          />
-          {/* 行的定位容器。绝对定位、铺满列的 padding box ⇒ 行坐标与直接挂在
+            <div
+              className="virtual-spacer"
+              style={{ height: totalSize }}
+              aria-hidden="true"
+            />
+            {/* 行的定位容器。绝对定位、铺满列的 padding box ⇒ 行坐标与直接挂在
               列上完全一致；手势期内核在这个节点上写 translateY 顶替 scrollTop
               补偿（见 useVirtualRows 的 commitVisualOffset）。它盖在粘性条之上，
               所以只让行自己收事件（.virtual-canvas / .virtual-row 的
               pointer-events）。 */}
-          <div className="virtual-canvas" ref={canvasRef}>
-            {rows.map((row) => {
-              const item: FocusItem | undefined = items[row.index];
-              const runClass = timelineRuns.classes[row.index];
-              return (
-                <div
-                  key={row.key}
-                  data-index={row.index}
-                  data-virtual-key={row.key}
-                  data-measured-message-id={
-                    item?.kind === "message" ? item.message.id : undefined
-                  }
-                  ref={measureRow}
-                  className={`virtual-row${runClass ? ` ${runClass}` : ""}`}
-                  style={{
-                    top: row.start,
-                    paddingBottom: timelineRuns.paddings[row.index],
-                  }}
-                >
-                  {item?.kind === "fold" ? (
-                    <FocusFoldRow
-                      item={item}
-                      expanded={expandedFolds.has(item.key)}
-                      onToggle={() => toggleFold(item.key)}
-                      renderMessage={(foldMessage) =>
-                        renderMessageNode(foldMessage, false)
-                      }
-                    />
-                  ) : item?.kind === "message" ? (
-                    renderMessageNode(
-                      item.message,
-                      item.messageIndex === visibleMessages.length - 1,
-                    )
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        </>
-        {/* Compaction hint: blinking cursor + label pinned to the end of the
+            <div className="virtual-canvas" ref={canvasRef}>
+              {rows.map((row) => {
+                const item: FocusItem | undefined = items[row.index];
+                const runClass = timelineRuns.classes[row.index];
+                return (
+                  <div
+                    key={row.key}
+                    data-index={row.index}
+                    data-virtual-key={row.key}
+                    // 展开的折叠卡里的活动行：CSS 靠它区分「卡内行」与「卡外行」
+                    // （卡外行在聚焦视图下不画时间线节点，卡内行与普通视图同款）。
+                    data-in-fold={
+                      item?.kind === "message" ? item.foldKey : undefined
+                    }
+                    data-measured-message-id={
+                      item?.kind === "message" ? item.message.id : undefined
+                    }
+                    ref={measureRow}
+                    className={`virtual-row${runClass ? ` ${runClass}` : ""}`}
+                    style={{
+                      top: row.start,
+                      paddingBottom: timelineRuns.paddings[row.index],
+                    }}
+                  >
+                    {item?.kind === "fold" ? (
+                      <FocusFoldRow
+                        item={item}
+                        expanded={expandedFolds.has(item.key)}
+                        onToggle={() => toggleFold(item.key)}
+                      />
+                    ) : item?.kind === "message" ? (
+                      renderMessageNode(
+                        item.message,
+                        item.messageIndex === visibleMessages.length - 1,
+                      )
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+          {/* Compaction hint: blinking cursor + label pinned to the end of the
             message list, independent of isStreaming (auto-compaction runs between
             turns, after the streaming cursor is gone). */}
-        {isCompacting && (
-          <div className="compaction-hint" data-testid="compaction-hint">
-            <span className="compaction-hint-cursor">▋</span>正在压缩对话
-            {compactionStream && (
-              <span
-                className="compaction-hint-tail"
-                data-testid="compaction-hint-tail"
-              >
-                {streamingTail(compactionStream)}
-              </span>
-            )}
-          </div>
-        )}
-        {/* 「回到最新」入口（spec: 离开底部时的「回到最新」入口）。挂在内层正文
+          {isCompacting && (
+            <div className="compaction-hint" data-testid="compaction-hint">
+              <span className="compaction-hint-cursor">▋</span>正在压缩对话
+              {compactionStream && (
+                <span
+                  className="compaction-hint-tail"
+                  data-testid="compaction-hint-tail"
+                >
+                  {streamingTail(compactionStream)}
+                </span>
+              )}
+            </div>
+          )}
+          {/* 「回到最新」入口（spec: 离开底部时的「回到最新」入口）。挂在内层正文
             列的末尾：这一层是 sticky 且零高度，所以它贴的是滚动的视口底而不是内
             容底，也不给任何一行加高度——出现/收回都不会让列表跳动一下。 */}
-        <div
-          className="jump-to-bottom-layer"
-          data-visible={showJumpToBottom}
-          data-testid="jump-to-bottom-layer"
-        >
-          <div className="jump-to-bottom-fade" aria-hidden="true" />
-          <button
-            type="button"
-            className="jump-to-bottom-button"
-            data-testid="jump-to-bottom"
-            aria-label="回到最新"
-            title="回到最新"
-            // 收回时既不接点击也不占 Tab 序列，但节点留着做淡出（display: none
-            // 会把过渡吃掉）。
-            aria-hidden={!showJumpToBottom}
-            tabIndex={showJumpToBottom ? 0 : -1}
-            // 流式中（AI 还在输出）箭头让位给三个点的 loading；取值交给 CSS。
-            data-streaming={isStreaming ? "true" : "false"}
-            // 窗口停在历史里时这颗按钮是「回到最新**一页**」——外观与位置不变，
-            // 语义换成重新取尾页（spec 场景 18）。
-            data-historical={hasLater ? "true" : "false"}
-            onClick={jumpToBottom}
+          <div
+            className="jump-to-bottom-layer"
+            data-visible={showJumpToBottom}
+            data-testid="jump-to-bottom-layer"
           >
-            {/* 桌面端用与 composer 发送箭头同几何的下箭头（设计师 2026-11-10：
+            <div className="jump-to-bottom-fade" aria-hidden="true" />
+            <button
+              type="button"
+              className="jump-to-bottom-button"
+              data-testid="jump-to-bottom"
+              aria-label="回到最新"
+              title="回到最新"
+              // 收回时既不接点击也不占 Tab 序列，但节点留着做淡出（display: none
+              // 会把过渡吃掉）。
+              aria-hidden={!showJumpToBottom}
+              tabIndex={showJumpToBottom ? 0 : -1}
+              // 流式中（AI 还在输出）箭头让位给三个点的 loading；取值交给 CSS。
+              data-streaming={isStreaming ? "true" : "false"}
+              // 窗口停在历史里时这颗按钮是「回到最新**一页**」——外观与位置不变，
+              // 语义换成重新取尾页（spec 场景 18）。
+              data-historical={hasLater ? "true" : "false"}
+              onClick={jumpToBottom}
+            >
+              {/* 桌面端用与 composer 发送箭头同几何的下箭头（设计师 2026-11-10：
                 「图标的大小粗细可以参考」`svg.ai-send-icon`）；插件端保留原
                 codicon 字形，与本轮其它改动一样不动宿主端。
 
@@ -1635,25 +1700,28 @@ export const MessageList = forwardRef<
                 把「点了会回到最新」这个动作露出来（设计师 2026-11-10：「箭头显示
                 为三个点的 loading 动效，鼠标 hover 上去变成箭头」）。三点只在这个
                 桌面分支里渲染，插件端仍是上面那颗 codicon，DOM 与样式都不受影响。 */}
-            {isDesktopHost() ? (
-              <>
-                <span className="jump-to-bottom-dots" aria-hidden="true">
-                  <i />
-                  <i />
-                  <i />
-                </span>
-                <ScrollToBottomArrowIcon />
-              </>
-            ) : (
-              <span className="codicon codicon-arrow-down" aria-hidden="true" />
-            )}
-          </button>
+              {isDesktopHost() ? (
+                <>
+                  <span className="jump-to-bottom-dots" aria-hidden="true">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                  <ScrollToBottomArrowIcon />
+                </>
+              ) : (
+                <span
+                  className="codicon codicon-arrow-down"
+                  aria-hidden="true"
+                />
+              )}
+            </button>
+          </div>
         </div>
-      </div>
-      {/* 正文里 `dangerouslySetInnerHTML` 生成的那几颗图标按钮（代码块右上角
+        {/* 正文里 `dangerouslySetInnerHTML` 生成的那几颗图标按钮（代码块右上角
           「复制代码」）挂不上 React 的 `<Tooltip>`，提示走这份委托版；它自己
           portal 到 body，放在列表根节点下只为「一个聊天窗一份」。 */}
-      <DelegatedTooltip />
+        <DelegatedTooltip />
       </div>
     </ScrollHoldProvider>
   );
