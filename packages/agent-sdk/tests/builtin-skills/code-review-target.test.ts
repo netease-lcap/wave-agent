@@ -13,9 +13,18 @@ const WITH_AGENT = {
   gitRemoteUrl: null,
 };
 // 远端托管方决定裸数字是 PR 还是 MR、`--comment` 走哪一段。
+const GITHUB_REMOTE = {
+  ...WITH_AGENT,
+  gitRemoteUrl: "git@github.com:o/r.git",
+};
 const GITLAB_REMOTE = {
   ...WITH_AGENT,
   gitRemoteUrl: "git@gitlab.com:group/proj.git",
+};
+// 私有化部署的 GitLab：主机名认不出，按 GitLab 处理。
+const SELF_HOSTED_REMOTE = {
+  ...WITH_AGENT,
+  gitRemoteUrl: "ssh://git@g.hz.netease.com:22222/o/r.git",
 };
 const BITBUCKET_REMOTE = {
   ...WITH_AGENT,
@@ -28,7 +37,7 @@ function prompt(raw: string, ctx: SkillPromptContext = WITH_AGENT): string {
 
 describe("resolveReviewTarget", () => {
   it("takes a bare number as a GitHub pull request", () => {
-    expect(resolveReviewTarget("12")).toEqual({
+    expect(resolveReviewTarget("12", "github")).toEqual({
       platform: "github",
       name: "GitHub pull request 12",
       command: "gh pr diff 12",
@@ -134,18 +143,32 @@ describe("resolveReviewTarget", () => {
       expect(resolveReviewTarget(target)).toBeUndefined();
     }
   });
+
+  // 没有远端就不知道裸数字指的是哪家的 12 号，注入 gh pr diff 只会评错东西。
+  it("injects nothing for a bare number without a known host", () => {
+    expect(resolveReviewTarget("12")).toBeUndefined();
+    expect(prompt("12")).not.toContain("## Review target");
+  });
+
+  // 自建实例由 repoPlatformOf() 折成 GitLab，裸数字就是合并请求号。
+  it("reads a bare number as a merge request on a self-hosted remote", () => {
+    expect(prompt("12", SELF_HOSTED_REMOTE)).toContain("glab mr diff 12");
+    expect(prompt("12", SELF_HOSTED_REMOTE)).not.toContain("gh pr diff 12");
+  });
 });
 
 describe("/code-review review target", () => {
   it("says which diff is in scope and which command reads it", () => {
-    const body = prompt("12");
+    const body = prompt("12", GITHUB_REMOTE);
     expect(body).toContain("## Review target");
     expect(body).toContain("gh pr diff 12");
     expect(body).toContain("It replaces every `git diff` command");
   });
 
   it("offers the gh api fallback for GitHub only", () => {
-    expect(prompt("12")).toContain("gh api repos/{owner}/{repo}/pulls/12");
+    expect(prompt("12", GITHUB_REMOTE)).toContain(
+      "gh api repos/{owner}/{repo}/pulls/12",
+    );
     expect(prompt("!7")).not.toContain("gh api repos/");
     // 自建实例连 `pr diff` 的退路都没有：那段话只在有 withoutPrDiff 时出现
     const ghes = prompt("https://ghe.corp/o/r/pull/9");
@@ -158,8 +181,12 @@ describe("/code-review review target", () => {
   });
 
   it("stops instead of falling back to the checkout when a fix is at stake", () => {
-    expect(prompt("12")).toContain("which may not be that pull request");
-    expect(prompt("--fix 12")).toContain("so nothing was reviewed");
+    expect(prompt("12", GITHUB_REMOTE)).toContain(
+      "which may not be that pull request",
+    );
+    expect(prompt("--fix 12", GITHUB_REMOTE)).toContain(
+      "so nothing was reviewed",
+    );
     // 跨仓库 URL 也一样：这段改动可能根本不在这份检出里
     expect(prompt("https://github.com/o/r/pull/9")).toContain(
       "or of another repository",
@@ -192,8 +219,15 @@ describe("/code-review --comment", () => {
     expect(body).toContain('glab mr note -m "<body>"');
   });
 
+  // 自建实例同样走 GitLab 那一段：国内私有化部署基本都是 GitLab。
+  it("picks the GitLab wording on a self-hosted remote", () => {
+    const body = prompt("--comment", SELF_HOSTED_REMOTE);
+    expect(body).toContain("## Posting to GitLab (--comment)");
+    expect(body).not.toContain("## Posting to GitHub");
+  });
+
   it("says nothing when --comment was not passed", () => {
-    const body = prompt("12");
+    const body = prompt("12", GITHUB_REMOTE);
     expect(body).not.toContain("## Posting to");
   });
 });
