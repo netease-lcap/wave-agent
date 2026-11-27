@@ -32,6 +32,7 @@ import {
 } from "../utils/transcriptFind";
 import { buildFocusItems, type FocusItem } from "../utils/focusItems";
 import { FocusFoldRow } from "./FocusFoldRow";
+import { ScrollHoldProvider } from "./ScrollHoldContext";
 import { estimateRowHeight } from "../virtual/estimateRowHeight";
 import { useVirtualRows } from "../virtual/useVirtualRows";
 import type { MessageListProps } from "../types";
@@ -270,17 +271,6 @@ export const MessageList = forwardRef<
   const [expandedFolds, setExpandedFolds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
-  const toggleFold = useCallback((key: string) => {
-    setExpandedFolds((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
-  }, []);
   useEffect(() => {
     if (!focusView) {
       setExpandedFolds((prev) => (prev.size === 0 ? prev : new Set()));
@@ -379,6 +369,28 @@ export const MessageList = forwardRef<
     pin,
     unpin,
   } = list;
+
+  /**
+   * 展开 / 收起一张折叠卡。切换前先解除钉底：这是**就地长高**，不是追加内容，
+   * 钉底会把视口一路拉到新底部，被点的卡头直接跳出屏幕（贴底时实测上移 339px）。
+   * 松手后虚拟列表按锚点补偿，卡头原地不动、内容往下长。用户再滚到底会自动重新
+   * 钉上（见 useVirtualRows 的 scroll 分类）。
+   */
+  const toggleFold = useCallback(
+    (key: string) => {
+      unpin();
+      setExpandedFolds((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) {
+          next.delete(key);
+        } else {
+          next.add(key);
+        }
+        return next;
+      });
+    },
+    [unpin],
+  );
 
   /**
    * 把「消息下标」落成「行下标」并滚到位。目标若在一个折叠行里（搜索命中、大纲
@@ -723,11 +735,18 @@ export const MessageList = forwardRef<
   // wrapper). Multi-dot runs draw a continuous vertical line: the run's first
   // row starts it at its first dot, the last row ends it at its last dot;
   // single-dot runs hide the line. paddingBottom is the row's bottom spacing:
-  // 0 inside a multi-dot run so the line segments abut (flush), 14 after every
-  // other row (the inter-message spacing, prototype .design-timeline gap).
+  // 0 inside a multi-dot run so the line segments abut (flush), the turn gap
+  // after the last row of a turn.
   const timelineRuns = useMemo(() => {
     const classes: string[] = [];
     const paddings: number[] = [];
+    // 轮与轮之间的留白按「两段文字的墨迹之间 32」定档（2026-11-27 设计师定档），
+    // 不是盒间距，所以两侧要各扣掉自己那段看不见的空隙：
+    //   用户消息之后跟的是折叠卡头，卡头自带 4px 内衬 + 2px 行内空隙 → 26；
+    //   一轮的最后一行是正文，文字墨迹底比内容盒底高 3 → 29。
+    // 轮内的行之间仍是 0，贴着走。
+    const AFTER_USER_GAP = 26;
+    const AFTER_TURN_GAP = 29;
     let runStart = -1;
     let dots = 0;
     const flushRun = (end: number) => {
@@ -735,13 +754,16 @@ export const MessageList = forwardRef<
       if (dots <= 1) {
         for (let i = runStart; i <= end; i++) {
           classes[i] = "timeline-run--single";
-          paddings[i] = 14;
+          // 与多点 run 同一档间距：轮内行贴紧、只有轮末留 AFTER_TURN_GAP。少判这一条，
+          // 折叠卡与它下面那条轮尾答复之间会各留一份（卡头不再算点后，一轮常常
+          // 只剩答复一个点，正好落到 single 分支）—— 收起态每轮中间就翻倍。
+          paddings[i] = i === end ? AFTER_TURN_GAP : 0;
         }
       } else {
         classes[runStart] = "timeline-run--start";
         paddings[runStart] = 0;
         classes[end] = "timeline-run--end";
-        paddings[end] = 14;
+        paddings[end] = AFTER_TURN_GAP;
         for (let i = runStart + 1; i < end; i++) {
           paddings[i] = 0;
         }
@@ -754,10 +776,11 @@ export const MessageList = forwardRef<
     };
     items.forEach((item, i) => {
       if (item.kind === "fold") {
-        // 折叠行本身就是这一轮活动的圆点：它替代了卡内那些块的圆点，所以这里
-        // 固定算一个，展开与否都只算一个。
+        // 折叠卡**不**算一个圆点（2026-11-27 设计师定档）：卡头只是这一轮的
+        // 目录条，不是一次真实活动，收起态也不画时间线节点。所以一轮若只剩卡
+        // 外那条轮尾答复，「点」就只有它一个，run 落到 single、竖线自然不画；
+        // 反过来若这里仍记一个点，卡外答复就成了一颗孤点。
         if (runStart === -1) runStart = i;
-        dots += 1;
         return;
       }
       const message = item.message;
@@ -767,7 +790,9 @@ export const MessageList = forwardRef<
       } else {
         flushRun(i - 1);
         classes[i] = "";
-        paddings[i] = 14;
+        // 用户消息之后是「换人说话」，留白与轮末同一档（墨迹 32），只是卡头自带
+        // 内衬，所以内衬值小 3。
+        paddings[i] = AFTER_USER_GAP;
       }
     });
     flushRun(items.length - 1);
@@ -1446,11 +1471,16 @@ export const MessageList = forwardRef<
   ]);
 
   return (
-    <div
-      ref={containerRef}
-      id="messagesContainer"
+    <ScrollHoldProvider value={unpin}>
+      <div
+        ref={containerRef}
+        id="messagesContainer"
       className={`messages-container${isStreaming ? " streaming" : ""}${isCompacting ? " compacting" : ""} messages-container--virtual`}
       data-testid="messages-container"
+      // 聚焦视图下折叠卡以外的助手行不画时间线节点（点只属于卡内那些真实
+      // 活动）。把它做成容器上的一个状态位，而不是让 CSS 用 `:has(.focus-fold)`
+      // 去猜 —— 插件端 JCEF 的 Chromium 版本不保证支持 `:has()`。
+      data-focus-view={focusView ? "true" : undefined}
       // 程序性焦点目标（关闭查找条后把焦点还给正文）：-1 不进入 Tab 序列，
       // 只是让 `focus()` 有落点。
       tabIndex={-1}
@@ -1624,6 +1654,7 @@ export const MessageList = forwardRef<
           「复制代码」）挂不上 React 的 `<Tooltip>`，提示走这份委托版；它自己
           portal 到 body，放在列表根节点下只为「一个聊天窗一份」。 */}
       <DelegatedTooltip />
-    </div>
+      </div>
+    </ScrollHoldProvider>
   );
 });

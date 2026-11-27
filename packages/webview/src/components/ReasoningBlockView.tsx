@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { QueueChevronIcon } from "./HeaderIcons";
+import { useHoldScroll } from "./ScrollHoldContext";
 import { streamingTail } from "../utils/streamingText";
 import type { ReasoningBlock } from "../types";
 
@@ -19,6 +20,8 @@ export const ReasoningBlockView: React.FC<ReasoningBlockViewProps> = ({
   // user's expand/collapse choice only exists once the block has finished, and
   // it is never overridden afterwards.
   const [collapsed, setCollapsed] = useState(true);
+  // 展开/收起是就地长高，先解除钉底，被点的标题原地不动（见 ScrollHoldContext）。
+  const holdScroll = useHoldScroll();
 
   const streaming = block.stage === "streaming";
   const inProgress = streaming && typeof block.startTime === "number";
@@ -95,7 +98,10 @@ export const ReasoningBlockView: React.FC<ReasoningBlockViewProps> = ({
           type="button"
           className="reasoning-header"
           aria-expanded={!collapsed}
-          onClick={() => setCollapsed((c) => !c)}
+          onClick={() => {
+            holdScroll();
+            setCollapsed((c) => !c);
+          }}
         >
           {header}
         </button>

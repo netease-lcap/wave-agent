@@ -81,9 +81,12 @@ describe("FocusFoldRow", () => {
     expect(head.lastElementChild?.getAttribute("class")).toContain(
       "focus-fold-chevron",
     );
+    // 卡头不带时间线节点（2026-11-27 定档）：第一个元素就是文案，点与线只在
+    // 展开卡内的真实活动上。
     expect(head.firstElementChild?.getAttribute("class")).toContain(
-      "focus-fold-dot",
+      "focus-fold-label",
     );
+    expect(head.querySelector(".focus-fold-dot")).toBeNull();
   });
 
   it("展开后把这一轮的消息交给 renderMessage 渲染", () => {
