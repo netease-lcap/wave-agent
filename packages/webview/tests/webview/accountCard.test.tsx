@@ -400,7 +400,93 @@ describe("AccountCard (desktop sidebar)", () => {
       expect(conclusion.classList.contains("is-error")).toBe(true);
     });
 
-    it("renders the blocked conclusion without bars (no plan is sent in blocked mode)", () => {
+    // 两维各说各的（2026-11-27，缺陷单 3525819196034816）：`blocked` 下服务端也发套餐事实，
+    // 套餐维度按套餐说、余额维度说 proxy 402 那一句。原先两处共用一句，切到「套餐用量」
+    // 页签读到的还是「您的积分额度已用完」，看着像套餐页签在讲积分。
+    it("renders the plan facts on the plan dimension when blocked (触顶形态)", () => {
+      renderDesktop();
+      pushUsage({
+        ...loggedIn,
+        billing: {
+          mode: "blocked",
+          code: "USER_QUOTA_ZERO",
+          plan: {
+            monthUsed: 1000,
+            monthLimit: 1000,
+            weekUsed: 60,
+            weekLimit: 500,
+            expireDate: "2027-03-01",
+          },
+        },
+        apiQuota: { limit: 5, used: 5 },
+      });
+
+      // 默认停在套餐维度（错误色结论 = 更严重的那一维）.
+      const conclusion = screen.getByTestId("account-plan-conclusion");
+      expect(conclusion).toHaveTextContent("本月额度已用尽");
+      expect(conclusion.classList.contains("is-error")).toBe(true);
+      // 触顶是真事实：两根条照画（与「该维度不可用」不同，那里没有数可画）.
+      expect(screen.getByTestId("account-plan-month")).toBeInTheDocument();
+      expect(screen.getByTestId("account-plan-week")).toBeInTheDocument();
+      // 套餐维度不出现积分那句话.
+      expect(conclusion).not.toHaveTextContent("积分");
+
+      // 余额维度仍是 proxy 402 原文（issue #2776）——两维不同句.
+      fireEvent.click(screen.getByTestId("account-usage-tab-api"));
+      expect(screen.getByTestId("account-api-conclusion")).toHaveTextContent(
+        "您的积分额度已用完，请联系公司管理员分配额度后使用！",
+      );
+    });
+
+    it("renders the expiry fact when blocked carries only an expired order", () => {
+      renderDesktop();
+      pushUsage({
+        ...loggedIn,
+        billing: {
+          mode: "blocked",
+          code: "EXPIRED_NO_API",
+          plan: { expireDate: "2026-01-31" },
+        },
+        apiQuota: { limit: 5, used: 5 },
+      });
+
+      expect(screen.getByTestId("account-plan-expire")).toHaveTextContent(
+        "2026-01-31 到期",
+      );
+      // 服务端只发了到期日，没有两根条可画.
+      expect(
+        screen.queryByTestId("account-plan-month"),
+      ).not.toBeInTheDocument();
+      expect(screen.getByTestId("account-plan-conclusion")).toHaveTextContent(
+        "套餐已到期（2026-01-31 到期）",
+      );
+    });
+
+    it("says 套餐额度当前不可用 when blocked although neither bar is capped", () => {
+      renderDesktop();
+      pushUsage({
+        ...loggedIn,
+        billing: {
+          mode: "blocked",
+          code: "USER_QUOTA_ZERO",
+          plan: {
+            monthUsed: 100,
+            monthLimit: 1000,
+            weekUsed: 10,
+            weekLimit: 500,
+            expireDate: "2027-03-01",
+          },
+        },
+        apiQuota: { limit: 5, used: 5 },
+      });
+
+      // 两根条都没触顶却仍被阻断（配额卡在积分侧）：说少而准，不猜是哪一池.
+      expect(screen.getByTestId("account-plan-conclusion")).toHaveTextContent(
+        "套餐额度当前不可用",
+      );
+    });
+
+    it("hides the plan dimension entirely when blocked carries no plan (缺陷单 3525819196034816 的账号形态)", () => {
       renderDesktop();
       pushUsage({
         ...loggedIn,
@@ -408,17 +494,19 @@ describe("AccountCard (desktop sidebar)", () => {
         apiQuota: { limit: 5, used: 5 },
       });
 
-      expect(screen.getByTestId("account-plan")).toBeInTheDocument();
+      // 从未购买套餐 ⇒ 没有套餐事实可讲：套餐维度整块不渲染（页签也不出现），
+      // 不再把 402 的积分文案挂在套餐页签上（这就是这条缺陷单报的现象）.
+      expect(screen.queryByTestId("account-plan")).not.toBeInTheDocument();
       expect(
-        screen.queryByTestId("account-plan-month"),
+        screen.queryByTestId("account-plan-conclusion"),
       ).not.toBeInTheDocument();
-      expect(screen.queryByTestId("account-plan-week")).not.toBeInTheDocument();
-      const conclusion = screen.getByTestId("account-plan-conclusion");
-      // 与 proxy 402 同一句话（codechat BLOCKED_INFO 逐字）.
-      expect(conclusion).toHaveTextContent(
+      expect(
+        screen.queryByTestId("account-usage-tab-plan"),
+      ).not.toBeInTheDocument();
+      // 402 那句落在积分维度.
+      expect(screen.getByTestId("account-api-conclusion")).toHaveTextContent(
         "您的积分额度已用完，请联系公司管理员分配额度后使用！",
       );
-      expect(conclusion.classList.contains("is-error")).toBe(true);
     });
 
     it("labels the balance rows as 部门共享 when apiQuota.scope is department", () => {
@@ -464,16 +552,13 @@ describe("AccountCard (desktop sidebar)", () => {
         apiQuota: { limit: 5, used: 5, scope: "department" },
       });
 
-      const conclusion = screen.getByTestId("account-plan-conclusion");
-      // 与 codechat proxy 402 的 department 分支逐字一致（spec 场景 25）.
+      // 部门共享池用完只影响积分维度那一句（spec 场景 25）：没有套餐事实时套餐维度不渲染.
+      const conclusion = screen.getByTestId("account-api-conclusion");
+      // 与 codechat proxy 402 的 department 分支逐字一致.
       expect(conclusion).toHaveTextContent(
         "您所在部门的积分已用完，请联系公司管理员分配积分后使用！",
       );
-      fireEvent.click(screen.getByTestId("account-usage-tab-api"));
-      // 余额维度内同一句：两处结论同源，不各写一份.
-      expect(screen.getByTestId("account-api-conclusion").textContent).toBe(
-        conclusion.textContent,
-      );
+      expect(conclusion).not.toHaveTextContent("积分额度已用完");
     });
 
     it("uses the expiry date in the conclusion for an expired plan, and hides it when never purchased", () => {
@@ -572,7 +657,8 @@ describe("AccountCard (desktop sidebar)", () => {
         },
       );
 
-      // 三个已知 code（blocked 形态）同理：文案非空 + 错误色。
+      // 三个已知 code（blocked 形态）同理：文案非空 + 错误色。这一句属于**积分维度**，
+      // 套餐维度只说套餐事实（这条用例没给 plan ⇒ 套餐维度整块不渲染）。
       it.each(["EXPIRED_NO_API", "USER_QUOTA_ZERO", "TEAM_QUOTA_ZERO"])(
         "renders a non-empty error conclusion line for the known code=%s",
         (code) => {
@@ -583,7 +669,7 @@ describe("AccountCard (desktop sidebar)", () => {
             apiQuota: { limit: 5, used: 5 },
           });
 
-          const conclusion = screen.getByTestId("account-plan-conclusion");
+          const conclusion = screen.getByTestId("account-api-conclusion");
           expect(conclusion.textContent?.trim()).toBeTruthy();
           expect(conclusion.classList.contains("is-error")).toBe(true);
         },
@@ -633,7 +719,7 @@ describe("AccountCard (desktop sidebar)", () => {
             apiQuota: { limit: 5, used: 5 },
           });
 
-          const conclusion = screen.getByTestId("account-plan-conclusion");
+          const conclusion = screen.getByTestId("account-api-conclusion");
           expect(conclusion).toHaveTextContent(
             "当前用量受限，请联系公司管理员",
           );
@@ -818,7 +904,7 @@ describe("AccountCard (desktop sidebar)", () => {
         apiQuota: { limit: 0, used: 0 },
       });
 
-      fireEvent.click(screen.getByTestId("account-usage-tab-api"));
+      // 没有套餐事实 ⇒ 只有余额这一维，不做页签切换.
       const apiRow = screen.getByTestId("account-api-quota");
       // 拦截结论沿用 proxy 402 的同一句话，不再自行下「已用完」判定.
       const conclusion = screen.getByTestId("account-api-conclusion");

@@ -294,9 +294,16 @@ describe("real host · quota headers drive the account card", () => {
       timeout: 60_000,
     });
 
+    // 402 这一态也带套餐事实（2026-11-27，缺陷单 3525819196034816）：套餐维度据此说
+    // 套餐的话，而不是把 402 的积分文案挂到套餐页签上。
     codechat.setQuota({
       "x-codechat-quota-status": "rejected",
       "x-codechat-quota-code": "USER_QUOTA_ZERO",
+      "x-codechat-quota-weekly-used": "100",
+      "x-codechat-quota-weekly-limit": "100",
+      "x-codechat-quota-monthly-used": "40",
+      "x-codechat-quota-monthly-limit": "100",
+      "x-codechat-quota-plan-expire": "2026-12-01",
     });
     codechat.failWith(402);
     await ctx.turn("你好");
@@ -308,6 +315,13 @@ describe("real host · quota headers drive the account card", () => {
     expect(blocked.billing).toEqual({
       mode: "blocked",
       code: "USER_QUOTA_ZERO",
+      plan: {
+        monthUsed: 40,
+        monthLimit: 100,
+        weekUsed: 100,
+        weekLimit: 100,
+        expireDate: "2026-12-01",
+      },
     });
   });
 });

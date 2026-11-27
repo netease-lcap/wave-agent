@@ -107,7 +107,7 @@ function readPlanUsage(
 
 /**
  * 头集合 → `billing` / `apiQuota` 补丁。`prev` 只用来保留头里没给的字段
- * （`api-*` 缺省时的旧读数）。一个额度头都没有 → `null`。
+ * （`api-*` 缺省时的旧读数、`blocked` 缺省时的旧套餐事实）。一个额度头都没有 → `null`。
  */
 export function usageFromQuotaHeaders(
   headers: Record<string, string>,
@@ -133,9 +133,17 @@ export function usageFromQuotaHeaders(
   if (code !== undefined || rejected) {
     // 未识别的 `code` 原样透传：webview 对规格外取值有兜底文案（spec 场景 23），
     // 这里不能因为「客户端不认识」就丢掉「已被阻断」这件事。
+    //
+    // 套餐事实照带（2026-11-27，缺陷单 3525819196034816）：这一态服务端也会发同一组
+    // `plan-*` 字段（四数 = 套餐触顶，只有到期日 = 只剩已到期订单）。webview 的套餐维度
+    // 据此说套餐的话，不再借用 402 的积分文案。头里一个套餐字段都没有（从未购买 / 订单
+    // 全部作废）⇒ 沿用上一次已知的 plan（与 `api-*` 缺省沿用旧读数同一算法），已知也没有
+    // 才不带这个键（契约里 `plan` 可选，老服务端形态）。
+    const knownPlan = plan ?? prev.billing?.plan ?? null;
     out.billing = {
       mode: "blocked",
       code: (code ?? "") as AccountBillingCode,
+      ...(knownPlan !== null ? { plan: knownPlan } : {}),
     };
   } else if (reason !== undefined) {
     out.billing = {
