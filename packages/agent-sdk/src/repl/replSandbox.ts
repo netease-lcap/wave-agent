@@ -138,6 +138,7 @@ const MANAGED_GLOBAL_NAMES = [
   "clearInterval",
   "__replStep",
   "__replRun",
+  "__replReached",
 ];
 
 /**
@@ -261,6 +262,27 @@ interface ReplAnalysis {
   /** Explicit `let x;` names, which the prelude's `var x;` does not reset. */
   resets: string[];
   lastExpression: AstNode | null;
+  /** Which top-level statement assigns which names, so a run can say how far it got. */
+  assignments: StatementAssignment[];
+  /** Declared by this script but assigned by none of its statements (`let x;`). */
+  bareNames: string[];
+  /** Every name the script reads, in first-appearance order, plus what it writes. */
+  usage: NameUsage;
+}
+
+interface StatementAssignment {
+  /** Index into this script's own (non-directive) top-level statements. */
+  index: number;
+  names: string[];
+}
+
+interface NameUsage {
+  /** Names the script reads: a poisoned one of these refuses the whole run. */
+  reads: string[];
+  /** Names the script declares or assigns anywhere; a write is never refused. */
+  writes: Set<string>;
+  /** The script reaches a name no scan can see (`globalThis[key]`), so refusing would be a guess. */
+  dynamicReads: boolean;
 }
 
 type AnalysisResult =
@@ -472,6 +494,194 @@ function scanDeclarations(program: AstNode): DeclarationScan {
   return { names: uniqueNames(names), rewrites, resets: uniqueNames(resets) };
 }
 
+/** The script's own top-level statements, with the directive prologue left out. */
+function bodyStatements(program: AstNode): AstNode[] {
+  return statementsOf(program).filter(
+    (statement) =>
+      !(
+        statement.type === "ExpressionStatement" &&
+        typeof statement.directive === "string" &&
+        statement.directive.length > 0
+      ),
+  );
+}
+
+/** Names one top-level statement puts in the context: a declaration or an assignment. */
+function assignedNamesOf(statement: AstNode): string[] {
+  const out: string[] = [];
+  if (statement.type === "VariableDeclaration") {
+    for (const declarator of statement.declarations ?? []) {
+      // `let x;` sets nothing; the reset `void(x = void 0);` does, and that one is
+      // the prelude's own statement, not the script's (same as Claude Code's `Mc`).
+      if (!asNode(declarator.init)) continue;
+      bindingNames(asNode(declarator.id), out);
+    }
+    return uniqueNames(out);
+  }
+  if (
+    statement.type === "FunctionDeclaration" ||
+    statement.type === "ClassDeclaration"
+  ) {
+    const id = asNode(statement.id);
+    if (id && typeof id.name === "string") out.push(id.name);
+    return out;
+  }
+  if (statement.type !== "ExpressionStatement") return out;
+  const expression = asNode(statement.expression);
+  if (!expression || expression.type !== "AssignmentExpression") return out;
+  // `+=` and friends read the name first, so they are not a set of it.
+  if (!ASSIGNMENT_OPERATORS.includes(String(expression.operator))) return out;
+  const left = asNode(expression.left);
+  if (left && left.type === "MemberExpression") {
+    // `this.x = 1`: the wrapper's own way of seeding a name, as in Claude Code.
+    const object = asNode(left.object);
+    const property = asNode(left.property);
+    if (object?.type === "ThisExpression" && property && !left.computed) {
+      if (typeof property.name === "string") out.push(property.name);
+    }
+    return out;
+  }
+  bindingNames(left, out);
+  return uniqueNames(out);
+}
+
+const ASSIGNMENT_OPERATORS = ["=", "??=", "||="];
+
+/** Names that only ever appear as a key or a label, not as a reference. */
+const NON_REFERENCE_PARENTS = [
+  "Property",
+  "MethodDefinition",
+  "PropertyDefinition",
+  "LabeledStatement",
+  "BreakStatement",
+  "ContinueStatement",
+];
+
+/**
+ * What the script reads and writes.
+ *
+ * The read set is a superset filter over every `Identifier`: a property key, a
+ * member's property name and a label are not references to the name, and a
+ * `typeof` operand cannot throw, so none of the three counts as a read. That is
+ * Claude Code's set with the coarse corners filed off — it collects member
+ * property names into the same exclusion set but leaves object-literal keys in,
+ * so `{ x: 1 }` would count as reading `x`.
+ */
+function scanNameUsage(program: AstNode): NameUsage {
+  const reads: string[] = [];
+  const seen = new Set<string>();
+  const writes = new Set<string>();
+  let dynamicReads = false;
+
+  const noteRead = (name: string): void => {
+    if (seen.has(name)) return;
+    seen.add(name);
+    reads.push(name);
+  };
+
+  // Writes are collected first and whole-program: a name the script assigns
+  // anywhere is never refused, which is how Claude Code's `!k.has(name)` behaves.
+  walkAst(program, (node) => {
+    switch (node.type) {
+      case "VariableDeclarator": {
+        const names: string[] = [];
+        bindingNames(asNode(node.id), names);
+        for (const name of names) writes.add(name);
+        return;
+      }
+      case "AssignmentExpression": {
+        const left = asNode(node.left);
+        if (left && left.type === "MemberExpression") return;
+        const names: string[] = [];
+        bindingNames(left, names);
+        for (const name of names) writes.add(name);
+        return;
+      }
+      case "FunctionDeclaration":
+      case "FunctionExpression":
+      case "ClassDeclaration":
+      case "ClassExpression":
+      case "ArrowFunctionExpression": {
+        const id = asNode(node.id);
+        if (id && typeof id.name === "string") writes.add(id.name);
+        return;
+      }
+      case "CatchClause": {
+        const names: string[] = [];
+        bindingNames(asNode(node.param), names);
+        for (const name of names) writes.add(name);
+        return;
+      }
+      case "ForOfStatement":
+      case "ForInStatement": {
+        const names: string[] = [];
+        bindingNames(asNode(node.left), names);
+        for (const name of names) writes.add(name);
+        return;
+      }
+      default:
+        return;
+    }
+  });
+
+  const visit = (node: AstNode, parent: AstNode | null, key: string): void => {
+    if (node.type === "Identifier") {
+      if (typeof node.name === "string" && !isNonReference(parent, key)) {
+        if (
+          !(parent?.type === "UnaryExpression" && parent.operator === "typeof")
+        )
+          noteRead(node.name);
+      }
+      return;
+    }
+    if (node.type === "MemberExpression" && node.computed === true) {
+      // `globalThis[key]` / `self[key]` can reach anything by name, so a refusal
+      // would be a guess; `this[key]` does the same at the script's own top level.
+      const object = asNode(node.object);
+      if (
+        object?.type === "ThisExpression" ||
+        (object?.type === "Identifier" &&
+          (object.name === "globalThis" || object.name === "self"))
+      ) {
+        dynamicReads = true;
+      }
+    }
+    for (const childKey of Object.keys(node)) {
+      if (
+        childKey === "type" ||
+        childKey === "start" ||
+        childKey === "end" ||
+        childKey === "loc"
+      )
+        continue;
+      const child = node[childKey];
+      if (Array.isArray(child)) {
+        for (const item of child) {
+          const nested = asNode(item);
+          if (nested) visit(nested, node, childKey);
+        }
+        continue;
+      }
+      const nested = asNode(child);
+      if (nested) visit(nested, node, childKey);
+    }
+  };
+  visit(program, null, "");
+
+  return { reads, writes, dynamicReads };
+}
+
+function isNonReference(parent: AstNode | null, key: string): boolean {
+  if (!parent) return false;
+  if (key === "property" && parent.type === "MemberExpression")
+    return parent.computed !== true;
+  if (key === "label") return true;
+  if (key !== "key") return false;
+  return (
+    NON_REFERENCE_PARENTS.includes(parent.type) && parent.computed !== true
+  );
+}
+
 /** The trailing expression statement, which becomes the run's value. */
 function lastExpressionOf(program: AstNode): AstNode | null {
   const body = statementsOf(program);
@@ -487,6 +697,15 @@ function analyzeCode(code: string): AnalysisResult {
   const sealed = findSealedConstruct(parsed.program);
   if (sealed !== null) return { ok: false, rejected: false, error: sealed };
   const declarations = scanDeclarations(parsed.program);
+  const body = bodyStatements(parsed.program);
+  const assignments: StatementAssignment[] = [];
+  const assigned = new Set<string>();
+  for (const [index, statement] of body.entries()) {
+    const names = assignedNamesOf(statement);
+    if (names.length === 0) continue;
+    assignments.push({ index, names });
+    for (const name of names) assigned.add(name);
+  }
   return {
     ok: true,
     program: parsed.program,
@@ -494,6 +713,10 @@ function analyzeCode(code: string): AnalysisResult {
     rewrites: declarations.rewrites,
     resets: declarations.resets,
     lastExpression: lastExpressionOf(parsed.program),
+    assignments,
+    // `let x;` and `var x;` never assign anything, so nothing here can say they ran.
+    bareNames: declarations.names.filter((name) => !assigned.has(name)),
+    usage: scanNameUsage(parsed.program),
   };
 }
 
@@ -526,6 +749,10 @@ const RANK_RETURN = 2;
 const RANK_DECLARATION = 3;
 /** Applied last, so a reset stays outside a rewritten declaration at offset 0. */
 const RANK_RESET = 4;
+/** How far the run got: one marker in front of each statement that sets a name. */
+const RANK_MARKER = 5;
+/** Outermost of all: a refused run's guard runs before the first statement. */
+const RANK_GUARD = 6;
 
 interface Insertion {
   pos: number;
@@ -547,12 +774,11 @@ function directiveEndOf(statements: AstNode[]): number {
   return -1;
 }
 
-function insertionsFor(
-  program: AstNode,
-  lastExpression: AstNode | null,
-  rewrites: Rewrite[],
-  resets: string[],
-): Insertion[] {
+function insertionsFor(analysis: ReplAnalysis, guards: string[]): Insertion[] {
+  const program = analysis.program;
+  const lastExpression = analysis.lastExpression;
+  const rewrites = analysis.rewrites;
+  const resets = analysis.resets;
   const insertions: Insertion[] = [];
   const add = (pos: number, end: number, rank: number, text: string): void => {
     insertions.push({ pos, end, rank, text, removeTo: pos });
@@ -567,15 +793,43 @@ function insertionsFor(
     });
   }
 
+  const afterDirectives = directiveEndOf(statementsOf(program));
+  /** The body's first statement, which means after the directive prologue when
+   * there is one: a `"use strict"` that stops being first stops being a directive. */
+  const startOfBody = (rank: number, text: string): void => {
+    if (afterDirectives < 0) add(0, 0, rank, text);
+    else add(afterDirectives, afterDirectives, rank, `;${text}`);
+  };
+
+  if (guards.length > 0) {
+    // A name an earlier script declared but ended before setting is not `var`-ed
+    // here, so a read would quietly answer `undefined`. Rather than let the
+    // script run on a hole, the whole run is refused before its first statement.
+    startOfBody(RANK_GUARD, guards.join(""));
+  }
+
+  // How far this run got, per statement that sets something: the marker runs
+  // before its statement, so a throw inside statement `i` leaves the last one
+  // recorded at `i`, and statements up to it count as done.
+  const body = bodyStatements(program);
+  for (const assignment of analysis.assignments) {
+    const statement = body[assignment.index];
+    if (!statement) continue;
+    add(
+      statement.start,
+      statement.start,
+      RANK_MARKER,
+      `__replReached.at=${assignment.index};`,
+    );
+  }
+
   if (resets.length > 0) {
     // The prelude's `var x;` cannot unset a global an earlier run assigned, so an
-    // explicit `let x;` gets its own `void(x = void 0);`. It has to be the body's
-    // first statement, which means after the directive prologue when there is
-    // one: a `"use strict"` that stops being first stops being a directive.
-    const text = resets.map((name) => `void(${name} = void 0);`).join("");
-    const afterDirectives = directiveEndOf(statementsOf(program));
-    if (afterDirectives < 0) add(0, 0, RANK_RESET, text);
-    else add(afterDirectives, afterDirectives, RANK_RESET, `;${text}`);
+    // explicit `let x;` gets its own `void(x = void 0);`.
+    startOfBody(
+      RANK_RESET,
+      resets.map((name) => `void(${name} = void 0);`).join(""),
+    );
   }
 
   // A loop or function body is entered once per iteration or call, which is the
@@ -634,13 +888,12 @@ function insertionsFor(
  * innermost — `while (x) f()` becomes `while (x) {__replStep();f()}` rather than
  * an unbalanced nest.
  */
-function instrument(code: string, analysis: ReplAnalysis): string {
-  const insertions = insertionsFor(
-    analysis.program,
-    analysis.lastExpression,
-    analysis.rewrites,
-    analysis.resets,
-  );
+function instrument(
+  code: string,
+  analysis: ReplAnalysis,
+  guards: string[],
+): string {
+  const insertions = insertionsFor(analysis, guards);
   insertions.sort((a, b) => b.pos - a.pos || a.rank - b.rank || a.end - b.end);
   let out = code;
   for (const insertion of insertions) {
@@ -669,9 +922,20 @@ function instrument(code: string, analysis: ReplAnalysis): string {
  * promise is left behind with nobody holding it — and its rejection would be
  * reported as an unhandled rejection. One quiet handler inside the realm marks
  * it observed; the outcome the caller sees still comes from `pending`.
+ *
+ * `__replReached` is how the host learns how far the run got: the markers
+ * `insertionsFor` puts in front of each assigning statement write their index
+ * into it, and the wrapper parks the object on the promise the caller already
+ * holds. It is a closure binding rather than a global, so nothing the script can
+ * write reaches it — and the name is in the refusal set, so the script cannot
+ * declare it either.
  */
-function buildSource(code: string, analysis: ReplAnalysis): string {
-  const body = instrument(code, analysis);
+function buildSource(
+  code: string,
+  analysis: ReplAnalysis,
+  guards: string[],
+): string {
+  const body = instrument(code, analysis, guards);
   const prelude =
     analysis.declarations.length > 0
       ? `var ${analysis.declarations.join(", ")};`
@@ -681,7 +945,7 @@ function buildSource(code: string, analysis: ReplAnalysis): string {
   // resolving to this one. A plain identifier here (`p` before 2026-11-27) is
   // shadowed over the script's top-level declaration: a synchronous `const p`
   // sat in this binding's TDZ, and after an `await` the assignment hit a const.
-  return `${prelude}(() => { const __replRun = (async function () {${body}\n})(); __replRun.then(null, function () {}); return __replRun })()`;
+  return `${prelude}(() => { const __replReached = { at: -1 }; const __replRun = (async function () {${body}\n})(); __replRun.then(null, function () {}); __replRun.__replReached = __replReached; return __replRun })()`;
 }
 
 // ---------------------------------------------------------------------------
@@ -761,6 +1025,52 @@ function describeRunError(
   );
 }
 
+/** The wrapper's tracker: how far the run got, by statement index. */
+const REACHED_PROPERTY = "__replReached";
+
+/** How many names a refusal lists before it says "and N more" (Claude Code's cap). */
+const NOT_SET_LIMIT = 8;
+
+/** A refused run's own words; the not-set list would only repeat them. */
+const REFUSED_BEFORE_START = "Nothing in this script ran.";
+
+const IDENTIFIER_NAME = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+
+/** How far the run got: the last statement index its markers recorded. */
+function reachedIndexOf(value: unknown): number | null {
+  if (value === null || typeof value !== "object") return null;
+  const tracker = (value as Record<string, unknown>)[REACHED_PROPERTY];
+  if (tracker === null || typeof tracker !== "object") return null;
+  const at = (tracker as { at?: unknown }).at;
+  return typeof at === "number" ? at : null;
+}
+
+/**
+ * The guard for one name an earlier run declared but never set.
+ *
+ * Injected ahead of the first statement, so the run is refused before it does
+ * anything: reading `undefined` there looks like a success that computed
+ * nothing, which is the failure mode this exists to stop. `typeof` is left alone
+ * because it cannot throw, and the script's own words are Claude Code's.
+ */
+function unsetGuard(name: string): string {
+  const message =
+    `ReferenceError: ${name} has no value. An earlier script declared it but ` +
+    `ended before setting it. Nothing in this script ran. Set ${name} first.`;
+  return `if(typeof ${name}==='undefined')throw ${JSON.stringify(message)};`;
+}
+
+/** The failed result's last line: what this run left unset, and what that means. */
+function withNotSetLine(error: string, notSet: string[]): string {
+  if (notSet.length === 0 || error.includes(REFUSED_BEFORE_START)) return error;
+  const shown = notSet.slice(0, NOT_SET_LIMIT).join(", ");
+  const rest = notSet.length - NOT_SET_LIMIT;
+  return (
+    `${error}\nNot set by this script: ${shown}${rest > 0 ? ` and ${rest} more` : ""} ` +
+    "(a name that already had a value keeps it, unless this script has it in a `let` with no value)."
+  );
+}
+
 function overwriteMessage(name: string): string {
   return (
     `\`${name}\` is already a global here (ReplGlobalOverwrite): it names a helper, a tool or a ` +
@@ -817,6 +1127,8 @@ class ReplSandboxImpl implements ReplSandbox {
   private boundary: ReplBoundary | null = null;
   private managedNames: string[] = [];
   private runs = new Set<ReplRunState>();
+  /** Names an earlier run declared but ended before setting: reading one is refused. */
+  private unsetNames = new Set<string>();
   private disposed = false;
 
   constructor(host: ReplSandboxHost) {
@@ -907,9 +1219,12 @@ class ReplSandboxImpl implements ReplSandbox {
 
     let script: vm.Script;
     try {
-      script = new vm.Script(buildSource(code, analysis), {
-        filename: SCRIPT_FILENAME,
-      });
+      script = new vm.Script(
+        buildSource(code, analysis, this.guardsFor(analysis)),
+        {
+          filename: SCRIPT_FILENAME,
+        },
+      );
     } catch (error) {
       return { ok: false, error: formatError(error), logs: [] };
     }
@@ -924,9 +1239,12 @@ class ReplSandboxImpl implements ReplSandbox {
       });
     } catch (error) {
       this.clearTimers(state);
+      // A kill this early (the sync wall clock, the step counter) leaves the
+      // markers unreadable, so what ran is probed from the values instead.
+      const notSet = this.recordRunNames(analysis, null, false);
       return {
         ok: false,
-        error: describeRunError(error, timeoutMs, code),
+        error: withNotSetLine(describeRunError(error, timeoutMs, code), notSet),
         logs: state.logs,
       };
     }
@@ -937,16 +1255,22 @@ class ReplSandboxImpl implements ReplSandbox {
     built.markAsyncPhase();
 
     this.runs.add(state);
+    const reached = () => reachedIndexOf(pending);
     const encoded = Promise.resolve(pending).then(
       (value) => {
         this.finishRun(state);
+        this.recordRunNames(analysis, reached(), true);
         return this.encodeOutcome(boundary, value);
       },
       (error) => {
         this.finishRun(state);
+        const notSet = this.recordRunNames(analysis, reached(), false);
         return {
           kind: "failed",
-          error: describeRunError(error, timeoutMs, code),
+          error: withNotSetLine(
+            describeRunError(error, timeoutMs, code),
+            notSet,
+          ),
         } as Settled;
       },
     );
@@ -1054,6 +1378,85 @@ class ReplSandboxImpl implements ReplSandbox {
     this.context = null;
     this.boundary = null;
     this.managedNames = [];
+    // The names went with the context; a fresh one owes nothing.
+    this.unsetNames.clear();
+  }
+
+  /**
+   * What a run of this script would read from the record of unset names.
+   *
+   * A read is refused whole rather than answered with `undefined`. A write is not:
+   * the script is about to give the name a value, so the record is cleared by the
+   * run itself. `globalThis[key]` means the read set cannot be trusted, and
+   * refusing on a guess would block scripts that never touch the name.
+   */
+  private guardsFor(analysis: ReplAnalysis): string[] {
+    if (this.unsetNames.size === 0 || analysis.usage.dynamicReads) return [];
+    return analysis.usage.reads
+      .filter(
+        (name) => this.unsetNames.has(name) && !analysis.usage.writes.has(name),
+      )
+      .map(unsetGuard);
+  }
+
+  /**
+   * Roll what this run set — and failed to set — into the record.
+   *
+   * The marker in front of each statement says how far the run got, so a name is
+   * "set" if its statement was reached. `reached === null` means the run was
+   * killed before its markers could be read (the sync wall clock, the step
+   * budget): then the context itself is asked, since what already ran cannot be
+   * reconstructed after the fact.
+   */
+  private recordRunNames(
+    analysis: ReplAnalysis,
+    reached: number | null,
+    returned: boolean,
+  ): string[] {
+    const tracked = (name: string): boolean =>
+      analysis.declarations.includes(name) || this.unsetNames.has(name);
+    const done = new Set<string>();
+    const pending = new Set<string>();
+    if (reached === null) {
+      for (const name of [...analysis.declarations, ...this.unsetNames]) {
+        if (this.stillUndefined(name)) pending.add(name);
+        else done.add(name);
+      }
+    } else {
+      for (const assignment of analysis.assignments) {
+        const target = assignment.index <= reached ? done : pending;
+        for (const name of assignment.names) {
+          if (tracked(name)) target.add(name);
+        }
+      }
+      // A name declared with no value at all never appears in a statement, so a
+      // run that reached its end is the only thing that can vouch for it.
+      if (returned)
+        for (const name of analysis.bareNames) {
+          if (tracked(name)) done.add(name);
+        }
+    }
+    for (const name of done) this.unsetNames.delete(name);
+    const notSet = [...pending].filter((name) => !done.has(name));
+    for (const name of notSet) this.unsetNames.add(name);
+    return notSet;
+  }
+
+  /** Whether the context still has nothing under this name. */
+  private stillUndefined(name: string): boolean {
+    if (!IDENTIFIER_NAME.test(name)) return false;
+    try {
+      const probe = new vm.Script(`typeof ${name}`, {
+        filename: SCRIPT_FILENAME,
+      });
+      return (
+        probe.runInContext(this.context as vm.Context, { timeout: 1_000 }) ===
+        "undefined"
+      );
+    } catch {
+      // A context that cannot answer leaves the record as it stands.
+      return false;
+    }
   }
 
   private installGlobals(
