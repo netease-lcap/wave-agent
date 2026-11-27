@@ -247,3 +247,61 @@ describe("More Menu — 远控页的「切换电脑」", () => {
     expect(screen.queryByTestId("more-menu-switch-machine")).toBeNull();
   });
 });
+
+/**
+ * 远控页没有设置页，聚焦视图这条显示偏好的入口就落在「更多」菜单里
+ * （spec ui/focus-view.md 场景 1、remote/remote-web.md 场景 25）。它是纯显示
+ * 偏好：只读写 localStorage，不发任何宿主命令。
+ */
+describe("More Menu — 远控页的聚焦视图开关", () => {
+  afterEach(() => {
+    delete window.waveRemotePage;
+    window.localStorage.clear();
+  });
+
+  it("默认是「开启聚焦视图」，点一下写进 localStorage 并收起菜单", () => {
+    window.waveRemotePage = true;
+    const { vscode } = renderChatApp();
+
+    openMoreMenu();
+    expect(screen.getByTestId("more-menu-focus-view-on")).toHaveTextContent(
+      "开启聚焦视图",
+    );
+
+    vscode.postMessage.mockClear();
+    act(() => {
+      fireEvent.click(screen.getByTestId("more-menu-focus-view-on"));
+    });
+
+    expect(window.localStorage.getItem("wave.chat.focusView")).toBe("1");
+    // 纯本地开关，不惊动宿主
+    expect(vscode.postMessage).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("more-menu")).toBeNull();
+  });
+
+  it("已开启时那一行是「关闭聚焦视图」，点一下把偏好清掉", () => {
+    window.waveRemotePage = true;
+    window.localStorage.setItem("wave.chat.focusView", "1");
+    renderChatApp();
+
+    openMoreMenu();
+    expect(screen.getByTestId("more-menu-focus-view-off")).toHaveTextContent(
+      "关闭聚焦视图",
+    );
+
+    act(() => {
+      fireEvent.click(screen.getByTestId("more-menu-focus-view-off"));
+    });
+
+    expect(window.localStorage.getItem("wave.chat.focusView")).toBeNull();
+  });
+
+  it("四个本地宿主不出现这一行（它们的入口是设置页）", () => {
+    renderChatApp();
+
+    openMoreMenu();
+
+    expect(screen.queryByTestId("more-menu-focus-view-on")).toBeNull();
+    expect(screen.queryByTestId("more-menu-focus-view-off")).toBeNull();
+  });
+});

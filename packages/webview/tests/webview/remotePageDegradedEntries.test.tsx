@@ -593,25 +593,24 @@ describe("entries that can only fail on the page", () => {
     const items = Array.from(
       menu.querySelectorAll<HTMLElement>(".more-menu-item"),
     );
-    // 切换电脑 + 企业控制台 + 帮助文档：页面自己就没有设置与登录态这两档。
-    expect(items).toHaveLength(3);
+    // 切换电脑 + 聚焦视图 + 企业控制台 + 帮助文档：页面自己就没有设置与登录态
+    // 这两档，但显示偏好那一档（聚焦视图）在这一端是有效的。
+    expect(items).toHaveLength(4);
 
-    act(() => {
-      fireEvent.keyDown(items[0], { key: "ArrowDown" });
-    });
-    expect(items[1].tabIndex).toBe(0);
-
-    act(() => {
-      fireEvent.keyDown(items[1], { key: "ArrowDown" });
-    });
-    expect(items[2].tabIndex).toBe(0);
+    // 方向键一路走到底：每一项依次接管 tabIndex。
+    for (const next of [1, 2, 3]) {
+      act(() => {
+        fireEvent.keyDown(items[next - 1], { key: "ArrowDown" });
+      });
+      expect(items[next].tabIndex).toBe(0);
+    }
 
     // At the last entry the roving stops: with a stale item count it would move
     // to a slot that is not there, leaving the whole menu without a tab stop.
     act(() => {
-      fireEvent.keyDown(items[2], { key: "ArrowDown" });
+      fireEvent.keyDown(items[3], { key: "ArrowDown" });
     });
-    expect(items[2].tabIndex).toBe(0);
+    expect(items[3].tabIndex).toBe(0);
     expect(menu.querySelectorAll('[tabindex="0"]')).toHaveLength(1);
   });
 
