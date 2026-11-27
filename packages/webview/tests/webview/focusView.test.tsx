@@ -112,6 +112,46 @@ describe("聚焦视图", () => {
     ).toBe("false");
   });
 
+  it("轮尾那条消息里思考与答复并存时，思考收进卡、卡外只留答复", async () => {
+    // 真实会话里常见：一条 assistant 消息 blocks = [reasoning, text]。折叠粒度
+    // 若按整条消息算，思考就跟着答复一起露在卡外（spec 场景 2 按块切）。
+    window.localStorage.setItem(FOCUS_KEY, "1");
+    const tail = MockDataGenerator.createAssistantMessage("重跑还在跑", "a2");
+    tail.blocks = [
+      {
+        type: "reasoning",
+        content: "重跑的 agent-sdk 2 pending",
+        stage: "end",
+      },
+      { type: "text", content: "重跑还在跑", stage: "end" },
+    ];
+    await renderWith([
+      MockDataGenerator.createUserMessage("第一问", "u1"),
+      MockDataGenerator.createAssistantMessageWithTool(
+        "",
+        "Read",
+        "{}",
+        "文件内容",
+      ),
+      tail,
+    ]);
+
+    await waitFor(() =>
+      expect(screen.getAllByTestId("focus-fold")).toHaveLength(1),
+    );
+    // 卡外只有答复，思考行不在卡外。
+    expect(transcriptText()).toContain("重跑还在跑");
+    expect(document.querySelectorAll(".reasoning-block")).toHaveLength(0);
+
+    fireEvent.click(screen.getByTestId("focus-fold-head"));
+    await waitFor(() =>
+      expect(screen.getByTestId("focus-fold-body")).toBeInTheDocument(),
+    );
+    // 展开卡后思考才出现，且仍在卡内。
+    expect(document.querySelectorAll(".reasoning-block")).toHaveLength(1);
+    expect(screen.getByTestId("focus-fold-body").textContent).toContain("思考");
+  });
+
   it("一轮里上百次工具调用也只收成一行，DOM 行数仍然有界", async () => {
     window.localStorage.setItem(FOCUS_KEY, "1");
     const messages = [MockDataGenerator.createUserMessage("干一大票", "u1")];

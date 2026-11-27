@@ -89,6 +89,81 @@ describe("buildFocusItems", () => {
     expect(rowIndexByMessageIndex).toEqual([0, 1, 1]);
   });
 
+  it("轮尾那条消息里思考 + 答复并存时，思考进卡、卡外只留答复（按块切）", () => {
+    // 用户的真实会话就是这个形状：同一条 assistant 消息 blocks = [reasoning, text]。
+    // 折叠粒度若是整条消息，思考会跟着答复一起露在卡外（spec 场景 2 的反例）。
+    const messages = [
+      user("u1"),
+      assistant("a1", [tool("t1", "end")]),
+      assistant("a2", [
+        { type: "reasoning", content: "想一想", stage: "end" },
+        { type: "text", content: "这一轮的答复", stage: "end" },
+      ]),
+    ];
+    const { items, rowIndexByMessageIndex } = buildFocusItems(messages, true);
+
+    expect(items.map((item) => item.kind)).toEqual([
+      "message",
+      "fold",
+      "message",
+    ]);
+    const fold = items[1];
+    if (fold.kind !== "fold") throw new Error("expected fold");
+    // 卡内最后一份是 a2 的前段（只有思考），id 加后缀避免同一视图出现两条同 id。
+    expect(fold.messages.map((message) => message.id)).toEqual([
+      "a1",
+      "a2:process",
+    ]);
+    expect(fold.messages[1].blocks.map((block) => block.type)).toEqual([
+      "reasoning",
+    ]);
+    expect(fold.hasReasoning).toBe(true);
+    // 卡外那半含答复、仍用原 id。
+    const tail = items[2];
+    if (tail.kind !== "message") throw new Error("expected message");
+    expect(tail.message.id).toBe("a2");
+    expect(tail.message.blocks.map((block) => block.type)).toEqual(["text"]);
+    // 行坐标按消息算：这条消息的答复在卡外，所以它整条指向卡外那一行。
+    expect(rowIndexByMessageIndex).toEqual([0, 1, 2]);
+  });
+
+  it("轮尾只有思考、没有答复时整轮进卡，卡外不留孤零零的思考行", () => {
+    const messages = [
+      user("u1"),
+      assistant("a1", [tool("t1", "end")]),
+      assistant("a2", [{ type: "reasoning", content: "想一想", stage: "end" }]),
+    ];
+    const { items } = buildFocusItems(messages, true);
+
+    expect(items.map((item) => item.kind)).toEqual(["message", "fold"]);
+    const fold = items[1];
+    if (fold.kind !== "fold") throw new Error("expected fold");
+    expect(fold.messages.map((message) => message.id)).toEqual(["a1", "a2"]);
+    expect(fold.hasReasoning).toBe(true);
+    expect(fold.live).toBe(false);
+  });
+
+  it("轮尾消息里的通知行仍留在卡外（不折叠）", () => {
+    const messages = [
+      user("u1"),
+      assistant("a1", [tool("t1", "end")]),
+      assistant("a2", [
+        { type: "reasoning", content: "想一想", stage: "end" },
+        { type: "notice", level: "error", content: "Request was aborted" },
+      ]),
+    ];
+    const { items } = buildFocusItems(messages, true);
+
+    expect(items.map((item) => item.kind)).toEqual([
+      "message",
+      "fold",
+      "message",
+    ]);
+    const tail = items[2];
+    if (tail.kind !== "message") throw new Error("expected message");
+    expect(tail.message.blocks.map((block) => block.type)).toEqual(["notice"]);
+  });
+
   it("工具都跑完了但模型还没给答复时，这一轮仍是进行态（不回落成结算文案）", () => {
     // 进行态的口径是整轮：工具刚 end、下一段响应还没开始，所有块都是 end，
     // 但轮没结束。按块级判定会在这里翻成「N 次工具调用」，下一段流式开始再
