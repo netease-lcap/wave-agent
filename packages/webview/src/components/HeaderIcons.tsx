@@ -2415,34 +2415,3 @@ export const PencilIcon: React.FC<IconProps> = ({
     <path d="m15 5 4 4" />
   </svg>
 );
-
-/**
- * 聚焦视图开关图标：时间线的圆点 + 一行（收起形），上下两条淡线表示被收起来的
- * 其它行。状态靠按钮底色表达，图标本身不变（与权限模式的图标档同思路）。
- */
-export const FocusViewIcon: React.FC<IconProps> = ({
-  className = "header-icon",
-}) => (
-  <svg
-    width={16}
-    height={16}
-    viewBox="0 0 16 16"
-    fill="none"
-    className={className}
-  >
-    <circle cx="3.2" cy="8" r="1.7" fill="currentColor" />
-    <path
-      d="M7.4 8h6.4"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-    />
-    <path
-      d="M2.4 3.6h11.2M2.4 12.4h11.2"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      opacity="0.35"
-    />
-  </svg>
-);

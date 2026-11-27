@@ -881,3 +881,57 @@ describe("SettingsPage「企业知识库」行（顶层 enableKnowledgeBase，�
     expect(kbSwitch()).toBeInTheDocument();
   });
 });
+
+/**
+ * 聚焦视图（spec ui/focus-view.md 场景 1）：开关只在这一处 —— 聊天界面上没有按钮。
+ * 纯显示偏好按端落 localStorage，不走 updateConfiguration，所以断言落在
+ * localStorage 与 onSave 没被调用上（后者防止有人把它误接进 settings.json）。
+ */
+describe("SettingsPage「聚焦视图」行（全局显示偏好，落 localStorage）", () => {
+  const FOCUS_KEY = "wave.chat.focusView";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    window.localStorage.clear();
+    delete window.waveHostType;
+  });
+
+  function focusSwitch(): HTMLInputElement {
+    return screen.getByLabelText("聚焦视图") as HTMLInputElement;
+  }
+
+  it("缺省关：本地没有这颗键时开关是关的", () => {
+    renderGlobalView({ configurationData: {} });
+
+    expect(focusSwitch().checked).toBe(false);
+  });
+
+  it("偏好已是开时回填为开", () => {
+    window.localStorage.setItem(FOCUS_KEY, "1");
+    renderGlobalView({ configurationData: {} });
+
+    expect(focusSwitch().checked).toBe(true);
+  });
+
+  it("拨到开 → 写进本地偏好，且不进 settings.json", () => {
+    const { onSave } = renderGlobalView({ configurationData: {} });
+
+    fireEvent.click(focusSwitch());
+
+    expect(window.localStorage.getItem(FOCUS_KEY)).toBe("1");
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("关掉 → 删掉这颗键（默认态不留垃圾）", () => {
+    window.localStorage.setItem(FOCUS_KEY, "1");
+    renderGlobalView({ configurationData: {} });
+
+    fireEvent.click(focusSwitch());
+
+    expect(window.localStorage.getItem(FOCUS_KEY)).toBeNull();
+  });
+});

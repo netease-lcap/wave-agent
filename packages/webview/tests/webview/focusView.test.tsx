@@ -10,6 +10,7 @@ import {
   transcriptText,
 } from "./test-utils";
 import { MockDataGenerator } from "../fixtures/mockData";
+import { writeFocusViewPreference } from "../../src/utils/displayPreferences";
 
 const FOCUS_KEY = "wave.chat.focusView";
 
@@ -217,44 +218,28 @@ describe("聚焦视图", () => {
     expect(screen.getByTestId("focus-fold").textContent).toContain("已 3 次");
   });
 
-  it("顶栏按钮切开关：aria-pressed 跟着变，并把偏好写进 localStorage", async () => {
+  it("设置页改完开关，已挂载的聊天视图立刻跟着折叠（不用刷新）", async () => {
     await renderWith(conversation());
+    // 聊天界面上没有入口：顶栏与输入框工具行都不该出现这个开关（2026-11-27
+    // 拍板把入口收进设置页）。设置页那一行本身由 settingsGlobal.test.tsx 钉住。
+    expect(screen.queryByTestId("focus-view-toggle")).toBeNull();
+    expect(screen.queryAllByTestId("focus-fold")).toHaveLength(0);
 
-    const toggle = await screen.findByTestId("focus-view-toggle");
-    expect(toggle.getAttribute("aria-pressed")).toBe("false");
-
-    fireEvent.click(toggle);
-    await waitFor(() =>
-      expect(
-        screen.getByTestId("focus-view-toggle").getAttribute("aria-pressed"),
-      ).toBe("true"),
-    );
-    expect(window.localStorage.getItem(FOCUS_KEY)).toBe("1");
-    // 切到聚焦视图后立刻出现折叠卡。
+    // 设置页写的就是这颗偏好：同页面走 listeners、桌面端独立设置窗口走 storage
+    // 事件，两条都汇到 subscribeFocusViewPreference。
+    act(() => {
+      writeFocusViewPreference(true);
+    });
     await waitFor(() =>
       expect(screen.getAllByTestId("focus-fold")).toHaveLength(1),
     );
 
-    fireEvent.click(screen.getByTestId("focus-view-toggle"));
+    act(() => {
+      writeFocusViewPreference(false);
+    });
     await waitFor(() =>
       expect(screen.queryAllByTestId("focus-fold")).toHaveLength(0),
     );
-    expect(window.localStorage.getItem(FOCUS_KEY)).toBeNull();
-  });
-
-  it("空会话不渲染开关：顶栏按钮只在有可折叠的轮时出现", async () => {
-    renderChatApp();
-    await waitFor(() =>
-      expect(screen.getByTestId("chat-header")).toBeInTheDocument(),
-    );
-    expect(screen.queryByTestId("focus-view-toggle")).toBeNull();
-
-    act(() => {
-      sendCommand("updateMessages", { messages: conversation() });
-    });
-    // 有了消息，同一个按钮才出现在顶栏（不是输入框工具行）。
-    const toggle = await screen.findByTestId("focus-view-toggle");
-    expect(toggle.closest(".chat-header")).not.toBeNull();
   });
 
   it("这一轮以失败提示收尾时，提示留在卡外原样可见", async () => {
