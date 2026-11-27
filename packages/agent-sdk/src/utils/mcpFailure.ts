@@ -183,9 +183,17 @@ export function sanitizeMcpFailureMessage(
     [options.homeDir, "~"],
   ] as const) {
     if (!value || value.length < 2) continue;
-    // The same directory may reach us with either separator (a config written
-    // on one platform, read on another).
-    for (const form of new Set([value, value.replace(/\\/g, "/")])) {
+    // The same directory may reach us with either separator, in either
+    // direction: a config written on one platform and read on another, or (on
+    // Windows) a POSIX-style home like `/tmp` joined by `path.win32` into
+    // `\tmp`. Matching only the value's own spelling would leak the path into
+    // telemetry in exactly those cases.
+    const forms = new Set([
+      value,
+      value.replace(/\\/g, "/"),
+      value.replace(/\//g, "\\"),
+    ]);
+    for (const form of forms) {
       if (form.length < 2) continue;
       text = text.split(form).join(placeholder);
     }

@@ -114,7 +114,7 @@ describe("sanitizeMcpFailureMessage", () => {
     );
 
     expect(message).toBe(
-      "ENOENT: no such file or directory, open '<workdir>/.mcp.json'",
+      `ENOENT: no such file or directory, open '${join("<workdir>", ".mcp.json")}'`,
     );
   });
 
@@ -129,6 +129,24 @@ describe("sanitizeMcpFailureMessage", () => {
 
     expect(message).not.toContain(home);
     expect(message).toContain("~");
+  });
+
+  it("redacts the directory whichever separator either side spells it with", () => {
+    // Windows: the configured home can be POSIX-style (`/tmp`, as on the CI
+    // runner) while `path.win32` joins it into `\tmp\…`; the reverse
+    // (backslash config, forward-slash message) is just as reachable.
+    for (const [inMessage, configured] of [
+      ["\\home\\liu\\.wave\\mcp.json", "/home/liu"],
+      ["/home/liu/.wave/mcp.json", "\\home\\liu"],
+    ]) {
+      const message = sanitizeMcpFailureMessage(
+        new Error(`EACCES: permission denied, open '${inMessage}'`),
+        { homeDir: configured },
+      );
+
+      expect(message).not.toContain("liu");
+      expect(message).toContain("~");
+    }
   });
 
   it("strips a URL's credentials and query string but keeps host and path", () => {
