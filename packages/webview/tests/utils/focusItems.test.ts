@@ -45,7 +45,8 @@ describe("buildFocusItems", () => {
       assistant("a1", [tool("t1", "end")]),
       assistant("a2", [text("答复")]),
     ];
-    const { items, rowIndexByMessageIndex } = buildFocusItems(messages, false);
+    const { items, rowIndexByMessageIndex, processRowByMessageIndex } =
+      buildFocusItems(messages, false, false);
 
     expect(items.map((item) => item.kind)).toEqual([
       "message",
@@ -53,6 +54,8 @@ describe("buildFocusItems", () => {
       "message",
     ]);
     expect(rowIndexByMessageIndex).toEqual([0, 1, 2]);
+    // 没有折叠行，也就没有「过程半」。
+    expect(processRowByMessageIndex).toEqual([-1, -1, -1]);
   });
 
   it("按「一条用户消息到下一条用户消息之前」切轮，轮尾无工具的答复留在卡外", () => {
@@ -62,7 +65,11 @@ describe("buildFocusItems", () => {
       assistant("a2", [tool("t2", "end")]),
       assistant("a3", [text("这一轮的答复")]),
     ];
-    const { items, rowIndexByMessageIndex } = buildFocusItems(messages, true);
+    const { items, rowIndexByMessageIndex } = buildFocusItems(
+      messages,
+      true,
+      false,
+    );
 
     expect(items).toHaveLength(3);
     const fold = foldOf(items)[0];
@@ -83,7 +90,12 @@ describe("buildFocusItems", () => {
       assistant("a1", [tool("t1", "end")]),
       assistant("a2", [tool("t2", "end")]),
     ];
-    const { items, rowIndexByMessageIndex } = buildFocusItems(messages, true);
+    // 末条以（已结束的）工具块收尾、这一轮还在跑：整轮进卡，卡外没有答复。
+    const { items, rowIndexByMessageIndex } = buildFocusItems(
+      messages,
+      true,
+      true,
+    );
 
     expect(items.map((item) => item.kind)).toEqual(["message", "fold"]);
     expect(rowIndexByMessageIndex).toEqual([0, 1, 1]);
@@ -100,7 +112,8 @@ describe("buildFocusItems", () => {
         { type: "text", content: "这一轮的答复", stage: "end" },
       ]),
     ];
-    const { items, rowIndexByMessageIndex } = buildFocusItems(messages, true);
+    const { items, rowIndexByMessageIndex, processRowByMessageIndex } =
+      buildFocusItems(messages, true, false);
 
     expect(items.map((item) => item.kind)).toEqual([
       "message",
@@ -125,6 +138,10 @@ describe("buildFocusItems", () => {
     expect(tail.message.blocks.map((block) => block.type)).toEqual(["text"]);
     // 行坐标按消息算：这条消息的答复在卡外，所以它整条指向卡外那一行。
     expect(rowIndexByMessageIndex).toEqual([0, 1, 2]);
+    // 但它还有一半在卡里（思考那条 a2:process）。reveal 只按上面那份坐标展开
+    // 会「跳过来看到答复、思考仍收着」，所以过程半的卡行坐标单独给一份：
+    // 只有被拆开的那条（a2，下标 2）有，指向卡那一行（1）。
+    expect(processRowByMessageIndex).toEqual([-1, -1, 1]);
   });
 
   it("轮尾只有思考、没有答复时整轮进卡，卡外不留孤零零的思考行", () => {
@@ -133,7 +150,7 @@ describe("buildFocusItems", () => {
       assistant("a1", [tool("t1", "end")]),
       assistant("a2", [{ type: "reasoning", content: "想一想", stage: "end" }]),
     ];
-    const { items } = buildFocusItems(messages, true);
+    const { items } = buildFocusItems(messages, true, false);
 
     expect(items.map((item) => item.kind)).toEqual(["message", "fold"]);
     const fold = items[1];
@@ -152,7 +169,7 @@ describe("buildFocusItems", () => {
         { type: "notice", level: "error", content: "Request was aborted" },
       ]),
     ];
-    const { items } = buildFocusItems(messages, true);
+    const { items } = buildFocusItems(messages, true, false);
 
     expect(items.map((item) => item.kind)).toEqual([
       "message",
@@ -173,16 +190,82 @@ describe("buildFocusItems", () => {
       assistant("a1", [tool("t1", "end")]),
       assistant("a2", [tool("t2", "end")]),
     ];
-    const fold = buildFocusItems(messages, true).items[1];
+    const fold = buildFocusItems(messages, true, true).items[1];
 
     if (fold.kind !== "fold") throw new Error("expected fold");
     expect(fold.live).toBe(true);
     expect(fold.runningToolName).toBeUndefined();
   });
 
+  it("中断的那一轮按已结束处理（形状等不到答复，真信号说它已经停了）", () => {
+    // 用户按 Esc 时 SDK 把在飞的工具块 finalize 成 end，这一轮就此收口；末条
+    // 仍以工具块收尾 —— 形状上这一轮「还没等到答复」。只有运行时信号能说它已经
+    // 结束（spec ui/focus-view.md「失败与中断」：用户中断的那一轮按已结束处理）。
+    // #3159 只按形状判定，这一行因此永久停在「正在思考…」。
+    const messages = [
+      user("u1"),
+      assistant("a1", [
+        text("我先跑个命令", "end"),
+        tool("t1", "end", { error: "Request was aborted" }),
+      ]),
+    ];
+    const fold = buildFocusItems(messages, true, false).items[1];
+
+    if (fold.kind !== "fold") throw new Error("expected fold");
+    expect(fold.live).toBe(false);
+    // 结算文案要用的两个数照旧：1 次调用、1 个失败。
+    expect(fold.callCount).toBe(1);
+    expect(fold.errorCount).toBe(1);
+  });
+
+  it("中断真实形状：末块是那行收尾提示时，提示留在卡外", () => {
+    // 中断时 SDK 收口工具块之后会往**同一条消息**里压一行 error 级收尾提示
+    // （aiManager 的 catch 分支）。那一行是「这一轮怎么收的场」，按 spec
+    //「失败与中断」要留在卡外 —— 不能因为前面还躺着工具块就整轮吞进卡里。
+    const messages = [
+      user("u1"),
+      assistant("a1", [tool("t1", "end")]),
+      assistant("a2", [
+        tool("t2", "end", { error: "Request was aborted" }),
+        { type: "notice", level: "error", content: "Request was aborted" },
+      ]),
+    ];
+    const { items } = buildFocusItems(messages, true, false);
+
+    expect(items.map((item) => item.kind)).toEqual([
+      "message",
+      "fold",
+      "message",
+    ]);
+    const fold = items[1];
+    if (fold.kind !== "fold") throw new Error("expected fold");
+    expect(fold.live).toBe(false);
+    expect(fold.messages.map((message) => message.id)).toEqual([
+      "a1",
+      "a2:process",
+    ]);
+    const tail = items[2];
+    if (tail.kind !== "message") throw new Error("expected message");
+    expect(tail.message.blocks.map((block) => block.type)).toEqual(["notice"]);
+  });
+
+  it("更早那一轮已经结束：后面一轮在跑时它不冒充进行态", () => {
+    // 只有窗口里最后那一轮可能是进行中的。历史中断轮同样是「末条以工具块收尾」，
+    // 若只看 isStreaming 不看位置，它会跟着后面那轮一起亮成进行态。
+    const messages = [
+      user("u1"),
+      assistant("a1", [tool("t1", "end", { error: "Request was aborted" })]),
+      user("u2"),
+      assistant("a2", [tool("t2", "running")]),
+    ];
+    const folds = foldOf(buildFocusItems(messages, true, true).items);
+
+    expect(folds.map((fold) => fold.live)).toEqual([false, true]);
+  });
+
   it("只有一条纯文本答复的轮不折叠（没有可折叠的活动）", () => {
     const messages = [user("u1"), assistant("a1", [text("答复")])];
-    const { items } = buildFocusItems(messages, true);
+    const { items } = buildFocusItems(messages, true, false);
 
     expect(items.map((item) => item.kind)).toEqual(["message", "message"]);
   });
@@ -194,7 +277,7 @@ describe("buildFocusItems", () => {
       user("u2"),
       assistant("a2", [tool("t2", "end")]),
     ];
-    const folds = foldOf(buildFocusItems(messages, true).items);
+    const folds = foldOf(buildFocusItems(messages, true, false).items);
 
     expect(folds.map((fold) => fold.key)).toEqual([
       "focus-fold:u1",
@@ -215,7 +298,7 @@ describe("buildFocusItems", () => {
     ];
 
     const keyOf = (messages: Message[], index: number) => {
-      const fold = buildFocusItems(messages, true).items[index];
+      const fold = buildFocusItems(messages, true, true).items[index];
       if (fold.kind !== "fold") throw new Error("expected fold");
       return fold.key;
     };
@@ -229,7 +312,7 @@ describe("buildFocusItems", () => {
       user("u1"),
       assistant("a3", [tool("t3", "end")]),
     ];
-    const folds = foldOf(buildFocusItems(messages, true).items);
+    const folds = foldOf(buildFocusItems(messages, true, false).items);
 
     expect(folds.map((fold) => fold.key)).toEqual([
       "focus-fold:a1",
@@ -243,7 +326,7 @@ describe("buildFocusItems", () => {
       assistant("a1", [tool("t1", "end")]),
       assistant("a2", [tool("t2", "running")]),
     ];
-    const { items } = buildFocusItems(messages, true);
+    const { items } = buildFocusItems(messages, true, true);
     const fold = items[1];
 
     if (fold.kind !== "fold") throw new Error("expected fold");
@@ -258,7 +341,7 @@ describe("buildFocusItems", () => {
       assistant("a1", [tool("t1", "end")]),
       assistant("a2", [text("正在写…", "streaming")]),
     ];
-    const { items } = buildFocusItems(messages, true);
+    const { items } = buildFocusItems(messages, true, true);
 
     expect(items).toHaveLength(2);
     const fold = items[1];
@@ -280,7 +363,7 @@ describe("buildFocusItems", () => {
       assistant("a2", [tool("t4", "end")]),
       assistant("a3", [text("这一轮的答复")]),
     ];
-    const { items } = buildFocusItems(messages, true);
+    const { items } = buildFocusItems(messages, true, false);
     const fold = items[1];
 
     if (fold.kind !== "fold") throw new Error("expected fold");
@@ -298,7 +381,7 @@ describe("buildFocusItems", () => {
         tool("t1", "end"),
       ]),
     ];
-    const fold = buildFocusItems(messages, true).items[1];
+    const fold = buildFocusItems(messages, true, false).items[1];
 
     if (fold.kind !== "fold") throw new Error("expected fold");
     expect(fold.hasReasoning).toBe(false);
@@ -312,7 +395,11 @@ describe("buildFocusItems", () => {
       user("u3"),
       assistant("a2", [tool("t2", "end")]),
     ];
-    const { items, rowIndexByMessageIndex } = buildFocusItems(messages, true);
+    const { items, rowIndexByMessageIndex } = buildFocusItems(
+      messages,
+      true,
+      false,
+    );
 
     expect(items.map((item) => item.kind)).toEqual([
       "message",

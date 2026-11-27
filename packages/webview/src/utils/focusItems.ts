@@ -19,7 +19,9 @@ export interface FocusFoldItem {
   callCount: number;
   errorCount: number;
   hasReasoning: boolean;
-  /** 这一轮还在跑（有未结束的工具块或流式文本）。 */
+  /** 这一轮还在跑：只有窗口里最后那一轮、形状上还没等到轮尾答复、且宿主那边
+   * 确实还在跑（`isStreaming`）三条同时成立。 */
+
   live: boolean;
   runningToolName?: string;
 }
@@ -37,6 +39,16 @@ export interface FocusItems {
   items: FocusItem[];
   /** 可见消息下标 → 行下标。折叠项覆盖的每条消息都指向同一个行。 */
   rowIndexByMessageIndex: number[];
+  /**
+   * 可见消息下标 → 这条消息**卡内那半**（`:process`）所在的折叠行下标；消息没被
+   * 拆开时为 -1。
+   *
+   * 轮尾那条消息可以横跨两行：思考进卡、答复留卡外，此时
+   * `rowIndexByMessageIndex` 指向卡外的答复行。reveal（搜索命中、大纲刻度）只
+   * 按那份坐标展开，就会「跳过去看到答复、思考仍收着」——命中落在思考里等于
+   * 没定位到（spec ui/focus-view.md 场景 8）。所以过程半的行坐标单独给一份。
+   */
+  processRowByMessageIndex: number[];
 }
 
 const isToolBlock = (block: MessageBlock): boolean => block.type === "tool";
@@ -67,6 +79,22 @@ function messageIsLive(message: Message): boolean {
     }
   }
   return false;
+}
+
+/**
+ * 末块是一行 error 级收尾提示时，这一轮已经收口。
+ *
+ * 用户中断（以及报错退出）时 SDK 先把没跑完的块 finalize，再把这一行追加到末条
+ * 助手消息尾部（aiManager 的 catch 分支 → `addNoticeBlock`），之后这条消息不会
+ * 再长 —— 但前面还躺着工具块，只看「末条有没有工具块」就会把整轮（连同这行提示）
+ * 吞进卡里。spec ui/focus-view.md「失败与中断」要求这种提示留在卡外，参考实现
+ * 也把「非 Claude 自己结束」的收尾算作 turnEnded（桌面端 6.28899.6
+ * cac57de41:53621 的 `!turnEnded`）。
+ */
+function endsWithErrorNotice(message: Message): boolean {
+  const blocks = message.blocks ?? [];
+  const last = blocks[blocks.length - 1];
+  return last?.type === "notice" && last.level === "error";
 }
 
 function countToolBlocks(messages: Message[]): {
@@ -151,13 +179,24 @@ function hasReasoningBlock(messages: Message[]): boolean {
  *
  * 不折叠的情况只有两种：关闭 focus 视图，以及这一轮没有可折叠的活动（只有一条
  * 纯文本答复）。
+ *
+ * `isStreaming` 是「这一轮真的在跑」这个**运行时信号**（宿主 `onLoadingChange`
+ * 推过来的那一颗）。折叠行的进行态必须由它说了算，不能只看末条消息长什么样：
+ * 用户按 Esc 中断时 SDK 不会再补消息（工具块被 finalize 成 end、没有后续答复），
+ * 一条纯按形状的判据会把那一轮**永久**当成「还没结束」，卡头永远「正在思考…」+
+ * 脉冲点，失败计数也再不出来 —— 而 spec 明确「用户中断（Stop）的那一轮按已结束
+ * 处理」（docs/specs/ui/focus-view.md「失败与中断」）。
  */
 export function buildFocusItems(
   messages: Message[],
   focus: boolean,
+  isStreaming: boolean,
 ): FocusItems {
   const items: FocusItem[] = [];
   const rowIndexByMessageIndex: number[] = new Array(messages.length).fill(0);
+  const processRowByMessageIndex: number[] = new Array(messages.length).fill(
+    -1,
+  );
 
   const pushMessage = (message: Message, messageIndex: number) => {
     rowIndexByMessageIndex[messageIndex] = items.length;
@@ -199,7 +238,7 @@ export function buildFocusItems(
 
   if (!focus) {
     messages.forEach(pushMessage);
-    return { items, rowIndexByMessageIndex };
+    return { items, rowIndexByMessageIndex, processRowByMessageIndex };
   }
 
   let index = 0;
@@ -219,7 +258,9 @@ export function buildFocusItems(
     // 轮尾答复按**块**切（spec ui/focus-view.md 场景 2）：这条消息结束了且不含
     // 工具块时，从它的答复起点（最后一个非空文本块 / notice / compact）起留卡外，
     // 排在它前面的块（思考等）仍归本轮折叠。没有这样的块（纯思考收尾）就整轮进卡。
-    const ended = !hasToolBlock(lastMessage) && !messageIsLive(lastMessage);
+    const ended =
+      endsWithErrorNotice(lastMessage) ||
+      (!hasToolBlock(lastMessage) && !messageIsLive(lastMessage));
     const replyStart = ended ? replyStartIndex(lastMessage) : -1;
     // 折叠行的 key 用**这一轮的用户消息**，不用首尾消息 id：进行中的一轮
     // 每来一条新消息尾部就会变，首尾 id 会让 key 跟着漂、把用户刚展开的卡
@@ -249,11 +290,20 @@ export function buildFocusItems(
       // 进行态 —— 那正是折叠行文案来回抖的根因。判据取「还没出现轮尾答复」，
       // 与桌面端 focus 的 turnEnded 语义一致（CC desktop 6.28899.6
       // cac57de41:53621 focusGrows = opensTurn && inFlight && !turnEnded）。
-      // 以工具块收尾却没有后续的轮只出现在中断/报错，那两种都会带一条结束
-      // 消息（timeout / notice / error），不会落到这里。
-      pushFold(folded, index, turnKey, !ended);
+      // 形状只说「还没等到轮尾答复」，说不了「是不是真的还在跑」：中断那轮
+      // SDK 把在飞的工具块 finalize 成 end、再往同一条消息里压一行 error 级收尾
+      // 提示（见 endsWithErrorNotice），末条于是以工具块收尾、形状上等不到答复 ——
+      // 只信形状就让那一行永久停在「正在思考…」+ 脉冲点（#3159 遗留）。所以
+      // 再叠一道运行时信号 `isStreaming`（宿主推的那颗），两个都对才算进行态。
+      // 而且只有**窗口里最后那一轮**可能是进行中的：更早的轮后面已经有新一轮
+      // 的用户消息，它一定结束了（哪怕它自己是以中断形状收尾的）。少了这一条，
+      // 一条历史中断轮会在后面那轮跑着的时候冒充进行态。
+      const isTailRun = runEnd >= messages.length;
+      pushFold(folded, index, turnKey, isTailRun && !ended && isStreaming);
       // 卡外只留答复段。答复起点不在 0 时，前面的块已经在卡内，这里切掉它们。
       if (ended && replyStart > 0) {
+        // 这条消息横跨两行：过程半在刚推上去的卡里，答复在下面这一行。
+        processRowByMessageIndex[index + run.length - 1] = items.length - 1;
         pushMessage(
           sliceBlocks(
             lastMessage,
@@ -270,5 +320,5 @@ export function buildFocusItems(
     index = runEnd;
   }
 
-  return { items, rowIndexByMessageIndex };
+  return { items, rowIndexByMessageIndex, processRowByMessageIndex };
 }
