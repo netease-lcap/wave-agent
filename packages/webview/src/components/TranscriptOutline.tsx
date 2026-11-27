@@ -346,13 +346,17 @@ export function TranscriptOutline({
           onScroll={handleScroll}
         >
           {items.map((item, index) => {
-            // 「选中态」（前景色那一条）**只属于操作期**：指针压在刻度列上、或正在
-            // 翻动刻度条时才画。鼠标一离开整列就回到「只有一长一短 + 在视口内提色」
-            // 的静止形态——设计师 1110 第 15 轮：「鼠标离开后不应该还有选中态（就是
-            // 最深的那条）」。之前它是常住的（滚动跟随 + 点击钉住都会留下一条深色），
-            // 一列短横里那一笔就成了「被选中的东西」，读者会去找它代表什么。
+            // 当前这一轮分两档画，档位只由「指针在不在刻度列上」决定：
+            //   · 操作期（`--active`）= 前景色，整列最亮的那一笔；
+            //   · 静止期（`--current`）= 次要档，比选中态弱一档。
+            // 这样既不违背 1110 第 15 轮「鼠标离开后不该还有选中态（最深的那条）」，
+            // 也不会像更早那样一移开就什么都不剩 —— AI 回答很长时屏里一条提问都没有，
+            // 读者完全看不出「我读到第几轮」（1127 设计师：「希望不要消失，不能只有
+            // 用户讲话的部分才有选中状态」「鼠标离开还是会有提亮，但是比选中态要弱
+            // 一点」）。选中**哪一条**只由滚动位置决定（`activeId`），与操作期无关。
             const isCurrent = item.id === activeId;
             const active = isCurrent && operating;
+            const restCurrent = isCurrent && !operating;
             // 在视口里：颜色提到悬停档（宽度不动，仍走一长一短）。但**只在没在
             // 操作刻度条时**才提——操作期间整列只该有两处高亮（悬停的那簇 + 当前
             // 这一轮），否则「我现在读到哪儿」的提示会和「哪几条在屏幕里」混成一片，
@@ -369,14 +373,16 @@ export function TranscriptOutline({
                 key={item.id}
                 type="button"
                 className={`outline-tick${active ? " outline-tick--active" : ""}${
-                  inView ? " outline-tick--in-view" : ""
-                }${pending ? " outline-tick--pending" : ""}`}
+                  restCurrent ? " outline-tick--current" : ""
+                }${inView ? " outline-tick--in-view" : ""}${
+                  pending ? " outline-tick--pending" : ""
+                }`}
                 data-testid="outline-tick"
                 data-message-id={item.id}
                 // 进行中与「还没加载」都是给读屏的语义提示，不只靠颜色。
                 aria-busy={pending ? "true" : undefined}
-                // 语义上的「当前这一轮」始终标出来（读屏要靠它），只是**不画**：
-                // 视觉上的选中态见上面的 `active`。
+                // 语义上的「当前这一轮」始终标出来（读屏要靠它），只是**画成哪一档**
+                // 由操作期决定：视觉见上面的 `active` / `restCurrent`。
                 aria-current={isCurrent ? "true" : undefined}
                 aria-label={item.question}
                 style={

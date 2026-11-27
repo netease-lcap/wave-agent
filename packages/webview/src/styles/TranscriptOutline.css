@@ -254,15 +254,25 @@
   background: var(--cc-text-secondary, var(--vscode-descriptionForeground));
 }
 
+/* 静止时的「当前这一轮」：指针不在刻度列上时它降到**次要档**，比选中态（前景色）
+   弱一档。1127 设计师：「选中态的颜色是最亮的，鼠标离开还是会有提亮，但是比选中
+   态要弱一点，这样也就不违背『鼠标离开不该还有选中态』了」。
+   与 `--in-view` 同色：当前这一轮本来也常落在视口里（长回答里则不在视口内，靠这一条
+   单独撑住），两种情况并存时颜色一致，不会叠成第三档。 */
+.outline-tick--current::before {
+  background: var(--cc-text-secondary, var(--vscode-descriptionForeground));
+}
+
 .outline-tick:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: 1px;
   border-radius: 2px;
 }
 
-/* 「当前这一轮」：**只靠颜色**区分，宽度也回到一长一短的节奏（设计师 1110：
+/* 「当前这一轮」的选中态：**只靠颜色**区分，宽度也回到一长一短的节奏（设计师 1110：
    「选中的那条宽度也收回默认」）——于是整列的宽度只剩两种来源：节奏（10/6）与
-   悬停涟漪（28/22/15），选中不再占用第三种宽度。
+   悬停涟漪（28/22/15），选中不再占用第三种宽度。这一档只在操作期出现（指针压在
+   刻度列上、或正在翻动刻度条）；指针离开后降到上面的 `--current`（次要档）。
    `:hover` 那一档必须一起写：`:hover::before` 的特异性比 `--active::before` 高，
    不并上来的话指针一压到这一条，它就会从前景色掉回次要档、比周围的提色刻度还浅。 */
 .outline-tick--active::before,
