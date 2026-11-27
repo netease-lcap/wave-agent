@@ -78,7 +78,7 @@ describe("McpManager recovery of down servers (使用前重拨)", () => {
     manager.addServer("s1", { command: "run-s1" });
     mockClient.connect.mockRejectedValueOnce(new Error("down"));
 
-    expect(await manager.connectServer("s1")).toBe(false);
+    expect((await manager.connectServer("s1")).ok).toBe(false);
     expect(manager.getServer("s1")?.status).toBe("error");
     expect(reconnectAttemptsOf(manager).get("s1")).toBe(1);
 
@@ -135,7 +135,7 @@ describe("McpManager recovery of down servers (使用前重拨)", () => {
   it("never resurrects a server the user disconnected", async () => {
     vi.useFakeTimers();
     manager.addServer("s1", { command: "run-s1" });
-    expect(await manager.connectServer("s1")).toBe(true);
+    expect((await manager.connectServer("s1")).ok).toBe(true);
 
     expect(await manager.disconnectServer("s1")).toBe(true);
     // Pretend the backoff window has long expired: the user's decision, not the
@@ -154,7 +154,7 @@ describe("McpManager recovery of down servers (使用前重拨)", () => {
     mockClient.connect.mockRejectedValue(new Error("down"));
 
     for (let i = 0; i < MCP_RECONNECT_MAX_ATTEMPTS; i++) {
-      expect(await manager.connectServer("s1")).toBe(false);
+      expect((await manager.connectServer("s1")).ok).toBe(false);
     }
     expect(reconnectAttemptsOf(manager).get("s1")).toBe(
       MCP_RECONNECT_MAX_ATTEMPTS,

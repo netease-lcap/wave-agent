@@ -2467,7 +2467,9 @@ export class Agent {
    * previous explicit disconnect; see `McpManager.connectServer`).
    */
   public async connectMcpServer(serverName: string): Promise<boolean> {
-    return await this.mcpManager.connectServer(serverName, true);
+    // The dial answers an outcome (it also carries *why* it failed, for
+    // telemetry); this public surface only ever promised a boolean.
+    return (await this.mcpManager.connectServer(serverName, true)).ok;
   }
 
   /** Disconnect MCP server */

@@ -748,7 +748,7 @@ describe("McpManager", () => {
     it("should connect to MCP server successfully via stdio", async () => {
       const result = await mcpManager.connectServer("test-server");
 
-      expect(result).toBe(true);
+      expect(result.ok).toBe(true);
       expect(Client).toHaveBeenCalledWith(
         { name: "wave-code", version: "1.0.0" },
         { capabilities: {} },
@@ -787,7 +787,7 @@ describe("McpManager", () => {
 
       const result = await mcpManager.connectServer("sse-server");
 
-      expect(result).toBe(true);
+      expect(result.ok).toBe(true);
       expect(SSEClientTransport).toHaveBeenCalledWith(
         new URL("https://example.com/sse"),
         expect.objectContaining({
@@ -823,7 +823,7 @@ describe("McpManager", () => {
 
       const result = await mcpManager.connectServer("streamable-server");
 
-      expect(result).toBe(true);
+      expect(result.ok).toBe(true);
       expect(StreamableHTTPClientTransport).toHaveBeenCalledWith(
         new URL("https://example.com/streamable"),
         {
@@ -861,7 +861,7 @@ describe("McpManager", () => {
       const result = await mcpManager.connectServer("http-server");
 
       // Should fail entirely, NOT fall back to SSE
-      expect(result).toBe(false);
+      expect(result.ok).toBe(false);
       expect(StreamableHTTPClientTransport).toHaveBeenCalled();
       expect(SSEClientTransport).not.toHaveBeenCalled();
 
@@ -881,7 +881,7 @@ describe("McpManager", () => {
 
       const result = await mcpManager.connectServer("invalid-server");
 
-      expect(result).toBe(false);
+      expect(result.ok).toBe(false);
       const server = mcpManager.getServer("invalid-server");
       expect(server?.status).toBe("error");
       expect(server?.error).toContain("must include either 'command' or 'url'");
@@ -902,7 +902,7 @@ describe("McpManager", () => {
 
       const result = await mcpManager.connectServer("bad-type-server");
 
-      expect(result).toBe(false);
+      expect(result.ok).toBe(false);
       const server = mcpManager.getServer("bad-type-server");
       expect(server?.status).toBe("error");
       expect(server?.error).toContain('unknown type "websocket"');
@@ -926,7 +926,7 @@ describe("McpManager", () => {
 
       const result = await mcpManager.connectServer("default-http-server");
 
-      expect(result).toBe(true);
+      expect(result.ok).toBe(true);
       expect(StreamableHTTPClientTransport).toHaveBeenCalledWith(
         new URL("https://example.com/default"),
         {
@@ -950,7 +950,7 @@ describe("McpManager", () => {
 
       const result = await mcpManager.connectServer("http-no-url");
 
-      expect(result).toBe(false);
+      expect(result.ok).toBe(false);
       const server = mcpManager.getServer("http-no-url");
       expect(server?.status).toBe("error");
       expect(server?.error).toContain("requires a 'url'");
@@ -970,7 +970,7 @@ describe("McpManager", () => {
 
       const result = await mcpManager.connectServer("sse-no-url");
 
-      expect(result).toBe(false);
+      expect(result.ok).toBe(false);
       const server = mcpManager.getServer("sse-no-url");
       expect(server?.status).toBe("error");
       expect(server?.error).toContain("requires a 'url'");
@@ -992,7 +992,7 @@ describe("McpManager", () => {
 
       const result = await mcpManager.connectServer("explicit-stdio");
 
-      expect(result).toBe(true);
+      expect(result.ok).toBe(true);
       expect(StdioClientTransport).toHaveBeenCalledWith(
         expect.objectContaining({
           command: "npx",
@@ -1006,7 +1006,7 @@ describe("McpManager", () => {
 
       const result = await mcpManager.connectServer("test-server");
 
-      expect(result).toBe(false);
+      expect(result.ok).toBe(false);
       const server = mcpManager.getServer("test-server");
       expect(server?.status).toBe("error");
       expect(server?.error).toBe("Connection failed");
@@ -1020,14 +1020,14 @@ describe("McpManager", () => {
       // Second connection attempt
       const result = await mcpManager.connectServer("test-server");
 
-      expect(result).toBe(true);
+      expect(result.ok).toBe(true);
       expect(Client).not.toHaveBeenCalled();
     });
 
     it("should return false for non-existent server", async () => {
       const result = await mcpManager.connectServer("non-existent");
 
-      expect(result).toBe(false);
+      expect(result.ok).toBe(false);
     });
 
     it("should inject WAVE_PLUGIN_ROOT into env for plugin-owned stdio servers", async () => {

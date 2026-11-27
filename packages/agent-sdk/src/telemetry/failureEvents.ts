@@ -20,6 +20,7 @@ import { createHash } from "node:crypto";
 import { lstat } from "node:fs/promises";
 import { logOTelEvent } from "./events.js";
 import type { StandardAttributeContext } from "./attributes.js";
+import type { McpFailureReason } from "../utils/mcpFailure.js";
 
 /** Upper bound on the free-text failure summary carried by any event. */
 const MESSAGE_LIMIT = 500;
@@ -147,9 +148,23 @@ export async function reportPersistFailure(input: {
   );
 }
 
-/** Report an MCP server that could not be reached; once per server per session. */
+/**
+ * Report an MCP server that could not be reached; once per server per session.
+ *
+ * `reason` is the part that makes the event diagnosable: without it every
+ * report read `MCP server X failed to connect` and there was no way to tell a
+ * missing `npx` from a rejected token from a bad config (spec
+ * enterprise/opentelemetry.md 属性面). `message` is expected to be the
+ * sanitized summary the dial site built with
+ * `sanitizeMcpFailureMessage()` — this function does not strip paths itself,
+ * because only the caller knows the workdir.
+ */
 export async function reportMcpConnectionFailure(input: {
   error?: unknown;
+  /** Why the dial produced nothing, from the closed set in `utils/mcpFailure`. */
+  reason: McpFailureReason;
+  /** Sanitized one-line summary; omitted when the failure carried no error. */
+  message?: string;
   sessionId: string;
   serverName: string;
   phase: "initialize" | "lazy" | "config";
@@ -163,12 +178,12 @@ export async function reportMcpConnectionFailure(input: {
       error_type: errorTypeOf(input.error),
       "error.category": "mcp",
       message: clip(
-        input.error === undefined
-          ? `MCP server ${input.serverName} failed to connect`
-          : messageOf(input.error),
+        input.message ??
+          `MCP server ${input.serverName} failed to connect (${input.reason})`,
       ),
       mcp_server_name: input.serverName,
       mcp_phase: input.phase,
+      mcp_failure_reason: input.reason,
     },
     input.context,
   );
