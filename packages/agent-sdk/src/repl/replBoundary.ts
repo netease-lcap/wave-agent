@@ -99,6 +99,12 @@ export interface ReplBoundaryGlobals {
   names: string[];
   /** Tool names that also became bare globals. */
   toolNames: string[];
+  /**
+   * Call once `runInContext` has returned the run promise. Until then the sync
+   * phase belongs to the vm `timeout`; from then on the step counter owns the
+   * wall clock, because that ceiling no longer applies.
+   */
+  markAsyncPhase(): void;
 }
 
 export interface ReplBoundary {
@@ -380,6 +386,15 @@ export const REPL_BOUNDARY_SOURCE = `(() => {
     let steps = 0;
     let deadline = DateNow() + syncWallMs;
 
+    // The sync phase is the vm timeout's job — runInContext already carries it.
+    // The step counter takes the wall clock over only once the host has the run
+    // promise back. Both ceilings otherwise trip on the same millisecond (they
+    // are the same timeoutMs), and the one that loses can reject the run promise
+    // before the wrapper attached its quiet handler: an unhandled rejection the
+    // caller never sees, because runInContext threw first.
+    let syncPhase = true;
+    const markAsyncPhase = () => { syncPhase = false; };
+
     // Called every time the host hands control back to the script: waiting on a
     // nested call (an approval dialog, a slow server) must not eat the sync
     // wall clock budget — that is exactly why the budget only covers sync
@@ -393,7 +408,7 @@ export const REPL_BOUNDARY_SOURCE = `(() => {
       if (steps > budget) throw stepError();
       // Checking the clock on every step would dominate the loop it is meant to
       // bound; every 1024 steps still trips within a millisecond of a tight spin.
-      if ((steps & 1023) === 0 && DateNow() > deadline) throw stepError();
+      if ((steps & 1023) === 0 && !syncPhase && DateNow() > deadline) throw stepError();
     };
 
     const settleHostCall = (pending, onValue) =>
@@ -788,7 +803,12 @@ export const REPL_BOUNDARY_SOURCE = `(() => {
     const names = [];
     const all = objectKeys(globals);
     for (let i = 0; i < all.length; i++) names.push(all[i]);
-    return objectFreeze({ globals: globals, names: names, toolNames: bareNames });
+    return objectFreeze({
+      globals: globals,
+      names: names,
+      toolNames: bareNames,
+      markAsyncPhase: markAsyncPhase,
+    });
   };
 
   return objectFreeze({

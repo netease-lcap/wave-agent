@@ -738,15 +738,37 @@ describe("repl sandbox: $ and preview", () => {
 
 describe("repl sandbox: termination", () => {
   it("stops a synchronous spin at the sync wall clock and keeps the context", async () => {
-    const sandbox = open();
+    // The sync phase belongs to the vm `timeout` alone: letting the step counter
+    // check the same clock — its deadline starts at the same `timeoutMs` — makes
+    // the two trip on the same millisecond. Whichever loses rejects the run
+    // promise, and when that lands before the wrapper attached its quiet handler
+    // the rejection surfaces as an unhandled one the caller never sees (it hit
+    // `check (agent-sdk, 2)` once in 400 spins). The counter takes over only
+    // after `runInContext` has handed the promise back.
+    let stepErrors = 0;
+    const host = makeHost();
+    const counting: ReplSandboxHost = {
+      ...host,
+      stepError: () => {
+        stepErrors += 1;
+        return host.stepError();
+      },
+    };
+    const sandbox = open(counting);
     await sandbox.run("const before = 1", opts());
 
-    const spun = await sandbox.run("while (true) {}", {
-      toolNames: [],
-      timeoutMs: 100,
-    });
-    expect(spun.ok).toBe(false);
-    expect(spun.error).toContain("wall clock 100 ms");
+    // Repeated because the race is a millisecond-wide window, not a state; every
+    // round is a fresh chance for the counter to fire first.
+    for (let i = 0; i < 60; i++) {
+      const spun = await sandbox.run("while (true) {}", {
+        toolNames: [],
+        timeoutMs: 2,
+      });
+      expect(spun.ok).toBe(false);
+      expect(spun.error).toContain("wall clock 2 ms");
+    }
+    // vm stopped every one of them: the counter never fired in the sync phase.
+    expect(stepErrors).toBe(0);
 
     const after = await sandbox.run("return before", opts());
     expect(after.value).toBe("1");

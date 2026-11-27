@@ -924,6 +924,11 @@ class ReplSandboxImpl implements ReplSandbox {
       };
     }
 
+    // The vm `timeout` above covered the sync phase and nothing else. Handing
+    // the wall clock to the step counter here — same tick, before the realm's
+    // microtasks run — keeps the two ceilings from racing each other.
+    built.markAsyncPhase();
+
     this.runs.add(state);
     const encoded = Promise.resolve(pending).then(
       (value) => {
