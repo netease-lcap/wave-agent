@@ -47,6 +47,7 @@ export const FocusFoldRow: React.FC<FocusFoldRowProps> = ({
   renderMessage,
 }) => {
   const meta = foldMeta(item);
+  const label = foldLabel(item);
   return (
     <div
       className={
@@ -64,7 +65,11 @@ export const FocusFoldRow: React.FC<FocusFoldRowProps> = ({
         data-testid="focus-fold-head"
         onClick={onToggle}
       >
-        <span className="focus-fold-label">{foldLabel(item)}</span>
+        {/* 进行态的扫光由 `::after` 复制这段文案来画（data-label），所以文案
+            只在这里算一次、两处共用。 */}
+        <span className="focus-fold-label" data-label={item.live ? label : undefined}>
+          {label}
+        </span>
         {meta && <span className="focus-fold-meta">{meta}</span>}
         {/* 与思考块 / 压缩块同一颗折叠图标（QueueChevronIcon，16px 盒）。
             排在文案之后，与 CC 桌面端一致：它的折叠箭头是内容之后的一个

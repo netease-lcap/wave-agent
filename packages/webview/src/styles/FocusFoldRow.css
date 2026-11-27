@@ -65,6 +65,64 @@
   opacity: 0.8;
 }
 
+/* ---------- 进行态：文案上一道高光循环扫过 ----------
+   这一轮还没结束（`is-live`，整轮口径见 utils/focusItems）时，卡头只有一行
+   「正在执行 Bash…」/「正在思考…」。长时间没有工具产出时它完全静止，看不出
+   这一轮还活着；结算后文案换回「N 次工具调用」，也不再需要动。所以扫光只挂在
+   进行态上（2026-11-27 设计师走查）。
+
+   画法：底层是常态文字色（不动 color，hover 换色照旧），`::after` 用
+   `data-label` 复制同一段文案、涂成正文色，再用一条会移动的 mask 只露出其中
+   一道斜光。mask 用 `no-repeat`，光带之外遮掉即等于透明 —— 底层基色露出来，
+   所以不需要保证渐变平铺满整行，也就不受文字变长（「正在思考…」↔「正在执行
+   Xxx…」）影响。 */
+.focus-fold.is-live .focus-fold-label {
+  position: relative;
+}
+
+.focus-fold.is-live .focus-fold-label::after {
+  content: attr(data-label);
+  position: absolute;
+  left: 0;
+  top: 0;
+  white-space: nowrap;
+  pointer-events: none;
+  color: var(--vscode-foreground);
+  /* 光带宽度按 mask 图（= 220% 行宽）的 30%~70% 取：落到 103px 的文案上大约
+     是 3~4 个字宽的一道斜光，窄了会看着像「某个字颜色深了」。 */
+  -webkit-mask-image: linear-gradient(
+    100deg,
+    transparent 30%,
+    #000 50%,
+    transparent 70%
+  );
+  mask-image: linear-gradient(100deg, transparent 30%, #000 50%, transparent 70%);
+  -webkit-mask-size: 220% 100%;
+  mask-size: 220% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  animation: focus-fold-sweep 2.6s linear infinite;
+}
+
+/* 从 100% 走到 -120%：mask 图从右端滑到左端，那道高光正好横穿整行文字；
+   首尾两帧光带都在文字之外，循环接缝看不见。 */
+@keyframes focus-fold-sweep {
+  from {
+    -webkit-mask-position: 100% 0;
+    mask-position: 100% 0;
+  }
+  to {
+    -webkit-mask-position: -120% 0;
+    mask-position: -120% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .focus-fold.is-live .focus-fold-label::after {
+    display: none;
+  }
+}
+
 /* 与思考块 / 压缩块同一颗折叠图标（QueueChevronIcon，16px 盒）：收起指右、
    展开 rotate(90deg) 指下。规则与 .reasoning-chevron / .expanded 同源，改动
    一处就三处一起变。位置在文案之后（见 FocusFoldRow.tsx），文案变宽时它会
