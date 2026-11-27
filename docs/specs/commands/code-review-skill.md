@@ -141,6 +141,7 @@ order: 130
 - **如果 AI 尝试自动触发 skill 怎么办？** frontmatter 中的 `disable-model-invocation: true` 阻止 AI 自动调用 skill；它仅通过 `/code-review` 由用户调用。
 - **如果 `--fix` 之后再次交付清单怎么办？** 那是同一份清单的更新，不是追加的第二份：交付的条目与第一次同一批，只是每条多了处理结果，界面据此更新已有条目的状态。
 - **如果核实 agent 与审查 agent 意见不一致怎么办？** 核实 agent 的结论对保留与否具有权威性；审查 agent 自己的评估不参与该判定。
+- **如果 PR 链接指向自建实例（GitHub Enterprise）怎么办？** 只有主机名认得出是 `github.com` 时才敢拼 `-R owner/repo` 与 `gh api repos/…`（那是 github.com 的端点拼法）；自建实例上整条 URL 交给 `gh pr diff`，连 `pr diff` 的替代命令也不给。
 - **如果远程是自托管 GitLab（不是 gitlab.com）怎么办？** 平台检测按远端地址的主机名精确匹配（`github.com` / `gitlab.com` / `bitbucket.org` 及三个 SSH 别名），不做子串匹配；自定义域的自托管实例归入「其它」，行为与认不出托管方一致——裸数字仍按 GitHub PR 处理，skill 在命令不可用时回退到直接输出。
 - **如果 `gh` 或 `glab` 已安装但未认证怎么办？** 发布评论的 CLI 命令将失败；skill 将其视为"PR/MR 不存在"并静默跳过。
 - **如果发布评论失败怎么办？** skill 回退到直接终端输出，确保不丢失信息。

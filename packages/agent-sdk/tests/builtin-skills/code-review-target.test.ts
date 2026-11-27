@@ -50,12 +50,51 @@ describe("resolveReviewTarget", () => {
     });
   });
 
+  // CC 的 `gi()`（`1091-228433B-Vdr.js:2015-2021`）：认不出是 github.com 时整条 URL
+  // 交给 gh，既不拼 `-R` 也不给 `gh api repos/…` 退路。
+  it("hands a self-hosted pull URL to gh whole, with no fallback", () => {
+    const target = resolveReviewTarget("https://ghe.corp/o/r/pull/9");
+    expect(target).toEqual({
+      platform: "github",
+      name: "GitHub pull request https://ghe.corp/o/r/pull/9",
+      command: "gh pr diff https://ghe.corp/o/r/pull/9",
+      crossRepo: true,
+    });
+  });
+
+  it("still knows github.com when the URL carries a port", () => {
+    expect(resolveReviewTarget("https://github.com:443/o/r/pull/9")).toEqual({
+      platform: "github",
+      name: "GitHub pull request https://github.com:443/o/r/pull/9",
+      command: "gh pr diff 9 -R o/r",
+      fallback:
+        "gh api repos/o/r/pulls/9 -H 'Accept: application/vnd.github.diff'",
+      crossRepo: true,
+    });
+  });
+
+  // CC 的路径段字符类（`0215-6730B-aX.js:17`）挡掉 `.` 与 `..`：这类 URL 不是真链接。
+  it("rejects a URL whose path segments are dot directories", () => {
+    expect(
+      resolveReviewTarget("https://github.com/o/../pull/9"),
+    ).toBeUndefined();
+    expect(
+      resolveReviewTarget("https://github.com/./r/pull/9"),
+    ).toBeUndefined();
+  });
+
   it("takes !N as a GitLab merge request", () => {
     expect(resolveReviewTarget("!7")).toEqual({
       platform: "gitlab",
       name: "GitLab merge request !7",
       command: "glab mr diff 7",
     });
+  });
+
+  // CC 的 `gi()`（`1091-228433B-Vdr.js:1989`）：裸形态 1-6 位，URL 里的 iid 才 9 位。
+  it("keeps the bare !N form to six digits", () => {
+    expect(resolveReviewTarget("!123456")?.platform).toBe("gitlab");
+    expect(resolveReviewTarget("!1234567")).toBeUndefined();
   });
 
   it("reads the project out of a GitLab merge request URL", () => {
@@ -108,6 +147,10 @@ describe("/code-review review target", () => {
   it("offers the gh api fallback for GitHub only", () => {
     expect(prompt("12")).toContain("gh api repos/{owner}/{repo}/pulls/12");
     expect(prompt("!7")).not.toContain("gh api repos/");
+    // 自建实例连 `pr diff` 的退路都没有：那段话只在有 withoutPrDiff 时出现
+    const ghes = prompt("https://ghe.corp/o/r/pull/9");
+    expect(ghes).toContain("gh pr diff https://ghe.corp/o/r/pull/9");
+    expect(ghes).not.toContain("Some sessions have a gh with no");
   });
 
   it("says nothing about a target it cannot resolve", () => {
