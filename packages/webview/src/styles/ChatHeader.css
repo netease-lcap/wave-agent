@@ -124,23 +124,6 @@
   background-color: var(--vscode-toolbar-hoverBackground);
 }
 
-/* 聚焦视图开关（spec ui/focus-view.md 场景 1）：图标本身不换形，选中态只靠底色
-   与字色 —— 换图标会让两个状态看起来是两种功能。 */
-.header-focus-toggle.is-active,
-.header-focus-toggle.is-active:hover {
-  background-color: var(
-    --vscode-inputOption-activeBackground,
-    rgba(255, 255, 255, 0.12)
-  );
-  color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground));
-}
-
-.header-focus-icon {
-  width: 16px;
-  height: 16px;
-  display: block;
-}
-
 .button-badge {
   position: absolute;
   top: -2px;

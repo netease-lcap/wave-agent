@@ -67,6 +67,11 @@ import {
   isRemotePageHost,
 } from "../utils/platform";
 import { useLatestRef } from "../utils/useLatestRef";
+import {
+  readFocusViewPreference,
+  subscribeFocusViewPreference,
+  writeFocusViewPreference,
+} from "../utils/displayPreferences";
 import type { AgentsReadState } from "../utils/agentsReadState";
 
 export interface SettingsPageProps {
@@ -463,6 +468,14 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   // 企业知识库开关：缺省**关**（开启后企业文档会进入每次对话的上下文），不做
   // 未设置占位态——真实默认就是关（spec core/agent-config.md「企业知识库开关」）。
   const [enableKnowledgeBase, setEnableKnowledgeBase] = useState(false);
+  // 聚焦视图（spec ui/focus-view.md 场景 1）：纯显示偏好，按端落 localStorage，
+  // 不进 settings.json —— 所以不走 commitToggle（那套是 updateConfiguration 的
+  // 乐观提交 + 失败回滚），写完自己就生效。订阅是为了和已挂载的聊天视图对齐：
+  // 桌面端设置是独立窗口，那边改了这里要跟着变（见 displayPreferences 注释）。
+  const [focusViewEnabled, setFocusViewEnabled] = useState(
+    readFocusViewPreference,
+  );
+  useEffect(() => subscribeFocusViewPreference(setFocusViewEnabled), []);
   // 补全两行只在**提供补全的宿主**渲染（VS Code / JetBrains）：桌面端与远端网页
   // 没有代码编辑器、补全从不触发，在那里摆一个开关等于承诺一个不会发生的功能
   // （spec ui/code-completion.md 边界情况「补全设置行的宿主范围」）。本组件为四端
@@ -1268,6 +1281,41 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                           }}
                         />
                         <span className="settings-switch-slider"></span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </section>
+              {/* 「聊天显示」区块（spec ui/focus-view.md 场景 1）：聚焦视图的唯一
+                  入口 —— 聊天界面上不挂按钮（输入框工具行与聊天顶栏都试过，均被
+                  否：前者的按钮已经排满，后者在桌面端本来就是「展开面板」一颗，
+                  2026-11-27 用户拍板）。独立成节、不塞进「基础设置」：它不改模型
+                  行为，只改「这段对话怎么显示」。形态与「桌面端设置」同构，用一级
+                  h2 分节——卡内的 settings-row-group-title 是桌面端「系统通知」
+                  那一档内部的二级小字，不是通用分组形态，别拿它开小组。 */}
+              <section className="settings-section">
+                <div className="settings-section-heading">
+                  <h2>聊天显示</h2>
+                </div>
+                <div className="settings-card">
+                  <div className="settings-row">
+                    <div className="settings-row-copy">
+                      <h3>聚焦视图</h3>
+                      <p>把每一轮的工具调用收成一行摘要，点开卡头看细节</p>
+                    </div>
+                    <div className="settings-control">
+                      <label className="settings-switch">
+                        <input
+                          type="checkbox"
+                          aria-label="聚焦视图"
+                          checked={focusViewEnabled}
+                          onChange={(e) => {
+                            const next = e.target.checked;
+                            setFocusViewEnabled(next);
+                            writeFocusViewPreference(next);
+                          }}
+                        />
+                        <span className="settings-switch-slider" />
                       </label>
                     </div>
                   </div>
