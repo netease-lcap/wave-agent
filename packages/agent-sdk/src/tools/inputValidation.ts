@@ -16,9 +16,10 @@
  * once there is data about what models actually send.
  *
  * Only a subset of JSON Schema is interpreted: `type`, `required`, `enum`,
- * unknown keys, nested object `properties`, and array `items`. A constraint this
- * file does not understand is a constraint it does not enforce — the alternative
- * (treating an uninterpreted keyword as satisfied) would be a silent lie.
+ * unknown keys, nested object `properties`, array `items`, and the two
+ * ceilings `maxItems` / `maxLength`. A constraint this file does not understand
+ * is a constraint it does not enforce — the alternative (treating an
+ * uninterpreted keyword as satisfied) would be a silent lie.
  */
 
 /**
@@ -134,7 +135,35 @@ function checkValue(
     );
   }
 
+  // Both ceilings reject rather than truncate: handing back a half-clipped
+  // list or label would give the tool an input that looks valid while a whole
+  // entry is missing, which is worse than making the model send another
+  // version. The message keeps the shared `is invalid:` prefix and names both
+  // the actual value and the limit, so the model knows how much to drop.
+  //
+  // `maxLength` counts characters, which JSON Schema (validation section 6.3.1)
+  // defines as Unicode code points rather than JS UTF-16 units: four emoji have
+  // a `length` of 8, and measuring by `length` would reject a legal
+  // 4-character string.
+  if (typeof value === "string") {
+    const maxLength = schema.maxLength;
+    if (typeof maxLength === "number") {
+      const characters = [...value].length;
+      if (characters > maxLength) {
+        issues.invalid.push(
+          `The parameter \`${path}\` is invalid: expected at most ${maxLength} characters but provided ${characters}`,
+        );
+      }
+    }
+  }
+
   if (Array.isArray(value)) {
+    const maxItems = schema.maxItems;
+    if (typeof maxItems === "number" && value.length > maxItems) {
+      issues.invalid.push(
+        `The parameter \`${path}\` is invalid: expected at most ${maxItems} items but provided ${value.length}`,
+      );
+    }
     const items = asSchema(schema.items);
     if (items !== null) {
       value.forEach((element, index) => {
