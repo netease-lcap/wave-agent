@@ -136,6 +136,9 @@ describe("Agent Tool Integration with Built-in Subagents", () => {
           // now that `agent.spawn` can rewrite it; built-in Explore declares
           // `inherit`.
           model: "inherit",
+          // Depth the calling agent reports (main agent = 0); the new instance
+          // lands at 1（spec multi-agent/subagent「子代理嵌套委派」）。
+          parentSpawnDepth: 0,
         },
         undefined,
         expect.any(Function),
@@ -319,6 +322,7 @@ describe("Agent Tool Integration with Built-in Subagents", () => {
           worktreeIsolation: false,
           // Built-in Plan declares `model: inherit`, same pass-through as above.
           model: "inherit",
+          parentSpawnDepth: 0,
         },
         undefined,
         expect.any(Function),

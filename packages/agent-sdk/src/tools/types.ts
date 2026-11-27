@@ -269,6 +269,17 @@ export interface ToolContext {
    */
   modAgentDepth?: number;
   /**
+   * 本代理的委派深度：主代理 0，主代理直接派出的子代理 1（spec
+   * multi-agent/subagent「子代理嵌套委派」）。到顶时 `Agent` 工具根本不进清单，
+   * 这里读到的是兜底用的值。
+   */
+  agentSpawnDepth?: number;
+  /**
+   * 本代理的实例 id，只有子代理才有。下一层委派用它把新实例记成「这个代理的
+   * 子任务」，而不是主代理的直接子任务。
+   */
+  agentId?: string;
+  /**
    * Per-session merged environment (OS env overlaid with the settings env
    * snapshot) for this session. Tools that spawn subprocesses (Bash, hooks)
    * should merge this on top of `process.env` so settings `env` vars reach

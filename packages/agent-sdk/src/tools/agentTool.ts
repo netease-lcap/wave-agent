@@ -324,6 +324,11 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
                 subagent_type,
                 worktreeIsolation,
                 ...(finalModel ? { model: finalModel } : {}),
+                // 谁派的：子代理派孙子时要把父记成它自己（spec
+                // multi-agent/subagent「子代理嵌套委派」的父归属）。深度同理——
+                // SubagentManager 是主容器单例，从它自己的 container 读不到父深度。
+                ...(context.agentId ? { parentAgentId: context.agentId } : {}),
+                parentSpawnDepth: context.agentSpawnDepth ?? 0,
               },
               run_in_background,
               () => {
