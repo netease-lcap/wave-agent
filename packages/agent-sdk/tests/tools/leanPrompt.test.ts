@@ -3,7 +3,11 @@ import { ToolManager } from "@/managers/toolManager.js";
 import { Container } from "@/utils/container.js";
 import { artifactTool } from "@/tools/artifactTool.js";
 import { replTool } from "@/tools/replTool.js";
-import { SKILL_TOOL_NAME, POWERSHELL_TOOL_NAME } from "@/constants/tools.js";
+import {
+  SKILL_TOOL_NAME,
+  POWERSHELL_TOOL_NAME,
+  REPORT_FINDINGS_TOOL_NAME,
+} from "@/constants/tools.js";
 
 const { isLeanPromptEnabled } = vi.hoisted(() => ({
   isLeanPromptEnabled: vi.fn(() => false),
@@ -67,7 +71,15 @@ describe("lean prompt mode", () => {
     // description carries the bash → PowerShell mapping table that lean would
     // otherwise drop. Only registered on a PowerShell session, so a bash-less
     // Windows run is where this entry matters.
-    const exempt = new Set([SKILL_TOOL_NAME, POWERSHELL_TOOL_NAME]);
+    // `ReportFindings` 的理由同 `PowerShell`，来自上游：CC 2.1.332 的
+    // `ReportFindings` 只有一段描述（`description()` 与 `prompt()` 都返回 `X1i`，
+    // `1050-213838B-CQo.js:2866-2871`），没有 lean 变体。我方逐字照抄那段话，
+    // 所以 lean 模式回退到全文是**照 CC**，不是漏写。
+    const exempt = new Set([
+      SKILL_TOOL_NAME,
+      POWERSHELL_TOOL_NAME,
+      REPORT_FINDINGS_TOOL_NAME,
+    ]);
     const missing = manager
       .list()
       .filter((tool) => tool.leanPrompt === undefined && !exempt.has(tool.name))

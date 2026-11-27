@@ -346,6 +346,7 @@ describe("data → 文本渲染器 golden", () => {
         "PowerShell",
         "Read",
         "REPL",
+        "ReportFindings",
         "SendUserFile",
         "Skill",
         "TaskCreate",

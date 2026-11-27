@@ -41,6 +41,7 @@ import {
   POLL_TOOL_NAME,
   POWERSHELL_TOOL_NAME,
   READ_TOOL_NAME,
+  REPORT_FINDINGS_TOOL_NAME,
   SEND_USER_FILE_TOOL_NAME,
   SKILL_TOOL_NAME,
   TASK_CREATE_TOOL_NAME,
@@ -117,6 +118,10 @@ import {
   type PowerShellResultData,
 } from "./powershell.js";
 import { renderReadResultData, type ReadResultData } from "./read.js";
+import {
+  renderReportFindingsResultData,
+  type ReportFindingsResultData,
+} from "./reportFindings.js";
 import { renderReplResultData, type ReplResultData } from "./repl.js";
 import {
   renderSendUserFileResultData,
@@ -195,6 +200,8 @@ const RENDERERS: Record<string, ToolResultRenderer> = {
   [POWERSHELL_TOOL_NAME]: (data) =>
     renderPowerShellResultData(data as PowerShellResultData),
   [READ_TOOL_NAME]: (data) => renderReadResultData(data as ReadResultData),
+  [REPORT_FINDINGS_TOOL_NAME]: (data) =>
+    renderReportFindingsResultData(data as ReportFindingsResultData),
   [SEND_USER_FILE_TOOL_NAME]: (data) =>
     renderSendUserFileResultData(data as SendUserFileResultData),
   [SKILL_TOOL_NAME]: (data) => renderSkillResultData(data as SkillResultData),
