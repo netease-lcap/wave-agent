@@ -26,63 +26,146 @@ disable-model-invocation: true
 
 Review the current branch's changes for correctness bugs and quality issues.
 
-## Phase 1: Gather Context
+## Phase 0 — Gather the diff
 
 First, collect the diff and metadata:
 
-\`\`\`
+\`\`\`text
 GIT STATUS:
 !\`git status\`
 
 FILES MODIFIED:
-!\`git diff --name-only $(git merge-base HEAD main)...HEAD 2>/dev/null || git diff --name-only HEAD~1...HEAD\`
+!\`git diff --name-only origin/HEAD...HEAD 2>/dev/null || git diff --name-only HEAD~1...HEAD\`
 
 COMMITS:
-!\`git log --no-decorate $(git merge-base HEAD main 2>/dev/null || echo HEAD~1)...HEAD\`
+!\`git log --no-decorate origin/HEAD...HEAD 2>/dev/null || git log --no-decorate HEAD~1...HEAD\`
 
 DIFF CONTENT:
-!\`git diff $(git merge-base HEAD main 2>/dev/null || echo HEAD~1)...HEAD\`
+!\`git diff origin/HEAD...HEAD 2>/dev/null || git diff HEAD~1...HEAD\`
 \`\`\`
 
-If there are no changes, stop and tell the user.
+\`origin/HEAD...HEAD\` is the whole branch against the default branch — the usual
+scope. If it prints nothing, fall back to \`git diff main...HEAD\`, with the
+default branch's real name in place of \`main\` (\`git branch -a\` lists them), or
+\`git diff HEAD~1\` if you can't tell the base.
 
-## Phase 2: Determine Effort Level
+If the range diff is empty but \`git diff HEAD\` is not, the review is running
+before the commit: use \`git diff HEAD\` and treat the working tree as the scope.
+If there are no changes at all, stop and tell the user.
 
-The parameters are already parsed for you — read \`## Arguments\` at the end of
-this skill instead of re-reading \`$ARGUMENTS\`. If that block carries a
+When you write a git command yourself instead of using one of the lines above,
+never use these three forms — the shells this runs under (bash and PowerShell)
+do not agree on them, and each one needs a permission prompt:
+
+- \`@{upstream}\` or \`@{u}\` next to \`..\` or \`...\`
+- commands grouped in parentheses
+- shell variables such as \`$?\`
+
+## Phase 1 — Find candidates
+
+This run's parameters are already parsed for you — read \`## Arguments\` at the
+end of this skill instead of re-reading \`$ARGUMENTS\`. If that block carries a
 warning, tell the user in one short line as you begin.
 
-The tiers:
-- **low**: Launch 2 agents (only near-certain findings)
-- **medium** (default): Launch 3 agents
-- **high**: Launch 4 agents
-- **max**: Launch 5 agents (broader coverage, more noise)
+Which angles run, by effort level:
 
-## Phase 3: Launch Review Agents in Parallel
+- **low**: Angle A and Conventions — near-certain findings only
+- **medium** (default): Angles A–E and Conventions
+- **high**: all ten angles
+- **max**: all ten, and report the lower-confidence candidates they turn up
 
-Use the ${AGENT_TOOL_NAME} tool to launch all agents concurrently in a single message. Pass each agent the full diff so it has the complete context.
+Launch one agent per angle with the ${AGENT_TOOL_NAME} tool, all in a single
+message, passing each the full diff so it has the complete context. If the
+${AGENT_TOOL_NAME} tool is not in your tool set this run, work the angles
+yourself, sequentially.
 
-### Agent 1: Bug Scanner (all effort levels)
+A candidate counts only when you can name the input, state, timing, or platform
+that makes it wrong. "This looks off" is not a candidate, and Phase 2 will
+refute it.
 
-Read the file changes in the diff, then do a shallow scan for obvious bugs. Avoid reading extra context beyond the changes, focusing just on the changes themselves. Focus on large bugs, and avoid small issues and nitpicks. Ignore likely false positives.
+### Angle A — line-by-line diff scan
 
-### Agent 2: AGENTS.md Compliance (all effort levels)
+Read every hunk in the diff, line by line. Then Read the enclosing function for
+each hunk — bugs in unchanged lines of a touched function are in scope (the diff
+re-exposes them or fails to fix them). For every line ask: what input, state,
+timing, or platform makes this line wrong? Look for inverted/wrong conditions,
+off-by-one, null/undefined deref, missing \`await\`, falsy-zero checks,
+wrong-variable copy-paste, error swallowed in catch, unescaped regex metachars.
 
-Audit the changes to make sure they comply with any AGENTS.md files in the repository. Check the root AGENTS.md (if it exists) and any AGENTS.md files in the directories whose files were modified. Note that AGENTS.md is guidance for AI agents as they write code, so not all instructions will be applicable during code review.
+### Angle B — removed-behavior auditor
 
-### Agent 3: Git History Context (medium and above)
+For every line the diff DELETES or replaces, name the invariant or behavior it
+enforced, then search the new code for where that invariant is re-established.
+If you can't find it, that's a candidate: a removed guard, a dropped error
+path, a narrowed validation, a deleted test that was covering a real case.
 
-Read the git blame and history of the code modified, to identify any bugs in light of that historical context.
+### Angle C — cross-file tracer
 
-### Agent 4: Code Reuse & Quality (high and above)
+For each function the diff changes, find its callers (Grep for the symbol) and
+check whether the change breaks any call site: a new precondition, a changed
+return shape, a new exception, a timing/ordering dependency. Also check callees:
+does a parallel change in the same diff make a call unsafe?
 
-Search for existing utilities and helpers that could replace newly written code. Also review for hacky patterns: redundant state, parameter sprawl, copy-paste with slight variation, leaky abstractions, stringly-typed code, and unnecessary comments.
+### Angle D — language-pitfall specialist
 
-### Agent 5: Efficiency Review (max only)
+Scan for the classic pitfalls of the diff's language/framework — for example:
+JS falsy-zero, \`==\` coercion, closure-captured loop var; Python mutable default
+args, late-binding closures; Go nil-map write, range-var capture; SQL injection;
+timezone/DST drift; float equality. Flag any instance the diff introduces.
 
-Review the changes for efficiency: unnecessary work, missed concurrency, hot-path bloat, recurring no-op updates, unnecessary existence checks, memory leaks, and overly broad operations.
+### Angle E — wrapper/proxy correctness
 
-## Phase 4: Verify Each Candidate
+When the diff adds or modifies a type that wraps another (cache, proxy,
+decorator, adapter): check that every method routes to the wrapped instance and
+not back through a registry/session/global — a caching provider holding a
+\`delegate\` field that resolves IDs via \`session.get(...)\` instead of
+\`delegate.get(...)\` will re-enter the cache or recurse. Also check that the
+wrapper forwards all the methods the callers actually use.
+
+### Reuse
+
+Flag new code that re-implements something the codebase already has — Grep
+shared/utility modules and files adjacent to the change, and name the existing
+helper to call instead.
+
+### Simplification
+
+Flag unnecessary complexity the diff adds: redundant or derivable state,
+copy-paste with slight variation, deep nesting, dead code left behind. Name the
+simpler form that does the same job.
+
+### Efficiency
+
+Flag wasted work the diff introduces: redundant computation or repeated I/O,
+independent operations run sequentially, blocking work added to startup or hot
+paths. Also flag long-lived objects built from closures or captured
+environments — they keep the entire enclosing scope alive for the object's
+lifetime, a memory leak when that scope holds large values; prefer a
+class/struct that copies only the fields it needs. Name the cheaper alternative.
+
+### Altitude
+
+Check that each change fixes the root cause at the right depth rather than
+patching a symptom with a fragile bandaid. Special cases layered on shared
+infrastructure are a sign the fix isn't deep enough — prefer the simpler, more
+general change to the underlying mechanism over adding special cases, and name
+that change.
+
+### Conventions (AGENTS.md)
+
+Find the AGENTS.md files that govern the changed code: the user-level
+~/.wave/AGENTS.md, the repo-root AGENTS.md, plus any AGENTS.md in a directory
+that is an ancestor of a changed file (a directory's AGENTS.md only applies to
+files at or below it). Note that AGENTS.md guides an agent writing code, so not
+every instruction is a review rule. Read each one that exists, then check the
+diff for clear violations of the rules they state.
+
+Only flag a violation when you can quote the exact rule and the exact line that
+breaks it — no style preferences, no vague "spirit of the doc" inferences. In
+the finding, name the AGENTS.md path and quote the rule so the report can cite
+it. If no AGENTS.md applies, return nothing for this angle.
+
+## Phase 2 — Verify
 
 Dedup candidates that point at the same line or mechanism, keeping the one with
 the most concrete failure scenario. For each remaining candidate, launch one
@@ -98,13 +181,28 @@ candidate, and have it return exactly one of:
 
 Keep candidates where the vote is CONFIRMED or PLAUSIBLE.
 
-## Phase 5: Filter and Deliver
+## Phase 3 — Sweep for gaps
+
+Run one more finder as a fresh reviewer who has the verified list. Re-read the
+diff and the enclosing functions looking ONLY for defects not already listed.
+Do not re-derive or re-confirm anything already there — the job is gaps. Focus
+on what the first pass tends to miss: silent behavior changes, error paths that
+lost their handling, call sites the diff left stale, invariants that were just
+moved.
+
+Surface up to 8 additional candidates, each naming a defect not already on the
+list. Put each one through Phase 2's verification before reporting it — an
+unverified sweep candidate does not count. If nothing new survives, return an
+empty sweep. Do not pad: this step exists to catch real gaps, not to reach a
+count.
+
+## Phase 4 — Deliver
 
 1. Drop the candidates the verifiers refuted. Keep CONFIRMED and PLAUSIBLE.
 2. If no issues remain, say so and stop — do not post anything.
 3. Otherwise, detect the platform and CLI availability:
 
-\`\`\`
+\`\`\`text
 REMOTE URL:
 !\`git remote get-url origin 2>/dev/null || echo "no-remote"\`
 
@@ -115,27 +213,44 @@ GLAB CLI:
 !\`command -v glab 2>/dev/null || echo "not-installed"\`
 \`\`\`
 
-4. **Output directly** (fallback): If no CLI is installed, no PR/MR exists, or the platform is unrecognized, output the findings directly instead.
+4. **Output directly** (fallback): if no CLI is installed, no PR/MR exists, or
+   the platform is unrecognized, output the findings directly instead.
 
-Whether posting or outputting, use this format:
+Whether posting or outputting, rank the most severe first and label every
+finding:
+
+- 🔴 **Important** — a bug this change adds or makes worse; fix it before
+  merging. If someone can hit it, a rare trigger does not lower the severity.
+- 🟣 **Pre-existing** — a bug already in the codebase that this change did not
+  introduce. On unchanged lines it is pre-existing if the change merely fails
+  to fix it, and important if the change re-exposes it.
+- 🟡 **Nit** — minor: worth fixing, not blocking. A broken AGENTS.md rule, or a
+  bug that harms nobody, such as a misleading log line.
+
+Severity only labels and orders a finding: never drop one for its severity.
+When a limit forces a cut, cut the lowest-ranked first.
+
+Write each summary in two or three short sentences: the problem as a user of
+the code would see it, then where it happens and what sets it off, then \`Fix:\`
+and the change to make.
 
 ---
 
 ## Code Review
 
-Found N issues:
+3 findings (🔴 Important 2, 🟡 Nit 1), most severe first:
 
-1. <brief description of bug> (AGENTS.md says "<...>")
+1. 🔴 Important \`<file>:<line>\`: what is wrong, in one or two sentences
 
-   \`<file>:<line range>\`
+   Fix: the change to make
 
-2. <brief description of bug> (bug due to <file and code snippet>)
+2. 🟡 Nit \`<file>:<line>\`: what is wrong
 
-   \`<file>:<line range>\`
+   Fix: the change to make
 
 ---
 
-Keep the comment brief and avoid emojis.
+Keep the report brief; the severity labels are the only emoji.
 
 ## False Positive Filtering
 
@@ -335,7 +450,7 @@ skip rather than arguing with it. ${closing}
 /**
  * 有清单工具时的输出契约，取自 CC 2.1.332 的 `wo()` 与 `pi` / `mi`（`1091-228433B-Vdr.js:1305` / `:1976`）。
  *
- * 它覆盖 Phase 5 那段人类可读格式：CC 在这里明说不许再把发现复述成文字，
+ * 它覆盖 Phase 4 那段人类可读格式：CC 在这里明说不许再把发现复述成文字，
  * 并把清单本身当作报告。它依赖 `verdict` 与 `outcome` 两个字段，所以只在会话
  * 真有清单工具时才加；CC 的 `severity` 变体我方不带，那段没抄。
  */
@@ -350,7 +465,7 @@ consequence clause — \`failure_scenario\`, \`category\` — a short kebab-case
 for the angle that produced it (\`correctness\`, \`simplification\`,
 \`efficiency\`, \`reuse\`, \`altitude\`, \`conventions\`, or a more specific slug
 like \`test-coverage\` when one fits better) — and \`verdict\`, the vote the
-Phase 4 verifier returned. If nothing survives verification, call it with an
+Phase 2 verifier returned. If nothing survives verification, call it with an
 empty array. Do not also print the findings as text: the tool call is the
 report.
 
@@ -374,17 +489,17 @@ also be read from a client that does not show the tool call.
  *
  * CC 在同一个位置换掉**整段**正文（`di(cell, agentToolAvailable, …)` → `dt({…})`，
  * 单遍内联版）。我方正文要给用户看，所以只追加一段覆盖说明，并点明它盖住了哪两节，
- * 否则基线里那句「Use the Agent tool to launch all agents concurrently」会跟它打架。
+ * 否则基线里那句「Launch one agent per angle with the Agent tool」会跟它打架。
  */
 const SINGLE_PASS_SECTION = `
-## Instead of Phase 3 and Phase 4 — single pass, inline
+## Instead of Phase 1 and Phase 2 — single pass, inline
 
 The \`${AGENT_TOOL_NAME}\` tool is not available in this session, so you cannot launch
 review agents. Do that work yourself, in this same context:
 
-- Walk the angles listed under Phase 3 one after another instead of in parallel.
+- Walk the angles listed under Phase 1 one after another instead of in parallel.
   Do not skip any angle that applies at your effort level.
-- Do the Phase 4 verification yourself: re-read the diff for each candidate and
+- Do the Phase 2 verification yourself: re-read the diff for each candidate and
   state the verdict it would have received (CONFIRMED, PLAUSIBLE or REFUTED),
   with the line that sets it.
 `;

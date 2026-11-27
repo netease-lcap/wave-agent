@@ -47,13 +47,13 @@ describe("buildCodeReviewPrompt", () => {
     expect(text).toContain(AGENT_TOOL_NAME);
     expect(text).toContain("not available");
     // 必须点明它覆盖的是哪一节，否则模型不知道该听哪一句
-    expect(text).toContain("Phase 3");
-    expect(text).toContain("Phase 4");
+    expect(text).toContain("## Instead of Phase 1 and Phase 2");
+    expect(text).toContain("Do the Phase 2 verification yourself");
   });
 
   it("keeps both sections and separates them", () => {
     const text = buildCodeReviewPrompt("--fix", NO_AGENT);
-    expect(text).toContain("Phase 3");
+    expect(text).toContain("## Instead of Phase 1 and Phase 2");
     expect(text).toContain("Applying fixes (--fix)");
     expect(text).toContain("\n\n## ");
   });
@@ -110,5 +110,65 @@ describe("buildCodeReviewPrompt", () => {
     );
     expect(body).not.toContain("confidence score");
     expect(body).not.toContain("threshold");
+  });
+});
+
+// 骨架对齐 CC 2.1.332：Phase 0–3、10 个角度、severity 三档（#3185）。
+describe("技能正文骨架", () => {
+  const body = code_reviewSkill["skills/code-review/SKILL.md"];
+
+  it("runs Phase 0 through Phase 4 in order", () => {
+    expect(body.match(/^## Phase \d/gm)).toEqual([
+      "## Phase 0",
+      "## Phase 1",
+      "## Phase 2",
+      "## Phase 3",
+      "## Phase 4",
+    ]);
+  });
+
+  it("works all ten angles", () => {
+    for (const heading of [
+      "### Angle A — line-by-line diff scan",
+      "### Angle B — removed-behavior auditor",
+      "### Angle C — cross-file tracer",
+      "### Angle D — language-pitfall specialist",
+      "### Angle E — wrapper/proxy correctness",
+      "### Reuse",
+      "### Simplification",
+      "### Efficiency",
+      "### Altitude",
+      "### Conventions (AGENTS.md)",
+    ]) {
+      expect(body).toContain(heading);
+    }
+  });
+
+  it("sweeps for gaps after verifying, and refuses to pad", () => {
+    expect(body).toContain("## Phase 3 — Sweep for gaps");
+    expect(body).toContain("up to 8 additional candidates");
+    expect(body).toContain("Do not pad");
+  });
+
+  // 四端 shell 不一致的写法要明文禁掉，否则模型自己写命令时会踩。
+  it("forbids the git forms the shells disagree on", () => {
+    for (const form of [
+      "@{upstream}",
+      "grouped in parentheses",
+      "shell variables such as `$?",
+    ]) {
+      expect(body).toContain(form);
+    }
+  });
+
+  it("labels every finding with one of three severities", () => {
+    for (const label of [
+      "🔴 **Important**",
+      "🟣 **Pre-existing**",
+      "🟡 **Nit**",
+    ]) {
+      expect(body).toContain(label);
+    }
+    expect(body).toContain("never drop one for its severity");
   });
 });
