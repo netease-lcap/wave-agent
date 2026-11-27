@@ -104,7 +104,12 @@ describe("锚点", () => {
   );
 
   it("锚点带行内偏移", () => {
-    expect(anchorAt(before, 150)).toEqual({ key: "b", offsetInItem: 50 });
+    expect(anchorAt(before, 150)).toEqual({
+      key: "b",
+      offsetInItem: 50,
+      nextKey: "c",
+      nextStart: 200,
+    });
   });
 
   describe("视口顶那一行还没量过", () => {
@@ -123,7 +128,12 @@ describe("锚点", () => {
           isMeasured: measuredOnly(["n0", "n1"]),
           viewport: 400,
         }),
-      ).toEqual({ key: "n0", offsetInItem: -40 });
+      ).toEqual({
+        key: "n0",
+        offsetInItem: -40,
+        nextKey: "n1",
+        nextStart: 172,
+      });
     });
 
     it("量过的行只在视口范围内找", () => {
@@ -133,13 +143,23 @@ describe("锚点", () => {
           isMeasured: measuredOnly(["n0", "n1"]),
           viewport: 20,
         }),
-      ).toEqual({ key: "z1", offsetInItem: 10 });
+      ).toEqual({
+        key: "z1",
+        offsetInItem: 10,
+        nextKey: "n0",
+        nextStart: 100,
+      });
     });
 
     it("视口里一行都没量过（首屏刚挂载）：照旧按行内偏移", () => {
       expect(
         anchorAt(m, 60, { isMeasured: measuredOnly([]), viewport: 400 }),
-      ).toEqual({ key: "z1", offsetInItem: 10 });
+      ).toEqual({
+        key: "z1",
+        offsetInItem: 10,
+        nextKey: "n0",
+        nextStart: 100,
+      });
     });
 
     it("补偿算的是量过那一行的起点：它自己的高度变化不算，上面的算", () => {
@@ -183,8 +203,27 @@ describe("锚点", () => {
     expect(compensationFor(before, after, anchor)).toBe(-60);
   });
 
-  it("锚点行没了返回 undefined（rewind 截断）", () => {
-    const after = buildRowMetrics(["c"], () => 100);
+  it("锚点行换了身份、下一行还在：按下一行认回原位", () => {
+    // 上翻取回一页 / 聚焦视图折叠卡换 key 的形状：只有视口顶那一行变了，下面一行
+    // 一条都没动。锚点记着下一行的起点，用它当基准视口就不动（CC 的 nextKey）。
+    const after = buildRowMetrics(
+      ["x", "y", "b", "c"],
+      (_k, i) => [200, 50, 100, 100][i],
+    );
+    const anchor = anchorAt(before, 30)!; // 视口顶在 a（第 0 行）里 30px 处
+    expect(anchor.key).toBe("a");
+    // b 的起点 100 → 250，视口要跟着往下推 150 才停在原处
+    expect(compensationFor(before, after, anchor)).toBe(150);
+  });
+
+  it("锚点行和下一行都没了返回 undefined（尾部截断 / 整表替换）", () => {
+    const after = buildRowMetrics(["a"], () => 100);
+    const anchor = anchorAt(before, 150)!;
+    expect(compensationFor(before, after, anchor)).toBeUndefined();
+  });
+
+  it("整表替换（一个 key 都不剩）返回 undefined", () => {
+    const after = buildRowMetrics(["p", "q"], () => 100);
     const anchor = anchorAt(before, 150)!;
     expect(compensationFor(before, after, anchor)).toBeUndefined();
   });
