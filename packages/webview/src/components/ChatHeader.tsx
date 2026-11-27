@@ -4,6 +4,7 @@ import {
   NewSessionIcon,
   HistoryIcon,
   MoreIcon,
+  FocusViewIcon,
   PanelCollapseIcon,
   PanelExpandIcon,
 } from "./HeaderIcons";
@@ -43,6 +44,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   windowDrag = false,
   headerActions,
   onRenameSession,
+  focusView,
+  onToggleFocusView,
 }) => {
   const [showSessionList, setShowSessionList] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -234,6 +237,28 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         {/* 远控页专属的「换机器」不再占顶栏：它收在「更多」菜单里（低频动作，
             不与新建 / 会话 / 更多抢位置），由 onSwitchMachine 传给 MoreMenu
             （spec remote/remote-machine.md「机器列表与切换」场景 5）。 */}
+        {/* 聚焦视图（spec ui/focus-view.md 场景 1）：作用于「这段对话怎么显示」，
+            与「更多 / 面板」同层，不进输入框工具行 —— 那里已有附件、终端、权限
+            模式、发送，手机窄屏放不下。没有可折叠的轮（空会话）时由 ChatApp 不传
+            onToggleFocusView，按钮随之不渲染。 */}
+        {onToggleFocusView && (
+          <Tooltip
+            text={focusView ? "退出聚焦视图" : "聚焦视图"}
+            position="bottom"
+          >
+            <button
+              className={`header-button header-focus-toggle${
+                focusView ? " is-active" : ""
+              }`}
+              onClick={onToggleFocusView}
+              data-testid="focus-view-toggle"
+              aria-label={focusView ? "退出聚焦视图" : "聚焦视图"}
+              aria-pressed={!!focusView}
+            >
+              <FocusViewIcon className="header-icon header-focus-icon" />
+            </button>
+          </Tooltip>
+        )}
         {!hideMoreButton && (
           // `keyboardFocusOnly`：MoreMenu 激活菜单项 / Esc 会把焦点交还这颗按钮
           // （`useRovingMenu` 的 `closeReturningFocus`，键盘可达性设计），鼠标
