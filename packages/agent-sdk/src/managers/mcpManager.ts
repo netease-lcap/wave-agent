@@ -17,6 +17,12 @@ import { recordToolActivity } from "../telemetry/metrics.js";
 import { entrypointOf } from "../telemetry/attributes.js";
 import type { StandardAttributeContext } from "../telemetry/attributes.js";
 import { reportMcpConnectionFailure } from "../telemetry/failureEvents.js";
+import {
+  McpConfigError,
+  classifyMcpFailure,
+  sanitizeMcpFailureMessage,
+} from "../utils/mcpFailure.js";
+import type { McpDialStage, McpFailureReason } from "../utils/mcpFailure.js";
 import { detectMcpActivity } from "../telemetry/toolActivity.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "../tools/types.js";
 import { Container } from "../utils/container.js";
@@ -128,6 +134,42 @@ function isDownstreamStreamError(message: string): boolean {
 
 /** Which path started the automatic dials, for failure telemetry. */
 type DialPhase = "initialize" | "lazy";
+
+/**
+ * Why a dial decided not to spawn anything. None of these are failures — no
+ * process was started and no connection was attempted — so none of them
+ * reaches the failure telemetry (spec ecosystem/mcp.md 边界情况「没有真正尝试的
+ * 连接不算失败」). They exist so the skip is still explainable from the log.
+ */
+type McpDialSkipReason =
+  | "not_registered"
+  | "destroyed"
+  | "disconnecting"
+  | "user_disconnected";
+
+/** Human wording for a skip, for the one debug line each one leaves behind. */
+const SKIP_REASON_TEXT: Record<McpDialSkipReason, string> = {
+  not_registered: "it is not registered (removed, or never added)",
+  destroyed: "the manager was already destroyed",
+  disconnecting: "a user-initiated teardown is in flight",
+  user_disconnected: "the user disconnected it earlier in this session",
+};
+
+/**
+ * What a dial came back with.
+ *
+ * The dial used to answer `boolean`, which threw away the reason it already
+ * had in `updateServerStatus()` and made "we never tried" indistinguishable
+ * from "it failed" (and from "it connected but its owner was gone"). The
+ * boolean is still what the public API returns; only the internal paths read
+ * this shape. Aligned with Claude Code 2.1.331's
+ * `{type: 'failed', error, errorCode}` (`2990:7476-7500`).
+ */
+type McpDialOutcome =
+  | { ok: true }
+  | { ok: false; kind: "skipped"; skip: McpDialSkipReason }
+  | { ok: false; kind: "abandoned" }
+  | { ok: false; kind: "failed"; reason: McpFailureReason; error?: unknown };
 
 /**
  * One dial that has already been *promised* to the session: `run` does the
@@ -597,18 +639,25 @@ export class McpManager {
       done,
       run: async () => {
         try {
-          const connected = await this.connectServer(name);
-          if (connected) {
+          const outcome = await this.connectServer(name);
+          if (outcome.ok) {
             logger?.debug(`Connected to MCP server ${name}`);
-          } else {
+          } else if (outcome.kind === "failed") {
             logger?.warn(
-              `MCP server ${name} failed to connect; it is retried on a later turn once its backoff window expires`,
+              `MCP server ${name} failed to connect (${outcome.reason}); it is retried on a later turn once its backoff window expires`,
             );
-            this.reportConnectionFailure(name, phase);
+            this.reportConnectionFailure(name, phase, outcome);
           }
+          // Skipped / abandoned dials were already explained by their own debug
+          // line inside `connectServer`, and neither is a failure.
         } catch (error) {
+          // `connectServer` does not throw; a throw here would be a bug in it,
+          // and it still must not cost the session its turn.
           logger?.warn(`MCP dial failed for ${name}:`, error);
-          this.reportConnectionFailure(name, phase, error);
+          this.reportConnectionFailure(name, phase, {
+            reason: classifyMcpFailure(error),
+            error,
+          });
         } finally {
           this.pendingDials.delete(name);
           this.backgroundDials.delete(name);
@@ -664,12 +713,22 @@ export class McpManager {
   private reportConnectionFailure(
     serverName: string,
     phase: "initialize" | "lazy" | "config",
-    error?: unknown,
+    failure: { reason: McpFailureReason; error?: unknown },
   ): void {
     const telemetry = this.connectionFailureTelemetry();
     if (!telemetry) return;
     void reportMcpConnectionFailure({
-      error,
+      error: failure.error,
+      reason: failure.reason,
+      // The raw message stays in the local log; only this summary leaves the
+      // process (paths and URL credentials stripped, then clipped).
+      message:
+        failure.error === undefined
+          ? undefined
+          : sanitizeMcpFailureMessage(failure.error, {
+              workdir: this.workdir,
+              homeDir: homedir(),
+            }),
       sessionId: telemetry.sessionId,
       serverName,
       phase,
@@ -782,7 +841,10 @@ export class McpManager {
         logger?.error("Failed to load MCP config:", error);
         // 配置整体加载失败（两个来源都成功读盘之后才可能走到这里）：
         // 不是某台服务器的问题，但同样让 MCP 能力整块消失。
-        this.reportConnectionFailure("mcp-config", "config", error);
+        this.reportConnectionFailure("mcp-config", "config", {
+          reason: "config",
+          error,
+        });
       }
       return null;
     }
@@ -859,7 +921,13 @@ export class McpManager {
       // Name the file that actually failed: the user-level config and the
       // project's `.mcp.json` are two different sources, and a report that
       // calls both `.mcp.json` cannot tell which one to fix.
-      this.reportConnectionFailure(basename(configPath), "config", error);
+      this.reportConnectionFailure(basename(configPath), "config", {
+        // An unreadable or unparsable config file is a config problem, whether
+        // the disk or the JSON was at fault: either way MCP is gone until the
+        // file is fixed.
+        reason: "config",
+        error,
+      });
       return null;
     }
   }
@@ -1114,27 +1182,58 @@ export class McpManager {
   // `manual` marks a user-initiated connect (settings page / `/mcp` / CLI), the
   // only way to override a previous explicit disconnect. Everything else —
   // automatic dial, auto-reconnect — must respect that decision.
-  async connectServer(name: string, manual = false): Promise<boolean> {
+  /**
+   * Dial one server.
+   *
+   * Answers `McpDialOutcome` rather than a boolean: the four "we never tried"
+   * paths and the "it connected but its owner was already destroyed" race have
+   * to stay distinguishable from a real failure, so the caller can report a
+   * failure only when there was one, and with its reason attached. A dial never
+   * throws either way — a failure is a server status, not a turn failure.
+   *
+   * The boolean the SDK surface wants (`Agent.connectMcpServer`) is `.ok`.
+   */
+  async connectServer(name: string, manual = false): Promise<McpDialOutcome> {
     const server = this.servers.get(name);
-    if (!server) return false;
+    if (!server) {
+      logger?.debug(
+        `MCP server ${name} was not dialed: ${SKIP_REASON_TEXT.not_registered}`,
+      );
+      return { ok: false, kind: "skipped", skip: "not_registered" };
+    }
 
     // Already connected
-    if (this.connections.has(name)) return true;
+    if (this.connections.has(name)) return { ok: true };
 
     // An explicit disconnectServer teardown is in flight for this server —
     // don't race it (e.g. an auto-reconnect timer that just fired) by spawning
     // a fresh process the user asked to stop.
-    if (this.disconnecting.has(name)) return false;
+    if (this.disconnecting.has(name)) {
+      logger?.debug(
+        `MCP server ${name} was not dialed: ${SKIP_REASON_TEXT.disconnecting}`,
+      );
+      return { ok: false, kind: "skipped", skip: "disconnecting" };
+    }
 
     // A destroyed manager must never spawn another process (spec
     // ecosystem/mcp.md 边界情况「拨号与销毁竞态」): the Agent's teardown already
     // ran, so nothing would ever reap what we spawn here.
-    if (this.destroyed) return false;
+    if (this.destroyed) {
+      logger?.debug(
+        `MCP server ${name} was not dialed: ${SKIP_REASON_TEXT.destroyed}`,
+      );
+      return { ok: false, kind: "skipped", skip: "destroyed" };
+    }
 
     if (manual) {
       this.userDisconnected.delete(name);
     } else if (this.userDisconnected.has(name)) {
-      return false;
+      // The user's explicit disconnect wins over an automatic dial. Not a
+      // failure: they asked for this state.
+      logger?.debug(
+        `MCP server ${name} was not dialed: ${SKIP_REASON_TEXT.user_disconnected}`,
+      );
+      return { ok: false, kind: "skipped", skip: "user_disconnected" };
     }
 
     this.updateServerStatus(name, { status: "connecting" });
@@ -1144,6 +1243,10 @@ export class McpManager {
     // instead of leaving an orphan tree nothing points at.
     let transport: Transport | undefined;
     let client: Client | undefined;
+    // Where the dial currently is. The handshake and `listTools()` fail for
+    // different reasons and the error does not say which one threw, so the
+    // stage is tracked here and handed to the classifier.
+    let stage: McpDialStage = "connect";
 
     try {
       let tools: McpTool[] = [];
@@ -1166,7 +1269,7 @@ export class McpManager {
 
       if (serverType === "http" || (!serverType && server.config.url)) {
         if (!server.config.url) {
-          throw new Error(
+          throw new McpConfigError(
             `MCP server ${name} with type "http" requires a 'url'`,
           );
         }
@@ -1181,6 +1284,7 @@ export class McpManager {
         client = createClient();
         await client.connect(transport);
         instructions = truncateMcpInstructions(client.getInstructions());
+        stage = "list_tools";
         const toolsResponse = await client.listTools();
         tools =
           toolsResponse.tools?.map((tool) => ({
@@ -1193,7 +1297,7 @@ export class McpManager {
         logger?.info(`Connected to MCP server ${name} using Streamable HTTP`);
       } else if (serverType === "sse") {
         if (!server.config.url) {
-          throw new Error(
+          throw new McpConfigError(
             `MCP server ${name} with type "sse" requires a 'url'`,
           );
         }
@@ -1208,6 +1312,7 @@ export class McpManager {
         client = createClient();
         await client.connect(transport);
         instructions = truncateMcpInstructions(client.getInstructions());
+        stage = "list_tools";
         const toolsResponse = await client.listTools();
         tools =
           toolsResponse.tools?.map((tool) => ({
@@ -1223,7 +1328,7 @@ export class McpManager {
         (!serverType && server.config.command)
       ) {
         if (!server.config.command) {
-          throw new Error(
+          throw new McpConfigError(
             `MCP server ${name} with type "stdio" requires a 'command'`,
           );
         }
@@ -1318,6 +1423,7 @@ export class McpManager {
         }
 
         instructions = truncateMcpInstructions(client.getInstructions());
+        stage = "list_tools";
         const toolsResponse = await client.listTools();
         tools =
           toolsResponse.tools?.map((tool) => ({
@@ -1329,11 +1435,11 @@ export class McpManager {
           })) || [];
       } else if (serverType) {
         // Unknown type value
-        throw new Error(
+        throw new McpConfigError(
           `MCP server ${name} has unknown type "${serverType}". Must be "stdio", "sse", or "http"`,
         );
       } else {
-        throw new Error(
+        throw new McpConfigError(
           `MCP server ${name} configuration must include either 'command' or 'url'`,
         );
       }
@@ -1412,7 +1518,11 @@ export class McpManager {
           transport: connectedTransport,
         });
         this.updateServerStatus(name, { status: "disconnected" });
-        return false;
+        // The connection itself succeeded — only its owner was gone. Reporting
+        // this as "failed to connect" would be the opposite of what happened
+        // (and would pollute the failure rate with a shutdown race), so it
+        // gets its own outcome: abandoned, not failed.
+        return { ok: false, kind: "abandoned" };
       }
 
       // A fresh transport starts with a clean slate: no leftover error count, and
@@ -1435,9 +1545,12 @@ export class McpManager {
       // is not connected (spec ecosystem/mcp.md 场景 16).
       await this.rememberTools(name, tools);
 
-      return true;
+      return { ok: true };
     } catch (error) {
+      // The full message stays here, in the local log — telemetry gets the
+      // sanitized summary built by `reportConnectionFailure`.
       logger?.error(`Failed to connect to MCP server ${name}:`, error);
+      const reason = classifyMcpFailure(error, stage);
       // The process may already be spawned (a handshake or `listTools()` that
       // threw after `connect()`), and nothing else will ever reference it —
       // tear it down here rather than leaking a tree per failed dial.
@@ -1454,7 +1567,7 @@ export class McpManager {
         status: "error",
         error: error instanceof Error ? error.message : String(error),
       });
-      return false;
+      return { ok: false, kind: "failed", reason, error };
     }
   }
 
@@ -1726,8 +1839,8 @@ export class McpManager {
       }
       logger?.debug(`Auto-reconnecting MCP server: ${name}`);
       this.connectServer(name)
-        .then((success) => {
-          if (success) {
+        .then((outcome) => {
+          if (outcome.ok) {
             logger?.info(`Auto-reconnected MCP server: ${name}`);
             this.reconnectAttempts.delete(name);
             this.reconnectEligibleAt.delete(name);

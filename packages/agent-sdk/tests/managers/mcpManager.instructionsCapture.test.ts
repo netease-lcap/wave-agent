@@ -62,7 +62,7 @@ describe("McpManager instructions capture", () => {
     mockClient.getInstructions.mockReturnValue("Use lookup before mutate.");
     manager.addServer("guide", { command: "run-guide" });
 
-    expect(await manager.connectServer("guide")).toBe(true);
+    expect((await manager.connectServer("guide")).ok).toBe(true);
     expect(manager.getServerInstructions()).toEqual([
       { name: "guide", instructions: "Use lookup before mutate." },
     ]);
@@ -74,7 +74,7 @@ describe("McpManager instructions capture", () => {
     );
     manager.addServer("verbose", { command: "run-verbose" });
 
-    expect(await manager.connectServer("verbose")).toBe(true);
+    expect((await manager.connectServer("verbose")).ok).toBe(true);
 
     const [reported] = manager.getServerInstructions();
     expect(reported.instructions.slice(0, MCP_INSTRUCTIONS_MAX_CHARS)).toBe(

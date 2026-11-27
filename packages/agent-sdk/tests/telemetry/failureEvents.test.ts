@@ -165,6 +165,7 @@ describe("reportMcpConnectionFailure", () => {
         sessionId: "session-1",
         serverName: "github",
         phase: "lazy",
+        reason: "spawn",
         context: CONTEXT,
       });
     }
@@ -182,12 +183,14 @@ describe("reportMcpConnectionFailure", () => {
       sessionId: "session-1",
       serverName: "github",
       phase: "initialize",
+      reason: "spawn",
       context: CONTEXT,
     });
     await reportMcpConnectionFailure({
       sessionId: "session-1",
       serverName: "jira",
       phase: "initialize",
+      reason: "spawn",
       context: CONTEXT,
     });
 
@@ -200,13 +203,68 @@ describe("reportMcpConnectionFailure", () => {
       sessionId: "session-1",
       serverName: "mcp.json",
       phase: "config",
+      reason: "config",
+      message: "Unexpected token in JSON",
       context: CONTEXT,
     });
 
     expect(attrsOf()).toMatchObject({
       "error.category": "mcp",
       mcp_phase: "config",
+      mcp_failure_reason: "config",
       message: "Unexpected token in JSON",
+    });
+  });
+
+  it("files the reason as its own attribute, so a report is diagnosable", async () => {
+    await reportMcpConnectionFailure({
+      error: new Error("spawn npx ENOENT"),
+      sessionId: "session-1",
+      serverName: "github",
+      phase: "initialize",
+      reason: "spawn",
+      // What the dial site hands over: already stripped of paths and URLs.
+      message: "spawn npx ENOENT",
+      context: CONTEXT,
+    });
+
+    expect(attrsOf()).toMatchObject({
+      error_type: "Error",
+      "error.category": "mcp",
+      mcp_failure_reason: "spawn",
+      message: "spawn npx ENOENT",
+    });
+  });
+
+  it("never falls back to the raw error text", async () => {
+    // The summary is the caller's job (`sanitizeMcpFailureMessage`: only it
+    // knows the workdir). A report with an error but no summary must not leak
+    // the message verbatim.
+    await reportMcpConnectionFailure({
+      error: new Error("ENOENT: open '/Users/someone/secret/.mcp.json'"),
+      sessionId: "session-1",
+      serverName: "github",
+      phase: "initialize",
+      reason: "spawn",
+      context: CONTEXT,
+    });
+
+    expect(attrsOf().message).not.toContain("/Users/someone/secret");
+  });
+
+  it("falls back to a sentence naming the reason when no error came along", async () => {
+    await reportMcpConnectionFailure({
+      sessionId: "session-1",
+      serverName: "github",
+      phase: "initialize",
+      reason: "auth",
+      context: CONTEXT,
+    });
+
+    expect(attrsOf()).toMatchObject({
+      error_type: "Unknown",
+      mcp_failure_reason: "auth",
+      message: "MCP server github failed to connect (auth)",
     });
   });
 });

@@ -86,8 +86,8 @@ describe("McpManager transport error/close handlers", () => {
 
   async function connect(name: string): Promise<void> {
     manager.addServer(name, { command: `run-${name}` });
-    const ok = await manager.connectServer(name);
-    expect(ok).toBe(true);
+    const outcome = await manager.connectServer(name);
+    expect(outcome.ok).toBe(true);
     expect(transport.onerror).toBeTypeOf("function");
     expect(transport.onclose).toBeTypeOf("function");
   }
