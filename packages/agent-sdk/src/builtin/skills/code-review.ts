@@ -7,7 +7,11 @@ import {
   REPORT_FINDINGS_TOOL_NAME,
 } from "../../constants/tools.js";
 import { parseCommandArguments } from "../../utils/commandArgumentParser.js";
-import { repoHostOf, type RepoHost } from "../../utils/repoHost.js";
+import {
+  repoHostOf,
+  repoHostOfHost,
+  type RepoHost,
+} from "../../utils/repoHost.js";
 import type { BuiltinSkillHook, SkillPromptContext } from "../skillHooks.js";
 
 export const code_reviewSkill: Record<string, string> = {
@@ -390,17 +394,31 @@ export type ReviewTarget =
       /** 报错句里点名的对象，例如 `GitHub pull request 12`。 */
       name: string;
       command: string;
-      /** 老版本 gh 没有 `pr diff` 时的替代命令（CC 的 `withoutPrDiff`）。 */
-      fallback: string;
+      /**
+       * 老版本 gh 没有 `pr diff` 时的替代命令（CC 的 `withoutPrDiff`）。
+       *
+       * 只有认得出是 github.com 的目标才有：`gh api repos/…` 是那家的端点拼法。
+       */
+      fallback?: string;
       /** 目标是另一个仓库的 PR——此时本检出可能压根没有这段改动。 */
       crossRepo: boolean;
     }
   | { platform: "gitlab"; name: string; command: string };
 
-const GITLAB_MR_URL =
-  /^https?:\/\/([^/]+)\/(.+?)\/-\/merge_requests\/(\d{1,9})(?:[/?#]|$)/;
-const GITHUB_PR_URL =
-  /^https?:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/(\d{1,9})(?:[/?#]|$)/;
+// CC 的两段字符类（`0215-6730B-aX.js:17-18`）：`NRn` 是域名形态（label.label…，可带
+// 端口），`aX` 是路径段形态（首字符字母数字/下划线/点，且不能是 `.` 或 `..`）。拼成常量
+// 是为了两条正则共用同一份定义，而不是各写一份宽松的 `[^/]+`。
+const HOST_LABEL = String.raw`[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?`;
+const HOST_PATTERN = String.raw`${HOST_LABEL}(?:\.${HOST_LABEL})*(?::\d{1,5})?`;
+const PATH_SEGMENT = String.raw`(?!\.{1,2}(?:/|$))[A-Za-z0-9_.][\w.-]*`;
+// GitLab 的项目路径是 `namespace/project`（可以有更深的组），CC 的 `_` 也要求至少两段
+// （`0215-6730B-aX.js:217`）。
+const GITLAB_MR_URL = new RegExp(
+  `^https?://(${HOST_PATTERN})/((?:${PATH_SEGMENT}/)+${PATH_SEGMENT})/-/merge_requests/(\\d{1,9})(?:[/?#]|$)`,
+);
+const GITHUB_PR_URL = new RegExp(
+  `^https?://(${HOST_PATTERN})/(${PATH_SEGMENT})/(${PATH_SEGMENT})/pull/(\\d{1,9})(?:[/?#]|$)`,
+);
 
 export function resolveReviewTarget(
   raw: string,
@@ -418,7 +436,9 @@ export function resolveReviewTarget(
       command: `glab mr diff ${iid} -R ${project}`,
     };
   }
-  const mr = /^!(\d{1,9})$/.exec(target);
+  // CC 的 `gi()`（`1091-228433B-Vdr.js:1989`）：裸形态的 `!N` 只认 1-6 位，URL 里的
+  // iid 才放宽到 9 位（`L6s` 那边的正则）。
+  const mr = /^!(\d{1,6})$/.exec(target);
   if (mr) {
     return {
       platform: "gitlab",
@@ -430,9 +450,21 @@ export function resolveReviewTarget(
   const githubUrl = GITHUB_PR_URL.exec(target);
   if (githubUrl) {
     const [, host, owner, repo, pr] = githubUrl;
+    const url = `https://${host}/${owner}/${repo}/pull/${pr}`;
+    // CC 的 `gi()`（`1091-228433B-Vdr.js:2015-2021`）：只有认得出是 github.com 时才
+    // 敢拼 `-R`——`gh api repos/{owner}/{repo}` 这种端点是 github.com 的拼法，自建
+    // 实例上要带 host，所以整条 URL 交给 gh，连 `pr diff` 的退路也不给。
+    if (repoHostOfHost(host) !== "github") {
+      return {
+        platform: "github",
+        name: `GitHub pull request ${url}`,
+        command: `gh pr diff ${url}`,
+        crossRepo: true,
+      };
+    }
     return {
       platform: "github",
-      name: `GitHub pull request https://${host}/${owner}/${repo}/pull/${pr}`,
+      name: `GitHub pull request ${url}`,
       command: `gh pr diff ${pr} -R ${owner}/${repo}`,
       fallback: `gh api repos/${owner}/${repo}/pulls/${pr} -H 'Accept: application/vnd.github.diff'`,
       crossRepo: true,
@@ -470,16 +502,19 @@ function renderTargetSection(target: ReviewTarget, fix: boolean): string {
   const noun = target.platform === "gitlab" ? "merge request" : "pull request";
   const failure = `Could not read ${target.name}: \`${target.command}\` was refused or failed`;
 
-  const fallback =
-    target.platform === "github"
-      ? `Some sessions have a gh with no \`pr diff\` command. Only if gh itself says so, run this in its
+  // CC 的 `yi()`（`1091-228433B-Vdr.js:2060`）：有 `withoutPrDiff` 才给退路。自建实例
+  // 没有这条，因为它的端点只对 github.com 成立；GitLab 目标也没有，那里压根不走 gh。
+  const fallbackCommand =
+    target.platform === "github" ? target.fallback : undefined;
+  const fallback = fallbackCommand
+    ? `Some sessions have a gh with no \`pr diff\` command. Only if gh itself says so, run this in its
 place, alone too:
 
 \`\`\`
-${target.fallback}
+${fallbackCommand}
 \`\`\`
 `
-      : "";
+    : "";
 
   const readFailure =
     fix || crossRepo

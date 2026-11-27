@@ -47,6 +47,23 @@ function normalizeHost(host: string): string {
 }
 
 /**
+ * 已取出的主机名归到托管方，照 CC 的 `TA()`（`0105-1092B-aSt.js:18`）。
+ *
+ * 与 `repoHostOf()` 拆开是为了「手上已经有一个主机名」的调用方：`/code-review`
+ * 要判目标串里的 PR 链接指向哪家（`1091-228433B-Vdr.js:2016` 的 `TA(h)`），拿到的
+ * 是 URL 里的 host，不是 remote。
+ */
+export function repoHostOfHost(host: string): RepoHost {
+  const normalized = normalizeHost(host);
+  const alias = SSH_HOST_ALIASES[normalized];
+  if (alias) return alias;
+  if (normalized === "github.com") return "github";
+  if (normalized === "gitlab.com") return "gitlab";
+  if (normalized === "bitbucket.org") return "bitbucket";
+  return "other";
+}
+
+/**
  * 远端托管方；没配远端、或 URL 认不出 host 时返回 `undefined`。
  *
  * 调用方据此退回「不知道」的处理：`/code-review` 就按 GitHub PR 处理，而不是瞎猜。
@@ -57,11 +74,5 @@ export function repoHostOf(
   if (!remoteUrl) return undefined;
   const raw = hostFromRemote(remoteUrl);
   if (!raw) return undefined;
-  const host = normalizeHost(raw);
-  const alias = SSH_HOST_ALIASES[host];
-  if (alias) return alias;
-  if (host === "github.com") return "github";
-  if (host === "gitlab.com") return "gitlab";
-  if (host === "bitbucket.org") return "bitbucket";
-  return "other";
+  return repoHostOfHost(raw);
 }
