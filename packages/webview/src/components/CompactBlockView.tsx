@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { QueueChevronIcon } from "./HeaderIcons";
+import { useHoldScroll } from "./ScrollHoldContext";
 import type { CompactBlock } from "../types";
 
 interface CompactBlockViewProps {
@@ -13,6 +14,8 @@ export const CompactBlockView: React.FC<CompactBlockViewProps> = ({
 }) => {
   // Compact summaries are always collapsed by default — show a hint line, expand on click.
   const [collapsed, setCollapsed] = useState(true);
+  // 同 ReasoningBlockView：展开前解除钉底，被点的标题不动。
+  const holdScroll = useHoldScroll();
 
   return (
     <div className="reasoning-block compact-block">
@@ -23,7 +26,10 @@ export const CompactBlockView: React.FC<CompactBlockViewProps> = ({
         type="button"
         className="reasoning-header"
         aria-expanded={!collapsed}
-        onClick={() => setCollapsed((c) => !c)}
+        onClick={() => {
+          holdScroll();
+          setCollapsed((c) => !c);
+        }}
       >
         <span className="reasoning-dot compact-dot" />
         <span className="reasoning-title">对话已压缩</span>

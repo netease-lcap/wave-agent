@@ -32,6 +32,7 @@ import {
 } from "../utils/transcriptFind";
 import { buildFocusItems, type FocusItem } from "../utils/focusItems";
 import { FocusFoldRow } from "./FocusFoldRow";
+import { ScrollHoldProvider } from "./ScrollHoldContext";
 import { estimateRowHeight } from "../virtual/estimateRowHeight";
 import { useVirtualRows } from "../virtual/useVirtualRows";
 import type { MessageListProps } from "../types";
@@ -248,17 +249,6 @@ export const MessageList = forwardRef<
   const [expandedFolds, setExpandedFolds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
-  const toggleFold = useCallback((key: string) => {
-    setExpandedFolds((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
-  }, []);
   useEffect(() => {
     if (!focusView) {
       setExpandedFolds((prev) => (prev.size === 0 ? prev : new Set()));
@@ -357,6 +347,28 @@ export const MessageList = forwardRef<
     pin,
     unpin,
   } = list;
+
+  /**
+   * 展开 / 收起一张折叠卡。切换前先解除钉底：这是**就地长高**，不是追加内容，
+   * 钉底会把视口一路拉到新底部，被点的卡头直接跳出屏幕（贴底时实测上移 339px）。
+   * 松手后虚拟列表按锚点补偿，卡头原地不动、内容往下长。用户再滚到底会自动重新
+   * 钉上（见 useVirtualRows 的 scroll 分类）。
+   */
+  const toggleFold = useCallback(
+    (key: string) => {
+      unpin();
+      setExpandedFolds((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) {
+          next.delete(key);
+        } else {
+          next.add(key);
+        }
+        return next;
+      });
+    },
+    [unpin],
+  );
 
   /**
    * 把「消息下标」落成「行下标」并滚到位。目标若在一个折叠行里（搜索命中、大纲
@@ -1335,9 +1347,10 @@ export const MessageList = forwardRef<
   }, [isLoadingEarlier]);
 
   return (
-    <div
-      ref={containerRef}
-      id="messagesContainer"
+    <ScrollHoldProvider value={unpin}>
+      <div
+        ref={containerRef}
+        id="messagesContainer"
       className={`messages-container${isStreaming ? " streaming" : ""}${isCompacting ? " compacting" : ""} messages-container--virtual`}
       data-testid="messages-container"
       // 聚焦视图下折叠卡以外的助手行不画时间线节点（点只属于卡内那些真实
@@ -1517,6 +1530,7 @@ export const MessageList = forwardRef<
           「复制代码」）挂不上 React 的 `<Tooltip>`，提示走这份委托版；它自己
           portal 到 body，放在列表根节点下只为「一个聊天窗一份」。 */}
       <DelegatedTooltip />
-    </div>
+      </div>
+    </ScrollHoldProvider>
   );
 });
