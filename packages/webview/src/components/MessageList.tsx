@@ -243,8 +243,11 @@ export const MessageList = forwardRef<
    * 虚拟列表的行、行高、时间线都跟着 items 走，消息本身一个字都不动。
    */
   const focusLayout = useMemo(
-    () => buildFocusItems(visibleMessages, !!focusView),
-    [visibleMessages, focusView],
+    // `isStreaming` 是折叠行进行态的**运行时信号**：只看末条消息形状的话，
+    // 中断那一轮（工具块被 finalize 成 end、SDK 不再补消息）会永久停在
+    // 「正在思考…」（spec ui/focus-view.md「失败与中断」要求按已结束处理）。
+    () => buildFocusItems(visibleMessages, !!focusView, !!isStreaming),
+    [visibleMessages, focusView, isStreaming],
   );
   const items = focusLayout.items;
   const itemsRef = useRef<FocusItem[]>(items);
@@ -253,6 +256,12 @@ export const MessageList = forwardRef<
     focusLayout.rowIndexByMessageIndex,
   );
   rowIndexByMessageIndexRef.current = focusLayout.rowIndexByMessageIndex;
+  // 「一条消息横跨两行」时它的过程半在哪张卡里（见 focusItems 的
+  // processRowByMessageIndex）：reveal 只按上面那份坐标展开会让思考仍收着。
+  const processRowByMessageIndexRef = useRef<number[]>(
+    focusLayout.processRowByMessageIndex,
+  );
+  processRowByMessageIndexRef.current = focusLayout.processRowByMessageIndex;
 
   /**
    * 哪些折叠行当前展开着。只活在页面生命周期里：刷新、切会话、切走聚焦视图都
@@ -375,16 +384,31 @@ export const MessageList = forwardRef<
    * 把「消息下标」落成「行下标」并滚到位。目标若在一个折叠行里（搜索命中、大纲
    * 点到被收起来的一轮），先把那行展开 —— 否则点了一下只看到一张收起的卡
    * （spec ui/focus-view.md 场景 8）。展开不改变行顶位置，所以同一帧里滚动不会偏。
+   *
+   * 一条消息可以横跨**两行**（轮尾那条：思考进卡、答复留卡外）。那时上面的行坐标
+   * 指向卡外的答复行，过程半还收在上一张卡里 —— 命中落在思考上就「跳过去看到
+   * 答复、思考仍收着」，等于没定位到。所以过程半所在的卡也一起展开。
    */
   const revealMessageRow = useCallback(
     (messageIndex: number) => {
       const rowIndex = rowIndexByMessageIndexRef.current[messageIndex];
       if (rowIndex === undefined) return;
+      const foldKeys: string[] = [];
       const item = itemsRef.current[rowIndex];
-      if (item?.kind === "fold") {
-        setExpandedFolds((prev) =>
-          prev.has(item.key) ? prev : new Set(prev).add(item.key),
-        );
+      if (item?.kind === "fold") foldKeys.push(item.key);
+      const processRow = processRowByMessageIndexRef.current[messageIndex];
+      if (processRow !== undefined && processRow >= 0) {
+        const process = itemsRef.current[processRow];
+        if (process?.kind === "fold") foldKeys.push(process.key);
+      }
+      if (foldKeys.length > 0) {
+        setExpandedFolds((prev) => {
+          const missing = foldKeys.filter((key) => !prev.has(key));
+          if (missing.length === 0) return prev;
+          const next = new Set(prev);
+          for (const key of missing) next.add(key);
+          return next;
+        });
       }
       scrollToIndex(rowIndex, "center", "auto");
     },
