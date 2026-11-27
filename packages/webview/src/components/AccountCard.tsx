@@ -137,35 +137,81 @@ const BLOCKED_TEXT: Record<AccountBillingCode, string> = {
 };
 
 /**
- * 计费结论行（文案 + 色调）；null = 不渲染。色调按「会不会自愈」分：月/周/企业额度触顶
- * 下个窗口自动恢复 → 琥珀预警；blocked / 维度不可用 / 套餐已到期需人工干预 → 错误色。
+ * 积分（余额）维度的拦截结论：**只有 `mode = "blocked"`** 才出这一句（proxy 402 原文），
+ * 其余 mode 的结论属于套餐维度（见 `planConclusion`）。两个维度不再共用同一句
+ * （2026-11-27，缺陷单 3525819196034816：原先 402 文案同时挂在两处，切到「套餐用量」页签
+ * 读到的还是「您的积分额度已用完」，看着像套餐页签在说积分）。
+ *
+ * `code` 是**开放集合**：服务端可能先于客户端发版新增枚举值（两端不同机发布），故有运行时
+ * 兜底，不能只靠类型。兜底文案「说少而准」——不猜是哪一池用完。
+ */
+export function apiBlockConclusion(
+  billing: AccountBillingInfo,
+  quotaScope?: AccountQuotaScope,
+): { text: string; tone: "error" } | null {
+  if (billing.mode !== "blocked") return null;
+  // 部门共享池用完：同一计费码、换一句（spec 场景 25，与 proxy 402 逐字对齐）。
+  if (billing.code === "USER_QUOTA_ZERO" && quotaScope === "department") {
+    return { text: DEPARTMENT_QUOTA_ZERO_TEXT, tone: "error" };
+  }
+  // 运行时兜底：规格外的 code（后端先发版）查表得 undefined ⇒ 只剩一条没有文案的空红框。
+  // `BLOCKED_TEXT` 的穷尽 `Record` 只挡仓内漏补文案，挡不住跨仓先发的新枚举值。
+  if (!(billing.code in BLOCKED_TEXT)) {
+    console.warn("未知 billing.code，已按兜底文案渲染:", billing.code);
+  }
+  return {
+    text: BLOCKED_TEXT[billing.code] ?? "当前用量受限，请联系公司管理员",
+    tone: "error",
+  };
+}
+
+/**
+ * `blocked` 时套餐维度说什么：**套餐事实**（2026-11-27）。这一态服务端也下发 `plan`
+ * （四数 = 套餐触顶；`{ expireDate }` = 只剩已到期订单；缺键 = 老服务端），没有套餐事实
+ * （null / 缺键）就**不渲染套餐维度**——「没有套餐」而把 402 的积分文案挂到套餐页签上，
+ * 正是缺陷单 3525819196034816 报的现象。
+ *
+ * 色调一律错误色：整体已被阻断，不属于「下个窗口会自愈」的预警（见 `planConclusion` 的分档口径）。
+ */
+function blockedPlanConclusion(
+  plan: AccountBillingPlanUsage | { expireDate: string } | null,
+): { text: string; tone: "error" } | null {
+  if (!plan) return null;
+  if (!isPlanUsage(plan)) {
+    return { text: `套餐已到期（${plan.expireDate} 到期）`, tone: "error" };
+  }
+  // 维度内优先级沿用既有口径：不可用 > 已用尽（月优先于周）。
+  if (plan.monthLimit === 0 || plan.weekLimit === 0) {
+    return { text: "套餐额度不可用（限额为 0）", tone: "error" };
+  }
+  if (plan.monthLimit !== null && plan.monthUsed >= plan.monthLimit) {
+    return { text: "本月额度已用尽", tone: "error" };
+  }
+  if (plan.weekLimit !== null && plan.weekUsed >= plan.weekLimit) {
+    return { text: "本周额度已用尽", tone: "error" };
+  }
+  // 两根条都没触顶却仍被阻断（配额卡在积分侧）：说少而准，不猜是哪一池。
+  return { text: "套餐额度当前不可用", tone: "error" };
+}
+
+/**
+ * 套餐维度的结论行（文案 + 色调）；null = 不渲染。色调按「会不会自愈」分：月/周/企业额度触顶
+ * 下个窗口自动恢复 → 琥珀预警；维度不可用 / 套餐已到期 / `blocked` 需人工干预 → 错误色。
  *
  * 两类触顶只是「哪一池用完」不同（企业池 vs 本人池），恢复方式与用户可做的事一样
  * （等下个窗口），故同色；差异落在文案里，不在色调里。
  *
- * `reason` / `code` 是**开放集合**：服务端可能先于客户端发版新增枚举值（两端不同机发布），
- * 故两处都有运行时兜底，不能只靠类型。兜底文案「说少而准」——结论行要回答的是「为什么在
+ * `reason` 是**开放集合**：服务端可能先于客户端发版新增枚举值（两端不同机发布），
+ * 故有运行时兜底，不能只靠类型。兜底文案「说少而准」——结论行要回答的是「为什么在
  * 扣 API」，而这件事只需要 `mode === "api"` 就能确定，不需要认识具体的 `reason`。
  */
 export function planConclusion(
   billing: AccountBillingInfo,
-  quotaScope?: AccountQuotaScope,
 ): { text: string; tone: "warning" | "error" } | null {
   if (billing.mode === "plan") return null;
   if (billing.mode === "blocked") {
-    // 部门共享池用完：同一计费码、换一句（spec 场景 25，与 proxy 402 逐字对齐）。
-    if (billing.code === "USER_QUOTA_ZERO" && quotaScope === "department") {
-      return { text: DEPARTMENT_QUOTA_ZERO_TEXT, tone: "error" };
-    }
-    // 运行时兜底：规格外的 code（后端先发版）查表得 undefined ⇒ 只剩一条没有文案的空红框。
-    // `BLOCKED_TEXT` 的穷尽 `Record` 只挡仓内漏补文案，挡不住跨仓先发的新枚举值。
-    if (!(billing.code in BLOCKED_TEXT)) {
-      console.warn("未知 billing.code，已按兜底文案渲染:", billing.code);
-    }
-    return {
-      text: BLOCKED_TEXT[billing.code] ?? "当前用量受限，请联系公司管理员",
-      tone: "error",
-    };
+    // 套餐维度说套餐事实；没有套餐事实就整维不渲染（返回 null，由调用方判 showPlanBlock）。
+    return blockedPlanConclusion(billing.plan ?? null);
   }
   switch (billing.reason) {
     case "month":
@@ -655,16 +701,21 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   }
 
   const billing = account?.billing ?? null;
-  // blocked 形态不带 plan；其余两种才有（生效套餐 = 四数 + 到期日，已到期 = 仅到期日）.
-  const billingPlan = billing && "plan" in billing ? billing.plan : null;
+  // 套餐事实三态（三种 mode 都可能带）：生效套餐 = 四数 + 到期日，只剩已到期订单 = 仅到期日，
+  // 从未购买 = null（`blocked` 自 2026-11-27 起也带，见契约；老服务端缺这个键 ⇒ null）。
+  const billingPlan = billing?.plan ?? null;
   // 有两根条四数的 plan 子对象（区别于「仅 expireDate」的已到期形态）。
   const planUsage =
     billingPlan && isPlanUsage(billingPlan) ? billingPlan : null;
   const expireDate = billingPlan?.expireDate ?? null;
-  // 结论行带上 `apiQuota.scope`：`USER_QUOTA_ZERO` 在部门维度下要换成部门那一句
-  // （spec 场景 25），套餐块与余额块两处结论同源、同句。
-  const conclusion = billing ? planConclusion(billing, apiQuota?.scope) : null;
-  const showPlanBlock = planUsage !== null || conclusion !== null;
+  // 两维各说各的（2026-11-27，缺陷单 3525819196034816）：套餐维度说套餐事实，积分维度说
+  // proxy 402 那一句（`blocked` 才有）。没有套餐事实时套餐维度整块不渲染——把 402 的积分
+  // 文案挂到套餐页签上正是这条缺陷单报的现象。
+  const conclusion = billing ? planConclusion(billing) : null;
+  const blockedText = billing
+    ? apiBlockConclusion(billing, apiQuota?.scope)
+    : null;
+  const showPlanBlock = billingPlan !== null || conclusion !== null;
   // 积分余额预警级：null=充足/不限额；"low"=剩余<20%；"exhausted"=剩余≤0
   // （仅在真按 API 计费时成立，`mode = "plan"` 的 limit=0 不算用完，见 issue #2776）。
   const apiWarning = apiQuota ? apiQuotaWarningLevel(apiQuota, billing) : null;
@@ -676,7 +727,9 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   // 小圆点把「有情况要看」透出来。严重度取两者中更高的：需人工干预（blocked / 维度
   // 不可用 / 套餐已到期）与余额耗尽 → 错误色；会自愈（周/月触顶、余额 <20%）→ 琥珀。
   const usageAlert: "error" | "warning" | null =
-    conclusion?.tone === "error" || apiWarning === "exhausted"
+    conclusion?.tone === "error" ||
+    blockedText?.tone === "error" ||
+    apiWarning === "exhausted"
       ? "error"
       : conclusion?.tone === "warning" || apiWarning === "low"
         ? "warning"
@@ -951,15 +1004,15 @@ export const AccountCard: React.FC<AccountCardProps> = ({
                   额度已用完，请联系管理员充值
                 </div>
               )}
-              {/* blocked：套餐与 API 均不可用，拦截结论在余额维度也给出同一句
-                  proxy 402 文案（issue #2776）——此时余额不宜再自称「已用完」，
-                  两处结论同源（planConclusion），只是一个落在套餐块、一个落在余额块。 */}
-              {billing?.mode === "blocked" && conclusion && (
+              {/* blocked：积分维度只给这句 proxy 402 文案（issue #2776）——此时余额不宜再
+                  自称「已用完」。套餐维度那条结论在套餐块里按套餐事实说（planConclusion），
+                  两处不再同源（2026-11-27，缺陷单 3525819196034816）。 */}
+              {billing?.mode === "blocked" && blockedText && (
                 <div
-                  className={`account-plan-conclusion is-${conclusion.tone}`}
+                  className={`account-plan-conclusion is-${blockedText.tone}`}
                   data-testid="account-api-conclusion"
                 >
-                  {conclusion.text}
+                  {blockedText.text}
                 </div>
               )}
             </div>

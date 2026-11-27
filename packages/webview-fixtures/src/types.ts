@@ -1412,6 +1412,8 @@ export type AccountBillingCode =
  * 扣费**同一份代码**；客户端只渲染、**不自行判断「走套餐还是走 API」**。`plan` 子对象：
  * 有生效套餐 = 四数 + 到期日；无生效套餐但有**未作废**的已到期订单 = 仅 `{ expireDate }`；
  * 从未购买、或订单已全部作废 = null（作废不是到期，`status='active'` 与生效分支同谓词）。
+ * `blocked` 自 2026-11-27 起也带同一个 `plan`（缺陷单 3525819196034816）：卡片据此在「套餐用量」
+ * 维度说套餐事实、在「积分余额」维度说 proxy 402 那一句，不再让一句积分文案同时挂两个维度。
  */
 export type AccountBillingInfo =
   | { mode: "plan"; plan: AccountBillingPlanUsage }
@@ -1420,7 +1422,16 @@ export type AccountBillingInfo =
       reason: AccountBillingDegradeReason;
       plan: AccountBillingPlanUsage | { expireDate: string } | null;
     }
-  | { mode: "blocked"; code: AccountBillingCode };
+  | {
+      mode: "blocked";
+      code: AccountBillingCode;
+      /**
+       * 套餐事实，与 `mode: "api"` 同口径：四数 = 套餐触顶那一支；`{ expireDate }` = 无生效套餐
+       * 但存在未作废的已到期订单；`null` = 从未购买。缺失 = 老服务端（两端不同机发布），
+       * 消费方按「没有套餐事实」处理（见 docs/specs/desktop/desktop-account.md 场景 8）。
+       */
+      plan?: AccountBillingPlanUsage | { expireDate: string } | null;
+    };
 
 /**
  * 积分额度的生效层（codechat `apiQuota.scope`）：`department` = 读数属于**所在部门

@@ -106,7 +106,7 @@ describe("usageFromQuotaHeaders", () => {
     });
   });
 
-  it("被阻断（blocked）：按 code 出结论行，plan 四数丢弃（webview 不画条）", () => {
+  it("被阻断（blocked）：code 给结论行，套餐事实照带（2026-11-27，缺陷单 3525819196034816）", () => {
     const headers = {
       ...H.plan,
       "x-codechat-quota-status": "rejected",
@@ -115,13 +115,73 @@ describe("usageFromQuotaHeaders", () => {
       "x-codechat-quota-api-used": "50",
       "x-codechat-quota-api-limit": "50",
     };
+    // 只有两个维度各自的事实：套餐尾说套餐（四数 → 触顶那一维），余额尾说 402。
     expect(usageFromQuotaHeaders(headers, {})).toEqual({
-      billing: { mode: "blocked", code: "USER_QUOTA_ZERO" },
+      billing: {
+        mode: "blocked",
+        code: "USER_QUOTA_ZERO",
+        plan: {
+          monthUsed: 120,
+          monthLimit: 1000,
+          weekUsed: 12,
+          weekLimit: 100,
+          expireDate: "2027-03-01",
+        },
+      },
       apiQuota: { limit: 50, used: 50 },
     });
   });
 
-  it("status=rejected 而没有 code：仍然算 blocked（兜底文案由 webview 出）", () => {
+  it("被阻断（blocked）且只剩已到期订单：plan 只带到期日", () => {
+    expect(
+      requireBilling({
+        "x-codechat-quota-status": "rejected",
+        "x-codechat-quota-code": "EXPIRED_NO_API",
+        "x-codechat-quota-plan-expire": "2026-01-01",
+      }),
+    ).toEqual({
+      mode: "blocked",
+      code: "EXPIRED_NO_API",
+      plan: { expireDate: "2026-01-01" },
+    });
+  });
+
+  it("被阻断（blocked）但头里没有套餐字段：沿用上一次已知的 plan", () => {
+    const prev: AccountUsageSnapshot = {
+      billing: {
+        mode: "api",
+        reason: "month",
+        plan: {
+          monthUsed: 120,
+          monthLimit: 1000,
+          weekUsed: 12,
+          weekLimit: 100,
+          expireDate: "2027-03-01",
+        },
+      },
+    };
+    expect(
+      requireBilling(
+        {
+          "x-codechat-quota-status": "rejected",
+          "x-codechat-quota-code": "USER_QUOTA_ZERO",
+        },
+        prev,
+      ),
+    ).toEqual({
+      mode: "blocked",
+      code: "USER_QUOTA_ZERO",
+      plan: {
+        monthUsed: 120,
+        monthLimit: 1000,
+        weekUsed: 12,
+        weekLimit: 100,
+        expireDate: "2027-03-01",
+      },
+    });
+  });
+
+  it("status=rejected 而没有 code：仍然算 blocked（兜底文案由 webview 出），且不带 plan 键", () => {
     expect(requireBilling({ "x-codechat-quota-status": "rejected" })).toEqual({
       mode: "blocked",
       code: "",

@@ -5730,7 +5730,13 @@ describe("account card (desktopAccountInfo)", () => {
     });
 
     expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
-      billing: { mode: "blocked", code: "USER_QUOTA_ZERO" },
+      billing: {
+        mode: "blocked",
+        code: "USER_QUOTA_ZERO",
+        // 头里没发套餐字段（老服务端）⇒ 沿用上一次已知的套餐事实：套餐维度回落成
+        // 上次那一份，而不是把 402 的积分文案挂上去（缺陷单 3525819196034816）。
+        plan: planBilling.plan,
+      },
       apiQuota: { limit: 20, used: 20 },
     });
     restoreStub();
