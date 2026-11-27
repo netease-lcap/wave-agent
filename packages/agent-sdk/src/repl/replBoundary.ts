@@ -81,6 +81,11 @@ export interface ReplBoundaryBridge {
   running(): unknown;
   /** Text of the "budget exhausted" error is the host's call. */
   stepError(): Error;
+  /**
+   * Marks the error a stop threw (the realm's own value, not the host's), so the
+   * host can claim its rejection instead of crashing on it later.
+   */
+  markStopped(error: unknown): void;
 }
 
 export interface ReplGlobalsConfig {
@@ -401,7 +406,14 @@ export const REPL_BOUNDARY_SOURCE = `(() => {
     // segments, and why this has to be refreshed at each resume.
     const resume = () => { deadline = DateNow() + syncWallMs; };
 
-    const stepError = () => toRealmError(bridge.stepError());
+    // A stop that script code never observes rejects a promise nobody holds, and
+    // the host reports it as an unhandled rejection. Marking it here is what lets
+    // the host tell its own crash apart from a script that outran its budget.
+    const stepError = () => {
+      const error = toRealmError(bridge.stepError());
+      bridge.markStopped(error);
+      return error;
+    };
 
     const step = () => {
       steps = steps + 1;

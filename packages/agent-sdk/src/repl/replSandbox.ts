@@ -46,6 +46,7 @@ import {
   type ReplBoundaryTimers,
   type ReplGlobalsConfig,
 } from "./replBoundary.js";
+import { markRealmPrototype, markStoppedError } from "./replRejectionClaim.js";
 
 export interface ReplSandboxHost {
   /** 调一个池内工具。宿主侧负责权限、hook、调用次数上限、中断；这里只 await。 */
@@ -999,6 +1000,13 @@ class ReplSandboxImpl implements ReplSandbox {
     }).runInContext(context) as unknown as ReplBoundary;
     this.context = context;
     this.boundary = boundary;
+    // What the realm owns is how a rejection that outlives a run is traced back
+    // to the script that left it behind (see replRejectionClaim.ts).
+    const owned = vm.runInContext(
+      "[Promise.prototype, Error.prototype]",
+      context,
+    ) as unknown[];
+    for (const prototype of owned) markRealmPrototype(prototype);
     return boundary;
   }
 
@@ -1090,6 +1098,7 @@ class ReplSandboxImpl implements ReplSandbox {
       consoleDropped: () => this.host.consoleDropped(),
       running: () => this.host.running(),
       stepError: () => this.host.stepError(),
+      markStopped: (error) => markStoppedError(error),
     };
   }
 

@@ -38,6 +38,9 @@ export type {
 export * from "./constants/telemetry.js";
 export * from "./constants/tools.js";
 
+// 脚本自己留下的 rejection：宿主在当崩溃处理之前，先问 REPL 要不要认领。
+export { claimUnhandledRejection } from "./repl/replRejectionClaim.js";
+
 // Export main agent
 export * from "./agent.js";
 export * from "./core/plugin.js";
