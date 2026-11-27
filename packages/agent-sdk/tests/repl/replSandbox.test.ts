@@ -264,6 +264,160 @@ describe("repl sandbox: long-lived context", () => {
   });
 });
 
+describe("repl sandbox: names a failed run never set", () => {
+  /** A run that declares `x` and throws before reaching it. */
+  const poisonX = (sandbox: ReplSandbox) =>
+    sandbox.run("throw new Error('boom')\nconst x = 1", opts());
+
+  it("refuses the next run that reads a name this run never set", async () => {
+    const sandbox = open();
+    expect((await poisonX(sandbox)).ok).toBe(false);
+
+    const after = await sandbox.run('self.log("ran")\nreturn x', opts());
+    expect(after.ok).toBe(false);
+    expect(after.error).toContain("ReferenceError: x has no value");
+    expect(after.error).toContain("An earlier script declared it");
+    expect(after.error).toContain("Nothing in this script ran");
+    // A refusal is not a partial run: the script's own log never happened.
+    expect(after.logs).toEqual([]);
+  });
+
+  it("names the declarations the run never reached", async () => {
+    const sandbox = open();
+    const failed = await sandbox.run(
+      "throw new Error('boom')\nconst a = 1\nconst b = 2",
+      opts(),
+    );
+    expect(failed.error).toContain("Not set by this script: a, b (");
+  });
+
+  it("summarises a long list of names", async () => {
+    const sandbox = open();
+    const declared = Array.from({ length: 10 }, (_, i) => `const n${i} = ${i}`);
+    const failed = await sandbox.run(
+      ["throw new Error('boom')", ...declared].join("\n"),
+      opts(),
+    );
+    expect(failed.error).toContain(
+      "Not set by this script: n0, n1, n2, n3, n4, n5, n6, n7 and 2 more (",
+    );
+  });
+
+  it("keeps what the run had already set, and names only the rest", async () => {
+    const sandbox = open();
+    const failed = await sandbox.run(
+      "const kept = 'set'\nthrow new Error('boom')\nconst missed = 2",
+      opts(),
+    );
+    expect(failed.error).toContain("Not set by this script: missed (");
+    expect(failed.error).not.toContain("kept");
+
+    // The part that ran keeps its value, and reading it is not refused.
+    const after = await sandbox.run("return kept", opts());
+    expect(after).toMatchObject({ ok: true, value: "set" });
+  });
+
+  it("stops refusing once a later run sets the name", async () => {
+    const sandbox = open();
+    await poisonX(sandbox);
+
+    expect((await sandbox.run("const x = 2", opts())).ok).toBe(true);
+    expect(await sandbox.run("return x", opts())).toMatchObject({
+      ok: true,
+      value: "2",
+    });
+  });
+
+  it("does not refuse a run that never reads the name", async () => {
+    const sandbox = open();
+    await poisonX(sandbox);
+
+    expect(await sandbox.run("const y = 2\nreturn y", opts())).toMatchObject({
+      ok: true,
+      value: "2",
+    });
+  });
+
+  it("allows a typeof read of a name the run never set", async () => {
+    const sandbox = open();
+    await poisonX(sandbox);
+
+    expect(await sandbox.run("return typeof x", opts())).toMatchObject({
+      ok: true,
+      value: "undefined",
+    });
+  });
+
+  it("does not count a property name as reading the name", async () => {
+    const sandbox = open();
+    await poisonX(sandbox);
+
+    expect(
+      await sandbox.run("const o = { x: 1 }\nreturn o.x", opts()),
+    ).toMatchObject({ ok: true, value: "1" });
+  });
+
+  it("does not refuse a name a completed run declared with `let` and no value", async () => {
+    const sandbox = open();
+    expect((await sandbox.run("let fresh", opts())).ok).toBe(true);
+
+    expect(await sandbox.run("return fresh", opts())).toMatchObject({
+      ok: true,
+    });
+  });
+
+  it("does not poison a name the run did set, even to undefined", async () => {
+    const sandbox = open();
+    const failed = await sandbox.run(
+      "const x = undefined\nthrow new Error('boom')",
+      opts(),
+    );
+    expect(failed.ok).toBe(false);
+    expect(failed.error).not.toContain("Not set by this script");
+
+    expect(await sandbox.run("return x", opts())).toMatchObject({ ok: true });
+  });
+
+  it("keeps its tracker out of the context the script can see", async () => {
+    const sandbox = open();
+    await sandbox.run("const a = 1", opts());
+
+    const keys = await sandbox.run(
+      "return Object.keys(globalThis).join(',')",
+      opts(),
+    );
+    expect(keys.ok).toBe(true);
+    expect(keys.value).not.toContain("__replReached");
+  });
+
+  it("refuses after a directive prologue instead of breaking it", async () => {
+    const sandbox = open();
+    await poisonX(sandbox);
+
+    const after = await sandbox.run('"use strict"\nreturn x', opts());
+    expect(after.ok).toBe(false);
+    expect(after.error).toContain("Nothing in this script ran");
+
+    // The directive itself still holds: an undeclared write is a ReferenceError.
+    expect((await sandbox.run('"use strict"\nundeclared = 1', opts())).ok).toBe(
+      false,
+    );
+  });
+
+  it("poisons a name whose run threw after an await, not only before one", async () => {
+    const sandbox = open();
+    const failed = await sandbox.run(
+      "await 0\nthrow new Error('boom')\nconst x = 1",
+      opts(),
+    );
+    expect(failed.ok).toBe(false);
+
+    const after = await sandbox.run("return x", opts());
+    expect(after.ok).toBe(false);
+    expect(after.error).toContain("Nothing in this script ran");
+  });
+});
+
 describe("repl sandbox: values", () => {
   it("returns the last expression, an explicit return, and nothing when there is none", async () => {
     const sandbox = open();
