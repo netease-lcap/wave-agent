@@ -137,6 +137,7 @@ const MANAGED_GLOBAL_NAMES = [
   "setInterval",
   "clearInterval",
   "__replStep",
+  "__replRun",
 ];
 
 /**
@@ -675,7 +676,12 @@ function buildSource(code: string, analysis: ReplAnalysis): string {
     analysis.declarations.length > 0
       ? `var ${analysis.declarations.join(", ")};`
       : "";
-  return `${prelude}(() => { const p = (async function () {${body}\n})(); p.then(null, function () {}); return p })()`;
+  // `__replRun` is the wrapper's own binding; it is also in the refusal set
+  // below, so a script declaring that name is turned away instead of quietly
+  // resolving to this one. A plain identifier here (`p` before 2026-11-27) is
+  // shadowed over the script's top-level declaration: a synchronous `const p`
+  // sat in this binding's TDZ, and after an `await` the assignment hit a const.
+  return `${prelude}(() => { const __replRun = (async function () {${body}\n})(); __replRun.then(null, function () {}); return __replRun })()`;
 }
 
 // ---------------------------------------------------------------------------
