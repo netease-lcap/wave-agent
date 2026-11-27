@@ -859,6 +859,20 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
               </Tooltip>
             </>
           )}
+          {/* 1120 评论（「把刷新按钮放在前进后面」）：刷新从右侧动作组挪到箭头右侧，
+              与「后退 / 前进」并成浏览器那一套「← → ⟳ 然后地址栏」的顺序。
+              它**不**跟着箭头一起在源码态消失 —— 源码态的刷新语义不同（重读文件），
+              这一颗始终在。右侧动作组因此只剩「选择元素并评论 / 在浏览器中打开」。 */}
+          <Tooltip text="刷新" position="bottom">
+            <button
+              className="preview-pane-button"
+              aria-label="刷新"
+              data-testid="preview-refresh"
+              onClick={handleRefresh}
+            >
+              <RefreshIcon className="preview-pane-icon" />
+            </button>
+          </Tooltip>
           {addressEditing || !displayUrl ? (
             <input
               ref={addressInputRef}
@@ -919,16 +933,6 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
               onClick={togglePicker}
             >
               <InspectorCursorIcon className="preview-pane-icon" />
-            </button>
-          </Tooltip>
-          <Tooltip text="刷新" position="bottom">
-            <button
-              className="preview-pane-button"
-              aria-label="刷新"
-              data-testid="preview-refresh"
-              onClick={handleRefresh}
-            >
-              <RefreshIcon className="preview-pane-icon" />
             </button>
           </Tooltip>
           <Tooltip text="在浏览器中打开" position="bottom">
