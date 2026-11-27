@@ -125,6 +125,7 @@ export function buildFocusItems(
     run: Message[],
     startMessageIndex: number,
     turnKey: string,
+    live: boolean,
   ) => {
     const { calls, errors } = countToolBlocks(run);
     let runningToolName: string | undefined;
@@ -143,7 +144,7 @@ export function buildFocusItems(
       callCount: calls,
       errorCount: errors,
       hasReasoning: hasReasoningBlock(run),
-      live: run.some(messageIsLive),
+      live,
       runningToolName,
     });
   };
@@ -185,7 +186,15 @@ export function buildFocusItems(
         pushMessage(runMessage, index + offset),
       );
     } else {
-      pushFold(run.slice(0, foldCount), index, turnKey);
+      // 进行态的口径是**整轮**，不是「此刻有没有未结束的块」：工具刚跑完、
+      // 模型还没开始下一段响应时，所有块都是 end，但这一轮并没结束。按块级
+      // 判定会在轮内回落到结算文案（「N 次工具调用」），下一段流式开始又跳回
+      // 进行态 —— 那正是折叠行文案来回抖的根因。判据取「还没出现轮尾答复」，
+      // 与桌面端 focus 的 turnEnded 语义一致（CC desktop 6.28899.6
+      // cac57de41:53621 focusGrows = opensTurn && inFlight && !turnEnded）。
+      // 以工具块收尾却没有后续的轮只出现在中断/报错，那两种都会带一条结束
+      // 消息（timeout / notice / error），不会落到这里。
+      pushFold(run.slice(0, foldCount), index, turnKey, tailIndex < 0);
       if (tailIndex >= 0) pushMessage(lastMessage, index + tailIndex);
     }
     index = runEnd;
