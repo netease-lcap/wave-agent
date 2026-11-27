@@ -39,8 +39,8 @@ import {
   type RemoteControlCliSession,
 } from "../remote/remoteControlCliHost.js";
 import {
-  percentOf,
   remoteWire,
+  ringPercentOf,
   toBackgroundTaskSummaries,
 } from "../remote/remoteNotifications.js";
 import type { RemoteNotify } from "../remote/remoteNotifications.js";
@@ -200,20 +200,10 @@ export function useRemoteControl(
     if (!sink || !sessionId) return;
     sink.sendNotification(
       "contextUsage",
-      remoteWire.contextUsage(
-        latestTotalTokens,
-        options.contextWindow,
-        options.maxOutputTokens,
-      ),
+      remoteWire.contextUsage(latestTotalTokens, options.contextWindow),
       sessionId,
     );
-  }, [
-    sink,
-    sessionId,
-    latestTotalTokens,
-    options.contextWindow,
-    options.maxOutputTokens,
-  ]);
+  }, [sink, sessionId, latestTotalTokens, options.contextWindow]);
 
   // Approvals are announced once, when they appear. The page answers with
   // `permissionResponse`, which the host routes back into the same promise the
@@ -332,10 +322,9 @@ function adapterOf(latest: {
     currentThread: () => latest.current.currentThread(),
     threadSummary: () => latest.current.threadSummary(),
     contextUsagePercent: () =>
-      percentOf(
+      ringPercentOf(
         latest.current.latestTotalTokens,
         latest.current.contextWindow,
-        latest.current.maxOutputTokens,
       ),
     latestTotalTokens: () => latest.current.latestTotalTokens,
     permissionMode: () => latest.current.permissionMode,

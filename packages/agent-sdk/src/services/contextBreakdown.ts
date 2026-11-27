@@ -2,7 +2,6 @@ import type {
   ContextBreakdown,
   ContextCategory,
 } from "../types/contextBreakdown.js";
-import { contextUsagePercent } from "../utils/tokenCalculation.js";
 
 export interface ContextBreakdownInput {
   model: string;
@@ -43,9 +42,10 @@ function sumTokens(items: Array<{ tokens: number }>): number {
  * 把各部分体积装配成 `/context` 的报告数据。
  *
  * 分母规则（见 spec `commands/context-command.md` 用户故事 3）：分类百分比
- * 一律以**上下文窗口**为分母，所以「used 合计 + buffer + free = 窗口」恒成立；
- * `ringPercent` 额外给一份以压缩阈值为分母的百分比，让用户能把报告和输入框旁
- * 的用量环对上。
+ * 与顶部 `usedPercent` **一律以上下文窗口为分母**，所以「used 合计 + buffer +
+ * free = 窗口」恒成立，输入框旁那个用量环也用这一份（同一个会话不会出现两个
+ * 百分比）。压缩阈值只以绝对 token 数出现（`autoCompactThreshold` / buffer），
+ * 不再折算成第二个百分比。
  *
  * 顶部 `usedTokens` 优先用实测（上次响应的 `total_tokens`，含 system prompt /
  * 工具 schema / cache 命中）；分类则各自是本地估值。两者不保证相加相等 ——
@@ -148,10 +148,6 @@ export function buildContextBreakdown(
     usedTokens,
     measured,
     usedPercent: percentOfWindow(usedTokens),
-    ringPercent:
-      window > 0
-        ? contextUsagePercent(usedTokens, window, input.maxOutputTokens)
-        : 0,
     categories,
     mcpTools,
     systemTools,

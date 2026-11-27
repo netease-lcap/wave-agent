@@ -117,11 +117,12 @@ export function getAutoCompactThreshold(
 }
 
 /**
- * 上下文用量百分比：分母是**自动压缩阈值**，不是裸的上下文窗口。
+ * 上下文**压缩压力**百分比：分母是**自动压缩阈值**，不是裸的上下文窗口，
+ * 所以 100 正是压缩要发生的地方。
  *
- * 与输入框旁那个用量环同一条规则（`packages/code` 的 `percentOf` 服务线上
- * 快照，另留了一份以容忍被整体 mock 的 SDK barrel）：环画到 100% 正是压缩要
- * 发生的地方，换成 `tokens / window` 会让环永远到不了头。
+ * 界面上的用量百分比**不**用这个（环与 `/context` 面板都以窗口为分母，同一个
+ * 会话只有一个数）；CLI 那行 `N% until auto-compact` 与 `packages/code` 的 `remainingPercentOf`
+ * 是这条口径的线上快照（另留一份以容忍被整体 mock 的 SDK barrel）。
  */
 export function contextUsagePercent(
   tokens: number,

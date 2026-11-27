@@ -4,26 +4,41 @@ import { describe, it, expect } from "vitest";
 import { Notifications } from "../../src/components/Notifications.js";
 
 describe("Notifications Component", () => {
-  it("should not show context percentage when no tokens consumed", () => {
+  it("should not show the context readout when no tokens consumed", () => {
     const { lastFrame } = render(<Notifications latestTotalTokens={0} />);
 
-    expect(lastFrame()).not.toContain("% context");
+    expect(lastFrame()).not.toContain("auto-compact");
   });
 
-  it("should show context percentage when tokens are consumed", () => {
+  // 方向是**剩余**、分母是自动压缩阈值（167,000），与 Claude Code 的 CLI 同句：
+  // 40000 / 167000 ⇒ 还剩 76%。写成 "24% context" 会被读成「窗口用了 24%」。
+  it("should show how much is left until auto-compact", () => {
     const { lastFrame } = render(
       <Notifications latestTotalTokens={40000} contextWindow={200000} />,
     );
 
-    expect(lastFrame()).toContain("24% context");
+    expect(lastFrame()).toContain("76% until auto-compact");
+    expect(lastFrame()).not.toContain("% context");
   });
 
-  it("should cap context percentage at 100", () => {
+  // CC 的边界：剩余归零时不再报数字，直接说「下一轮就压缩」。
+  it("should say auto-compact next once the threshold is reached", () => {
     const { lastFrame } = render(
       <Notifications latestTotalTokens={500000} contextWindow={200000} />,
     );
 
-    expect(lastFrame()).toContain("100% context");
+    expect(lastFrame()).toContain("auto-compact next");
+    expect(lastFrame()).not.toContain("% until auto-compact");
+  });
+
+  // 窗口未知时无处可算（remainingPercentOf 返回 0，但那是「到阈值了」的语义），
+  // 所以这一格整块不渲染，而不是误报 auto-compact next。
+  it("should hide the readout when the context window is unknown", () => {
+    const { lastFrame } = render(
+      <Notifications latestTotalTokens={40000} contextWindow={0} />,
+    );
+
+    expect(lastFrame()).not.toContain("auto-compact");
   });
 
   it("should show login hint when showLoginHint is true", () => {

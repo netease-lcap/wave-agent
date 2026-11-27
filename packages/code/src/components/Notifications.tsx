@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, Text } from "ink";
-import { percentOf } from "../remote/remoteNotifications.js";
+import { remainingPercentOf } from "../remote/remoteNotifications.js";
 
 export interface NotificationsProps {
   latestTotalTokens?: number;
@@ -30,21 +30,30 @@ export const Notifications: React.FC<NotificationsProps> = ({
   hint = null,
   modStatus = null,
 }) => {
-  const percentage =
-    latestTotalTokens > 0
-      ? percentOf(latestTotalTokens, contextWindow, maxOutputTokens)
-      : 0;
+  // 剩余百分比（分母 = 自动压缩阈值，与图形界面的窗口分母不是一个口径 —— 见
+  // docs/specs/ui/notifications.md）。术语照抄 Claude Code 的 CLI：句子里带
+  // 「until auto-compact」，用户不会把 76% 读成「窗口用了 76%」。
+  const remaining =
+    latestTotalTokens > 0 && contextWindow > 0
+      ? remainingPercentOf(latestTotalTokens, contextWindow, maxOutputTokens)
+      : undefined;
 
+  // 颜色仍按「已用」分档（剩余 5% / 20% 即原 95% / 80%），水位语义不变。
+  const usedPercent = remaining === undefined ? 0 : 100 - remaining;
   const contextColor =
-    percentage > 95 ? "red" : percentage > 80 ? "yellow" : "gray";
+    usedPercent > 95 ? "red" : usedPercent > 80 ? "yellow" : "gray";
 
   return (
     <Box gap={1}>
       {modStatus && <Text color="gray">{modStatus}</Text>}
       {hint && <Text color="gray">{hint}</Text>}
       {showLoginHint && <Text color="gray">Type /login to authenticate</Text>}
-      {percentage > 0 && (
-        <Text color={contextColor}>{percentage}% context</Text>
+      {remaining !== undefined && (
+        <Text color={contextColor}>
+          {remaining > 0
+            ? `${remaining}% until auto-compact`
+            : "auto-compact next"}
+        </Text>
       )}
     </Box>
   );

@@ -42,30 +42,71 @@ type StreamDelta = Parameters<
 >[0];
 
 /**
- * Context-window usage as the percentage the ring renders — one rule for every
- * producer (the bridge's change push and its `getMessages` read, the CLI host's
- * push and its `getSessionInfo` read). 0 when the cap is unknown, so a caller
- * that has one reads a number rather than a special case.
+ * The denominator of the CLI's context readout: the **auto-compaction
+ * threshold**, not the raw window (`tokens / window` is the webview's ring,
+ * `ringPercentOf`). The number that matters in one terminal line is "how much
+ * room is left before compaction", not "how full is the window".
+ *
+ * Some host tests auto-mock the SDK barrel wholesale. Keep the wire helper
+ * usable in that environment without changing production's shared formula.
  */
-export function percentOf(
-  tokens: number,
+function autoCompactBase(
   contextWindow: number,
-  maxOutputTokens = 32_000,
+  maxOutputTokens: number,
 ): number {
-  if (!Number.isFinite(contextWindow) || contextWindow <= 0) return 0;
   const calculatedThreshold = getAutoCompactThreshold(
     contextWindow,
     Number.isFinite(maxOutputTokens) && maxOutputTokens > 0
       ? maxOutputTokens
       : 32_000,
   );
-  // Some host tests auto-mock the SDK barrel wholesale. Keep the wire helper
-  // usable in that environment without changing production's shared formula.
-  const threshold =
-    Number.isFinite(calculatedThreshold) && calculatedThreshold > 0
-      ? calculatedThreshold
-      : contextWindow;
-  return Math.min(100, Math.round((tokens / threshold) * 100));
+  return Number.isFinite(calculatedThreshold) && calculatedThreshold > 0
+    ? calculatedThreshold
+    : contextWindow;
+}
+
+/**
+ * What the CLI's token line shows: **percent left until auto-compaction**
+ * (`N% until auto-compact`, and 0 becomes the literal `auto-compact next`).
+ *
+ * Same denominator as before (the threshold — see `autoCompactBase`), but the
+ * direction is *remaining*, matching Claude Code's CLI
+ * (`${Qt}% until auto-compact` / `"auto-compact next"` in its token-warning
+ * component): a bare `57% context` reads as "57% of the window", which is the
+ * wrong denominator; naming the event in the sentence removes that reading.
+ * The webview's ring stays on `used / window` so one session never shows two
+ * percentages of the same thing (spec `ui/notifications.md` 场景 2).
+ *
+ * 0 when the cap is unknown, so a caller that has one reads a number rather
+ * than a special case — callers gate on the window themselves.
+ */
+export function remainingPercentOf(
+  tokens: number,
+  contextWindow: number,
+  maxOutputTokens = 32_000,
+): number {
+  if (!Number.isFinite(contextWindow) || contextWindow <= 0) return 0;
+  const base = autoCompactBase(contextWindow, maxOutputTokens);
+  // Rounded in the remaining direction (as Claude Code does), not as
+  // `100 - round(used)`: those two disagree by a point on exact `.5` totals.
+  const left = Math.round(((base - tokens) / base) * 100);
+  return Math.max(0, Math.min(100, left));
+}
+
+/**
+ * Context-window usage as the percentage the ring renders: `used / window`.
+ *
+ * Same denominator as the `/context` panel's `usedPercent` (spec
+ * `ui/context-usage-indicator.md` 场景 4), so the ring and the panel can never
+ * disagree about one session — one of those two numbers being 57% while the
+ * other said 47% is exactly what this split fixes. The cost is that the ring
+ * tops out below 100 in practice: auto-compaction fires at 83.5% of a 200k
+ * window. 0 when the cap is unknown.
+ */
+export function ringPercentOf(tokens: number, contextWindow: number): number {
+  if (!Number.isFinite(contextWindow) || contextWindow <= 0) return 0;
+  if (!Number.isFinite(tokens) || tokens <= 0) return 0;
+  return Math.min(100, Math.round((tokens / contextWindow) * 100));
 }
 
 /** The shapes both hosts put on the wire, keyed by the method they ride under. */
@@ -117,12 +158,8 @@ export const remoteWire = {
     ...(latestTotalTokens === undefined ? {} : { latestTotalTokens }),
   }),
 
-  contextUsage: (
-    latestTotalTokens: number,
-    contextWindow: number,
-    maxOutputTokens = 32_000,
-  ) => ({
-    percent: percentOf(latestTotalTokens, contextWindow, maxOutputTokens),
+  contextUsage: (latestTotalTokens: number, contextWindow: number) => ({
+    percent: ringPercentOf(latestTotalTokens, contextWindow),
   }),
 
   permissionModeChange: (mode: PermissionMode) => ({ mode }),
