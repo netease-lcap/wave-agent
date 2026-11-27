@@ -8,9 +8,9 @@ import {
 } from "../../constants/tools.js";
 import { parseCommandArguments } from "../../utils/commandArgumentParser.js";
 import {
-  repoHostOf,
+  repoPlatformOf,
   repoHostOfHost,
-  type RepoHost,
+  type CliPlatform,
 } from "../../utils/repoHost.js";
 import type { BuiltinSkillHook, SkillPromptContext } from "../skillHooks.js";
 
@@ -422,7 +422,7 @@ const GITHUB_PR_URL = new RegExp(
 
 export function resolveReviewTarget(
   raw: string,
-  host?: RepoHost,
+  platform?: CliPlatform,
 ): ReviewTarget | undefined {
   const target = raw.trim();
   if (!target) return undefined;
@@ -474,16 +474,19 @@ export function resolveReviewTarget(
   if (pr) {
     // CC 的 `gi()`（`1091-228433B-Vdr.js:1998`）：Bitbucket 仓库里裸数字不注入目标，
     // 让模型照常评审当前分支 —— 那家没有 gh 也没有 glab 能用。
-    if (host === "bitbucket") return undefined;
+    if (platform === "bitbucket") return undefined;
     // CC 的 `Uka()`（`0215-6730B-aX.js:206`）：目标串看不出平台时按远端托管方判，
-    // GitLab 仓库里的裸数字是合并请求号，补一个 `!` 就是同一条命令。
-    if (host === "gitlab") {
+    // GitLab 仓库里的裸数字是合并请求号，补一个 `!` 就是同一条命令。自建实例在
+    // `repoPlatformOf()` 里已经折成 GitLab，所以这里不用再单列一支。
+    if (platform === "gitlab") {
       return {
         platform: "gitlab",
         name: `GitLab merge request !${pr[1]}`,
         command: `glab mr diff ${pr[1]}`,
       };
     }
+    // 认不出托管方就什么都不注入：没有远端就没有 PR/MR 可评，猜一个只会评错东西。
+    if (platform !== "github") return undefined;
     return {
       platform: "github",
       name: `GitHub pull request ${pr[1]}`,
@@ -546,10 +549,11 @@ export function buildCodeReviewPrompt(
   ctx: SkillPromptContext,
 ): string {
   const { args } = parseCodeReviewArgs(raw);
-  // 托管方决定裸数字是 PR 还是 MR、`--comment` 走哪一段，所以在选段落之前先算。
-  const host = repoHostOf(ctx.gitRemoteUrl);
+  // 平台决定裸数字是 PR 还是 MR、`--comment` 走哪一段，所以在选段落之前先算。
+  // 用 `repoPlatformOf()` 而不是 `repoHostOf()`：自建实例在那里折成私有化 GitLab。
+  const platform = repoPlatformOf(ctx.gitRemoteUrl);
   const target = args.target
-    ? resolveReviewTarget(args.target, host)
+    ? resolveReviewTarget(args.target, platform)
     : undefined;
   // 有清单工具就整份清单走工具、正文不再复述；没有就落回正文里那段可读格式。
   const hasFindingsTool = ctx.toolNames.includes(REPORT_FINDINGS_TOOL_NAME);
@@ -561,8 +565,10 @@ export function buildCodeReviewPrompt(
   }
   if (args.comment) {
     // CC 的 `Uka()`（`0215-6730B-aX.js:206`）：给了目标串就看它，没给就看远端 ——
-    // GitLab 仓库默认会评的是 MR，评论自然该走 glab。
-    const gitlab = target ? target.platform === "gitlab" : host === "gitlab";
+    // GitLab 仓库默认会评的是 MR，评论自然该走 glab；自建实例同 GitLab。
+    const gitlab = target
+      ? target.platform === "gitlab"
+      : platform === "gitlab";
     sections.push(
       gitlab ? renderGitlabCommentSection(target) : GITHUB_COMMENT_SECTION,
     );

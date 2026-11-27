@@ -111,6 +111,7 @@ order: 130
 3. **假设**没有安装平台 CLI，**当**第 5 阶段执行时，**则**发现直接输出到终端。
 4. **假设**安装了 CLI 但当前分支没有 PR/MR，**当**第 5 阶段执行时，**则**发现直接输出到终端。
 5. **假设**没有发现通过核实，**当**第 5 阶段执行时，**则** skill 显示"no issues"并停止——不发布评论也不输出发现。
+6. **假设**仓库托管在自建 GitLab（主机名不是 `gitlab.com`）且安装了 `glab` 且当前分支有 MR，**当**第 5 阶段执行时，**则**审查通过 `glab mr note` 作为 MR 注释发布，不输出到终端。
 
 ---
 
@@ -118,18 +119,20 @@ order: 130
 
 作为使用 GitLab 仓库的开发者，我希望 `/code-review 12` 直接指向本仓库的合并请求，而不是非得写成 `!12` 或贴整条链接，以便不管仓库托管在哪，指 PR/MR 都只敲一个数字。
 
-**为什么是这个优先级**：`!12` 已经能精确表达 MR，所以这一条只是省事；但它决定「12 到底是哪个对象」，写错就是评错了 diff，因此不能靠猜。
+**为什么是这个优先级**：`!12` 已经能精确表达 MR，所以这一条只是省事；但它决定「12 到底是哪个对象」，写错就是评错了 diff，因此不能靠猜。识别不出托管方时也不留空——国内的私有化部署基本都是自建 GitLab，所以**非公网域名的远端一律按私有化部署的 GitLab 处理**（已知取舍：自建 GitHub Enterprise 会被同样当成 GitLab）。
 
-**独立测试**：把远端分别指到 github.com 与 gitlab.com 的同名仓库，各自跑一次 `/code-review 12`，验证读到的 diff 命令分别是 `gh pr diff 12` 与 `glab mr diff 12`。
+**独立测试**：把远端分别指到 github.com 与 gitlab.com 的同名仓库，各自跑一次 `/code-review 12`，验证读到的 diff 命令分别是 `gh pr diff 12` 与 `glab mr diff 12`；再把远端换成一个自建 GitLab 地址（例如 `ssh://git@g.example.com:22222/o/r.git`）跑一次，验证同样是 `glab mr diff 12`；最后在一个没有配远端的仓库里跑一次，验证不注入任何目标。
 
 **验收场景**：
 
 1. **假设**远端指向 `gitlab.com` 且执行 `/code-review 12`，**当** skill 选评审目标时，**则**目标是本仓库的合并请求 `!12`，读 diff 用 `glab mr diff 12`。
 2. **假设**远端指向 `github.com` 且执行 `/code-review 12`，**当** skill 选评审目标时，**则**目标是本仓库的 pull request `12`，读 diff 用 `gh pr diff 12`。
 3. **假设**远端指向 `bitbucket.org` 且执行 `/code-review 12`，**当** skill 选评审目标时，**则**不注入任何目标，行为与不带目标完全一致（评审当前分支）。
-4. **假设**没配远端、或远端是自建实例（GitHub Enterprise、自托管 GitLab），**当** skill 选评审目标时，**则**裸数字仍按 GitHub pull request 处理。
-5. **假设**显式写出 `!12` 或整条 GitLab MR 链接，**当** skill 选评审目标时，**则**无论远端指向哪里都按合并请求处理。
-6. **假设**远端指向 `gitlab.com` 且执行 `/code-review --comment` 未给目标，**当** skill 选评论段落时，**则**选 GitLab 的那一段（`glab mr note`），不发 GitHub 评论。
+4. **假设**远端指向自建实例（主机名既不是 `github.com` 也不是 `gitlab.com`，例如私有化部署的 GitLab），**当** skill 选评审目标时，**则**按私有化部署的 GitLab 处理，目标是本仓库的合并请求 `!12`，读 diff 用 `glab mr diff 12`。
+5. **假设**没配远端、或远端地址认不出主机名，**当** skill 选评审目标时，**则**不注入任何目标，行为与不带目标完全一致——既没有远端也没有 PR/MR 可评，猜一个只会评错东西。
+6. **假设**显式写出 `!12` 或整条 GitLab MR 链接，**当** skill 选评审目标时，**则**无论远端指向哪里都按合并请求处理。
+7. **假设**远端是 `gitlab.com` 或自建实例，**当**执行 `/code-review --comment` 且未给目标时，**则**选 GitLab 的那一段（`glab mr note`），不发 GitHub 评论。
+8. **假设**显式给出整条 PR 链接（`https://<任意主机>/o/r/pull/9`），**当** skill 选评审目标时，**则**按 URL 形状判为 pull request，与远端的托管方默认值无关——自建的 GitHub Enterprise 链接仍然交给 `gh pr diff`。
 
 ---
 
@@ -141,7 +144,8 @@ order: 130
 - **如果 AI 尝试自动触发 skill 怎么办？** frontmatter 中的 `disable-model-invocation: true` 阻止 AI 自动调用 skill；它仅通过 `/code-review` 由用户调用。
 - **如果 `--fix` 之后再次交付清单怎么办？** 那是同一份清单的更新，不是追加的第二份：交付的条目与第一次同一批，只是每条多了处理结果，界面据此更新已有条目的状态。
 - **如果核实 agent 与审查 agent 意见不一致怎么办？** 核实 agent 的结论对保留与否具有权威性；审查 agent 自己的评估不参与该判定。
-- **如果 PR 链接指向自建实例（GitHub Enterprise）怎么办？** 只有主机名认得出是 `github.com` 时才敢拼 `-R owner/repo` 与 `gh api repos/…`（那是 github.com 的端点拼法）；自建实例上整条 URL 交给 `gh pr diff`，连 `pr diff` 的替代命令也不给。
-- **如果远程是自托管 GitLab（不是 gitlab.com）怎么办？** 平台检测按远端地址的主机名精确匹配（`github.com` / `gitlab.com` / `bitbucket.org` 及三个 SSH 别名），不做子串匹配；自定义域的自托管实例归入「其它」，行为与认不出托管方一致——裸数字仍按 GitHub PR 处理，skill 在命令不可用时回退到直接输出。
+- **如果 PR 链接指向自建实例（GitHub Enterprise）怎么办？** 只有主机名认得出是 `github.com` 时才敢拼 `-R owner/repo` 与 `gh api repos/…`（那是 github.com 的端点拼法）；自建实例上整条 URL 交给 `gh pr diff`，连 `pr diff` 的替代命令也不给。这条与「非公网一律当 GitLab」**不冲突**：默认值只作用于裸数字，链接一律按 URL 形状（`/pull/` 还是 `/-/merge_requests/`）判定。
+- **如果远程是自托管 GitLab（不是 gitlab.com）怎么办？** 平台检测按远端地址的主机名精确匹配（`github.com` / `gitlab.com` / `bitbucket.org` 及三个 SSH 别名），不做子串匹配；自定义域的自托管实例归入「其它」，**按私有化部署的 GitLab 处理**——裸数字走 `glab mr diff`，`--comment` 走 `glab mr note`。代价是自建 GitHub Enterprise 被同样当成 GitLab，裸数字会走 `glab`：国内 GHES 部署极少，这个误判可以接受；而显式写 `!12` 或整条链接的人完全不受影响。
+- **如果远端地址认不出主机名、或者根本没配远端怎么办？** 不注入任何目标，也不猜托管方——没有远端就没有 PR/MR 可评，宁可让 skill 去评当前分支，也不要拼一条可能指向别处的命令。
 - **如果 `gh` 或 `glab` 已安装但未认证怎么办？** 发布评论的 CLI 命令将失败；skill 将其视为"PR/MR 不存在"并静默跳过。
 - **如果发布评论失败怎么办？** skill 回退到直接终端输出，确保不丢失信息。

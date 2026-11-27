@@ -7,8 +7,10 @@
  * :1390）、gh 安装状态里的 `mayBeGitHubEnterprise`（`2806-158586B-Eyd.js:2794`）。
  * 所以「这个仓库托管在哪」是跨技能的事实，不是哪一家的私有判据。
  *
- * 只认三家公共云；自建实例（GHES、自托管 GitLab）一律 `other` —— CC 也不把自建
- * GitLab 当 GitLab 处理，`glab` 对自建实例的行为不由它保证。
+ * 只认三家公共云；自建实例（GHES、自托管 GitLab）一律 `other` —— 这是**事实**，
+ * 不是结论。写命令行时该用哪家 CLI，由 `repoPlatformOf()` 在它之上再折一层：自建
+ * 实例按私有化部署的 GitLab 处理（国内客户基本都是自建 GitLab、GitHub 不可达，
+ * 判定不出时猜 GitLab 比猜 GitHub 命中率高得多）。
  */
 export type RepoHost = "github" | "gitlab" | "bitbucket" | "other";
 
@@ -75,4 +77,25 @@ export function repoHostOf(
   const raw = hostFromRemote(remoteUrl);
   if (!raw) return undefined;
   return repoHostOfHost(raw);
+}
+
+/** 写命令行时认的平台：三家公共云。自建实例由 `repoPlatformOf()` 折成 GitLab。 */
+export type CliPlatform = Exclude<RepoHost, "other">;
+
+/**
+ * 写命令行时用的平台：在 `repoHostOf()` 的事实之上加一层部署形态的默认值。
+ *
+ * 公网三家照实返回；自建实例（`other`）一律当私有化部署的 GitLab —— 国内客户的
+ * 私有化部署基本都是自建 GitLab（GitHub 不可达、GHES 极少）。没配远端 / 地址认不出
+ * 仍返回 `undefined`：那是真的不知道，调用方该保持「不注入」，而不是编一条可能指向
+ * 别处的命令。
+ *
+ * 已知取舍：自建 GitHub Enterprise 会被同样当成 GitLab，裸数字走 `glab`。显式写
+ * `!12` 或整条链接的人不受影响（那两个按写法就能判，不靠这里的默认值）。
+ */
+export function repoPlatformOf(
+  remoteUrl: string | null | undefined,
+): CliPlatform | undefined {
+  const host = repoHostOf(remoteUrl);
+  return host === "other" ? "gitlab" : host;
 }
