@@ -147,10 +147,3 @@
 .focus-fold-chevron.expanded {
   transform: rotate(90deg);
 }
-
-.focus-fold-body {
-  display: flex;
-  flex-direction: column;
-  /* 不再额外缩进：卡内时间线的点在卡头文案同一条左缘上，展开前后不会横向
-     错位（2026-11-27 定档）。 */
-}

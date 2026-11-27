@@ -5,15 +5,22 @@ import { readDeliveredFiles } from "./deliveredFiles";
 /**
  * Focus 视图的布局项。
  *
- * 折叠**只改变布局项**，不改变消息本身：渲染仍由虚拟列表按行窗口化，所以展开
- * 一个含上百条活动的轮也只挂视口里的那几行（见 docs/specs/ui/focus-view.md
- * 场景 7）。参考实现是 Claude 桌面端 6.28899.6 的 turn 布局引擎，不是 VSCode
- * 扩展那套「重新分组后全量渲染」。
+ * 折叠**只改变布局项**，不改变消息本身：收起态一轮收成一行卡头，展开态把这一
+ * 轮的活动拆成各自的行 —— 两种情况都由虚拟列表按行窗口化，所以展开一个含上百条
+ * 活动的轮也只挂视口里的那几行（见 docs/specs/ui/focus-view.md 场景 7）。参考
+ * 实现是 Claude 桌面端 6.28899.6 的 turn 布局引擎（行粒度是 step，展开就是把
+ * 收起的 step 放回列表），不是 VSCode 扩展那套「重新分组后全量渲染」。
  */
 export interface FocusFoldItem {
   kind: "fold";
-  /** 虚拟列表的行 key。复合 key：首尾消息 id，跨轮不重复。 */
+  /** 虚拟列表的行 key（`focus-fold:<轮 key>`），跨轮不重复。 */
   key: string;
+  /**
+   * 被折进卡里的消息（已按块切过：轮尾答复与交付卡片不在里面）。
+   *
+   * 只用于卡头的计数与「有没有思考」的判定 —— 卡内内容不从这里渲染。声明展开
+   * 态后，这一轮的活动由 `FocusMessageItem` 各自成行（带 `foldKey`）。
+   */
   messages: Message[];
   /** 覆盖的可见消息下标区间（闭区间），用于把消息坐标翻译成行坐标。 */
   startMessageIndex: number;
@@ -33,17 +40,28 @@ export interface FocusMessageItem {
   key: string;
   message: Message;
   messageIndex: number;
+  /**
+   * 展开的折叠卡里的活动行：它属于哪张卡（`FocusFoldItem.key`）。
+   *
+   * 只有展开态才有这个标记 —— 收起态卡里的消息没有自己的行。它只给渲染层
+   * 分「卡内行 / 卡外行」用：卡外行在聚焦视图下不画时间线节点，卡内行要画
+   * （与普通视图的行同款）。
+   */
+  foldKey?: string;
 }
 
 export type FocusItem = FocusFoldItem | FocusMessageItem;
 
 export interface FocusItems {
   items: FocusItem[];
-  /** 可见消息下标 → 行下标。折叠项覆盖的每条消息都指向同一个行。 */
+  /**
+   * 可见消息下标 → 行下标。收起态的折叠项覆盖的每条消息都指向同一个卡头行；
+   * 展开态各条消息指向自己的行。
+   */
   rowIndexByMessageIndex: number[];
   /**
-   * 可见消息下标 → 这条消息**卡内那半**（`:process`）所在的折叠行下标；消息没被
-   * 拆开时为 -1。
+   * 可见消息下标 → 这条消息**被折进卡里那半**所在的折叠行下标；消息没被拆开时
+   * 为 -1（展开态一律 -1：整条消息就是自己的行）。
    *
    * 轮尾那条消息可以横跨两行：思考进卡、答复留卡外，此时
    * `rowIndexByMessageIndex` 指向卡外的答复行。reveal（搜索命中、大纲刻度）只
@@ -164,6 +182,15 @@ function replyStartIndex(message: Message): number {
   return keptStart < 0 ? textStart : Math.min(textStart, keptStart);
 }
 
+/** 一条消息留在卡里的那半。 */
+interface FoldedPart {
+  message: Message;
+  /** 它是原来的哪一条消息（这条消息在可见消息里的下标）。 */
+  sourceIndex: number;
+  /** 原消息还有一半留在卡外（这条消息横跨两行）。 */
+  hasKeptPart: boolean;
+}
+
 /** 一条消息留在卡外的那半。 */
 interface KeptPart {
   message: Message;
@@ -176,7 +203,7 @@ interface KeptPart {
 }
 
 interface TurnSplit {
-  folded: Message[];
+  folded: FoldedPart[];
   kept: KeptPart[];
   /** 卡内最后一条消息的原下标（摘要覆盖到哪条为止）；没有卡内内容时为 -1。 */
   foldedEndIndex: number;
@@ -191,17 +218,19 @@ interface TurnSplit {
  * 结束（模型交付完常常还会接着干活）。
  *
  * 渲染层仍按整条消息渲染（`<Message message={…} />` 只认 `blocks`），所以折叠
- * 不需要给 `Message` 加参数。一条消息被拆开时：**末条**的卡外那半留原 id（那是
- * 这一轮露在外面的答复/卡片，`data-measured-message-id` 等锚点跟着它）、卡内那半
- * 加 `:process`；**更早的**消息主体仍在卡里，所以反过来 —— 卡内留原 id，卡外那半
- * 加 `:kept`。两种都只为了一件事：同一视图里不出现两条同 id 的消息行。
+ * 不需要给 `Message` 加参数。
+ *
+ * 一条消息被拆开时，两半都会各自成行：卡外那半在收起态就露着，卡内那半在展开态
+ * 才露出来。所以**两半都要换 id 后缀**（`:kept` / `:process`）—— 同一视图里不
+ * 能出现两条同 id 的行，虚拟列表的 key 与 `data-measured-message-id` 都会撞。
+ * 卡外那半的 id 带着「这条消息」的身份，reveal 的锚点跟着它。
  */
 function splitTurn(
   run: Message[],
   tailStart: number,
   startMessageIndex: number,
 ): TurnSplit {
-  const folded: Message[] = [];
+  const folded: FoldedPart[] = [];
   const kept: KeptPart[] = [];
   let foldedEndIndex = -1;
   run.forEach((message, offset) => {
@@ -217,7 +246,11 @@ function splitTurn(
       }
     });
     if (keptBlocks.length === 0) {
-      folded.push(message);
+      folded.push({
+        message,
+        sourceIndex: startMessageIndex + offset,
+        hasKeptPart: false,
+      });
       foldedEndIndex = startMessageIndex + offset;
       return;
     }
@@ -231,17 +264,17 @@ function splitTurn(
       return;
     }
     folded.push({
-      ...message,
-      id: message.id + (isTail ? ":process" : ""),
-      blocks: foldedBlocks,
+      message: {
+        ...message,
+        id: message.id + ":process",
+        blocks: foldedBlocks,
+      },
+      sourceIndex: startMessageIndex + offset,
+      hasKeptPart: true,
     });
     foldedEndIndex = startMessageIndex + offset;
     kept.push({
-      message: {
-        ...message,
-        id: message.id + (isTail ? "" : ":kept"),
-        blocks: keptBlocks,
-      },
+      message: { ...message, id: message.id + ":kept", blocks: keptBlocks },
       sourceIndex: startMessageIndex + offset,
       isTail,
       hasFoldedPart: true,
@@ -285,6 +318,11 @@ export function buildFocusItems(
   messages: Message[],
   focus: boolean,
   isStreaming: boolean,
+  /**
+   * 当前展开着的卡（`FocusFoldItem.key`）。展开的轮会把卡里的活动拆成独立的
+   * 消息行交给虚拟列表，收起态仍是「卡头一行」。
+   */
+  expandedFolds?: ReadonlySet<string>,
 ): FocusItems {
   const items: FocusItem[] = [];
   const rowIndexByMessageIndex: number[] = new Array(messages.length).fill(0);
@@ -309,7 +347,7 @@ export function buildFocusItems(
     /** 卡内最后一条消息的原下标 —— 摘要覆盖到的位置。 */
     endMessageIndex: number,
     startMessageIndex: number,
-    turnKey: string,
+    foldKey: string,
     live: boolean,
   ) => {
     const { calls, errors } = countToolBlocks(folded);
@@ -326,7 +364,7 @@ export function buildFocusItems(
     }
     items.push({
       kind: "fold",
-      key: "focus-fold:" + turnKey,
+      key: foldKey,
       messages: folded,
       startMessageIndex,
       endMessageIndex,
@@ -393,32 +431,70 @@ export function buildFocusItems(
       // 的用户消息，它一定结束了（哪怕它自己是以中断形状收尾的）。少了这一条，
       // 一条历史中断轮会在后面那轮跑着的时候冒充进行态。
       const isTailRun = runEnd >= messages.length;
+      const foldKey = "focus-fold:" + turnKey;
+      // 展开的这一轮不再是一行：卡里的活动各自成行，交给虚拟列表按行窗口化
+      // （对齐 CC 桌面端 —— 它的行粒度是 step，展开就是把收起的 step 放回列表，
+      // 行高估算与挂载都按行算）。收起态仍是「卡头一行 + 卡外答复」。
+      const expanded = expandedFolds?.has(foldKey) === true;
       pushFold(
-        folded,
-        run.length,
+        folded.map((part) => part.message),
+        expanded ? 0 : run.length,
         foldedEndIndex,
         index,
-        turnKey,
+        foldKey,
         isTailRun && !ended && isStreaming,
       );
-      const foldRow = items.length - 1;
-      for (const part of kept) {
-        // 末条消息：行坐标指向卡外那半（答复与交付卡片露在这里），卡内那半由
-        // processRowByMessageIndex 单独记 —— reveal 要一并展开，否则会「跳过来
-        // 看到答复、思考仍收着」（场景 8）。更早的消息主体仍在卡里：行坐标不动，
-        // 卡外那半只是多出来的一行。
-        if (part.isTail) {
-          rowIndexByMessageIndex[part.sourceIndex] = items.length;
-          if (part.hasFoldedPart) {
-            processRowByMessageIndex[part.sourceIndex] = foldRow;
+      if (expanded) {
+        // 展开态：卡内的活动按 splitTurn 的拆半结果各自成行，**卡外那半仍留在
+        // 卡外** —— 展开一轮不会把轮尾答复挪进卡里（spec 场景 2 与 4：卡内显示
+        // 的是这一轮被折叠的活动，答复一直是卡外的那一行）。卡内行带 `foldKey`
+        // 供 CSS 区分（卡外行在聚焦视图下不画时间线节点、不留左内衬）。
+        for (const part of folded) {
+          const rowIndex = items.length;
+          rowIndexByMessageIndex[part.sourceIndex] = rowIndex;
+          // 被拆开的消息：卡外那半才是「整条消息」的行坐标，这里先记下过程半，
+          // 循环结束前会被卡外那半覆盖；过程半的行号给 reveal 用。
+          if (part.hasKeptPart) {
+            processRowByMessageIndex[part.sourceIndex] = rowIndex;
           }
+          items.push({
+            kind: "message",
+            key: part.message.id,
+            message: part.message,
+            messageIndex: part.sourceIndex,
+            foldKey,
+          });
         }
-        items.push({
-          kind: "message",
-          key: part.message.id,
-          message: part.message,
-          messageIndex: part.sourceIndex,
-        });
+        // 卡外的行排在卡内行之后，与收起态同序。
+        for (const part of kept) {
+          rowIndexByMessageIndex[part.sourceIndex] = items.length;
+          items.push({
+            kind: "message",
+            key: part.message.id,
+            message: part.message,
+            messageIndex: part.sourceIndex,
+          });
+        }
+      } else {
+        const foldRow = items.length - 1;
+        for (const part of kept) {
+          // 末条消息：行坐标指向卡外那半（答复与交付卡片露在这里），卡内那半由
+          // processRowByMessageIndex 单独记 —— reveal 要一并展开，否则会「跳过来
+          // 看到答复、思考仍收着」（场景 8）。更早的消息主体仍在卡里：行坐标不动，
+          // 卡外那半只是多出来的一行。
+          if (part.isTail) {
+            rowIndexByMessageIndex[part.sourceIndex] = items.length;
+            if (part.hasFoldedPart) {
+              processRowByMessageIndex[part.sourceIndex] = foldRow;
+            }
+          }
+          items.push({
+            kind: "message",
+            key: part.message.id,
+            message: part.message,
+            messageIndex: part.sourceIndex,
+          });
+        }
       }
     }
     index = runEnd;

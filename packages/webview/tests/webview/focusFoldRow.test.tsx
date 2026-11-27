@@ -23,21 +23,16 @@ function foldItem(overrides: Partial<FocusFoldItem> = {}): FocusFoldItem {
 }
 
 const renderRow = (item: FocusFoldItem, expanded = false, onToggle = vi.fn()) =>
-  render(
-    <FocusFoldRow
-      item={item}
-      expanded={expanded}
-      onToggle={onToggle}
-      renderMessage={(message) => <div key={message.id}>{message.id}</div>}
-    />,
-  );
+  render(<FocusFoldRow item={item} expanded={expanded} onToggle={onToggle} />);
 
 describe("FocusFoldRow", () => {
-  it("收起时只有卡头，不渲染卡内消息", () => {
+  it("只有卡头，不渲染卡内消息", () => {
     renderRow(foldItem());
 
     expect(screen.getByTestId("focus-fold-head")).toBeTruthy();
-    expect(screen.queryByTestId("focus-fold-body")).toBeNull();
+    // 卡里没有任何消息内容：展开后的活动行是虚拟列表里各自的行（见
+    // MessageList 的 items），不在这个组件里。
+    expect(screen.getByTestId("focus-fold").children).toHaveLength(1);
     expect(
       screen.getByTestId("focus-fold-head").getAttribute("aria-expanded"),
     ).toBe("false");
@@ -120,11 +115,12 @@ describe("FocusFoldRow", () => {
     expect(screen.getByRole("button", { name: "3 次工具调用" })).toBe(head);
   });
 
-  it("展开后把这一轮的消息交给 renderMessage 渲染", () => {
+  it("展开态卡头仍然只有卡头，活动行由虚拟列表各自成行", () => {
+    // 对齐 CC 桌面端（行粒度是 step）：展开不是在这里把消息全量摆出来，
+    // 而是让这一轮的活动成为虚拟列表里各自的行 —— 卡头只负责亮出「已展开」。
     renderRow(foldItem(), true);
 
-    const body = screen.getByTestId("focus-fold-body");
-    expect(body.textContent).toBe("a1a2");
+    expect(screen.getByTestId("focus-fold").children).toHaveLength(1);
     expect(
       screen.getByTestId("focus-fold-head").getAttribute("aria-expanded"),
     ).toBe("true");

@@ -196,8 +196,11 @@ describe("回到最新入口", () => {
       act(() => {
         fireEvent.click(screen.getByTestId("focus-fold-head"));
       });
+      // 展开 = 卡里的活动各自成行（虚拟列表按行窗口化）。
       await waitFor(() =>
-        expect(screen.getByTestId("focus-fold-body")).toBeInTheDocument(),
+        expect(
+          document.querySelectorAll("[data-in-fold]").length,
+        ).toBeGreaterThan(0),
       );
       await waitFor(() =>
         expect(
