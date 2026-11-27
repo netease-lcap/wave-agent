@@ -41,6 +41,11 @@ vi.mock("ink", () => ({
     waitUntilExit: vi.fn().mockResolvedValue(undefined),
   }),
 }));
+// Print mode reads piped stdin before it does anything; with none, its
+// empty-input check ends the entry before an Agent is ever built.
+vi.mock("../src/utils/stdin.js", () => ({
+  readPipedStdin: vi.fn(async () => ""),
+}));
 vi.mock("../src/contexts/useChat.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../src/contexts/useChat.js")>();
@@ -51,6 +56,7 @@ import { installUnhandledRejectionClaim } from "wave-agent-sdk";
 import { logger } from "../src/utils/logger.js";
 import { startCli, type CliOptions } from "../src/cli.js";
 import { startDaemonCli } from "../src/daemon-cli.js";
+import { startPrintCli, type PrintCliOptions } from "../src/print-cli.js";
 import { startStdioCli } from "../src/stdio-cli.js";
 
 /** The host object the entry handed the installer. */
@@ -68,8 +74,13 @@ const reason = new Error("a host bug");
  * business — what these cases pin is where each host puts it). */
 const NOTE = "REPL: swallowed an unhandled rejection (not exiting)";
 const exit = vi.fn<(code?: string | number | null) => void>();
+/** `process.exit` as a spy: recorded, never actually taken. */
+let processExit: MockInstance;
 /** Reached as a spy, so this suite never touches the console member itself. */
 let errorOutput: MockInstance;
+/** The two streams as spies: which one a host reports on is the point. */
+let stdoutOutput: MockInstance;
+let stderrOutput: MockInstance;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -77,14 +88,20 @@ beforeEach(() => {
   // stderr and calls process.exit — which would end the whole worker.
   // Recorded instead of exiting — ending the worker would take the suite with it.
   // `process.exit` is typed `never`, hence the cast on the way in.
-  vi.spyOn(process, "exit").mockImplementation(((
-    code?: string | number | null,
-  ) => exit(code)) as (code?: string | number | null) => never);
-  vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  processExit = vi
+    .spyOn(process, "exit")
+    .mockImplementation(((code?: string | number | null) => exit(code)) as (
+      code?: string | number | null,
+    ) => never);
+  stderrOutput = vi
+    .spyOn(process.stderr, "write")
+    .mockImplementation(() => true);
   // stdio mode reports its startup stage on stdout; this suite is not about it.
-  vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+  stdoutOutput = vi
+    .spyOn(process.stdout, "write")
+    .mockImplementation(() => true);
   errorOutput = vi.spyOn(console, "error").mockImplementation(() => {});
-  // cli.log is where two of the three hosts report; the logger writes files, so
+  // cli.log is where two of the four hosts report; the logger writes files, so
   // the channel is asserted through it rather than through the terminal.
   vi.spyOn(logger, "warn").mockImplementation(() => {});
   vi.spyOn(logger, "error").mockImplementation(() => {});
@@ -138,6 +155,32 @@ describe("rejection claim wiring", () => {
     expect(logger.warn).toHaveBeenCalledWith("[cli] " + NOTE);
     expect(exit.mock.calls.length).toBe(exits);
 
+    expect(() => host.crash(reason)).toThrow(reason);
+  });
+
+  it("keeps a -p run's claim note off the answer channel", async () => {
+    // An empty prompt ends this entry before an Agent is built — the cheapest
+    // way in and out of it. Its exit is turned into a throw so that nothing
+    // past it (a real Agent.create) runs in this worker.
+    processExit.mockImplementation(((code?: string | number | null) => {
+      exit(code);
+      throw new Error("print-cli exited " + String(code));
+    }) as (code?: string | number | null) => never);
+
+    await expect(startPrintCli({} as PrintCliOptions)).rejects.toThrow(
+      "print-cli exited 1",
+    );
+
+    const host = installed();
+    stdoutOutput.mockClear();
+    host.report(NOTE);
+    // stdout carries the printed result alone (text / json / stream-json): the
+    // note would land in a pipeline's data if this host reported there.
+    expect(stdoutOutput).not.toHaveBeenCalled();
+    expect(stderrOutput).toHaveBeenLastCalledWith("[print] " + NOTE + "\n");
+
+    // One-shot: an unclaimed rejection still ends the run the way this host
+    // always did — Node's default, not a swallowed note over a bogus answer.
     expect(() => host.crash(reason)).toThrow(reason);
   });
 });

@@ -6,6 +6,8 @@ import {
   getDefaultRemoteBranch,
   validateWorktreeRemovalPath,
   setTelemetryStdoutProtected,
+  installUnhandledRejectionClaim,
+  rethrowUnhandledRejection,
   type Usage,
   type WorktreeSession,
 } from "wave-agent-sdk";
@@ -34,6 +36,21 @@ export interface PrintCliOptions extends BaseAppProps {
 type Writer = (text: string) => void;
 
 export async function startPrintCli(options: PrintCliOptions): Promise<void> {
+  // Installed before anything awaits, in this host's own channels: a REPL
+  // script that leaves a promise unread is a script mistake, not a reason to
+  // drop a run that is otherwise about to print its answer. The note goes to
+  // stderr — unlike the three long-lived hosts (cli.log / daemon.log), a
+  // one-shot run has nowhere durable to point at, and stdout here is the
+  // result itself (text / json / stream-json), so not one byte of diagnostics
+  // may land there. An unclaimed rejection keeps exactly what this host did
+  // before the listener existed — Node's default, the stack on stderr and
+  // exit 1 — because swallowing a real host bug would hand a consumer a
+  // result that looks like a successful run.
+
+  installUnhandledRejectionClaim({
+    report: (note) => process.stderr.write(`[print] ${note}\n`),
+    crash: rethrowUnhandledRejection,
+  });
   // stdout carries the printed result here; console telemetry exporters would
   // mix structured telemetry into it — strip them at config resolution.
   setTelemetryStdoutProtected(true);
