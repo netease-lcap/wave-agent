@@ -68,8 +68,9 @@
 }
 
 .focus-fold-label {
-  /* 不撑满整行：次数与箭头紧跟在文案后面，读起来是「一段被收起来的过程」，
-     而不是一行两端对齐的表格。长文案在这条规则下缩成省略号（min-width: 0）。 */
+  /* 不撑满整行：文案按自己的宽度排，读起来是「一段被收起来的过程」，而不是
+     一行两端对齐的表格。左侧的圆点与箭头宽度固定，文案变长只是自己往后长、
+     超宽缩成省略号（min-width: 0），两个标记都不跟着动。 */
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
@@ -89,18 +90,19 @@
   opacity: 0.8;
 }
 
+/* 与思考块 / 压缩块同一颗折叠图标（QueueChevronIcon，16px 盒）：收起指右、
+   展开 rotate(90deg) 指下。规则与 .reasoning-chevron / .expanded 同源，改动
+   一处就三处一起变。位置在文案之后（见 FocusFoldRow.tsx），文案变宽时它会
+   跟着挪一点，与 CC 桌面端同款行为。 */
 .focus-fold-chevron {
+  width: 16px;
+  height: 16px;
   flex: none;
-  width: 0;
-  height: 0;
-  margin: 0 2px 0 4px;
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
-  border-left: 5px solid var(--vscode-descriptionForeground, #8a8a86);
-  transition: transform 120ms ease;
+  color: var(--vscode-descriptionForeground);
+  transition: transform 0.15s ease;
 }
 
-.focus-fold.is-open .focus-fold-chevron {
+.focus-fold-chevron.expanded {
   transform: rotate(90deg);
 }
 

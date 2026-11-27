@@ -77,7 +77,7 @@ describe("buildFocusItems", () => {
     expect(rowIndexByMessageIndex).toEqual([0, 1, 1, 2]);
   });
 
-  it("轮尾仍是工具调用（这一轮跑完就结束）时整轮进卡，卡外没有答复", () => {
+  it("轮尾仍是工具调用时整轮进卡、卡外没有答复", () => {
     const messages = [
       user("u1"),
       assistant("a1", [tool("t1", "end")]),
@@ -87,6 +87,22 @@ describe("buildFocusItems", () => {
 
     expect(items.map((item) => item.kind)).toEqual(["message", "fold"]);
     expect(rowIndexByMessageIndex).toEqual([0, 1, 1]);
+  });
+
+  it("工具都跑完了但模型还没给答复时，这一轮仍是进行态（不回落成结算文案）", () => {
+    // 进行态的口径是整轮：工具刚 end、下一段响应还没开始，所有块都是 end，
+    // 但轮没结束。按块级判定会在这里翻成「N 次工具调用」，下一段流式开始再
+    // 跳回进行态 —— 折叠行文案来回抖的根因（spec 场景 3）。
+    const messages = [
+      user("u1"),
+      assistant("a1", [tool("t1", "end")]),
+      assistant("a2", [tool("t2", "end")]),
+    ];
+    const fold = buildFocusItems(messages, true).items[1];
+
+    if (fold.kind !== "fold") throw new Error("expected fold");
+    expect(fold.live).toBe(true);
+    expect(fold.runningToolName).toBeUndefined();
   });
 
   it("只有一条纯文本答复的轮不折叠（没有可折叠的活动）", () => {
@@ -187,6 +203,7 @@ describe("buildFocusItems", () => {
         tool("t3", "end"),
       ]),
       assistant("a2", [tool("t4", "end")]),
+      assistant("a3", [text("这一轮的答复")]),
     ];
     const { items } = buildFocusItems(messages, true);
     const fold = items[1];

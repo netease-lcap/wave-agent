@@ -125,6 +125,8 @@ describe("聚焦视图", () => {
         ),
       );
     }
+    // 轮尾答复：这一轮已经结束，卡头才是结算文案。
+    messages.push(MockDataGenerator.createAssistantMessage("答复", "a-end"));
 
     await renderWith(messages);
 
@@ -214,8 +216,10 @@ describe("聚焦视图", () => {
       expect(screen.getAllByTestId("focus-fold")).toHaveLength(1),
     );
     expect(screen.getByTestId("focus-fold-body")).toBeInTheDocument();
-    // Write 还在跑，所以卡头仍是进行态；活动量已经涨到 3 次。
-    expect(screen.getByTestId("focus-fold").textContent).toContain("已 3 次");
+    // 这一轮还没结束：卡头保持进行态，轮内不出任何计数（避免文案来回抖）。
+    const text = screen.getByTestId("focus-fold").textContent ?? "";
+    expect(text).toMatch(/正在(执行|思考)/);
+    expect(text).not.toContain("次工具调用");
   });
 
   it("设置页改完开关，已挂载的聊天视图立刻跟着折叠（不用刷新）", async () => {
