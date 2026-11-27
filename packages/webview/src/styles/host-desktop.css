@@ -1352,11 +1352,29 @@
   bottom: auto;
   height: 21px;
 }
+/* 卡内单行 run（既 --first 又 --last）：没有可连的对象，同口径整条关掉 ——
+   否则上面两条收口互相覆盖成「点上方多一截 21px 的线」。 */
+[data-host="desktop"]
+  .messages-container--virtual
+  .focus-fold
+  .focus-fold-body
+  .timeline-row--first.timeline-row--last::after {
+  display: none;
+}
 
 /* 思考块：Figma 标题 14px/600 #1F2329、正文 14px/400 #6C7076、
    左侧竖条 2px #E4E7ED（base 1px textBlockQuote-border 偏弱） */
 [data-host="desktop"] .reasoning-block {
   font-size: 14px;
+  line-height: 22px;
+}
+/* 思考/压缩块的标题行：base 固定 18px（为生成中「标题 + 尾部」不改变行高），
+   桌面端标题是 14px/22 的正文档 —— 18px 的盒子把文字顶高了 2.5px，于是时间线
+   节点（中心 21px）看着比标题低一档（2026-11-27 设计师走查）。桌面端把标题行
+   提到 22px：标题中心回到 21px，与节点、与卡外正文首行落在同一条横线上；生成
+   中与结束后都走 22px，「行高恒定」的初衷不变。 */
+[data-host="desktop"] .reasoning-header {
+  height: 22px;
   line-height: 22px;
 }
 [data-host="desktop"] .reasoning-title {

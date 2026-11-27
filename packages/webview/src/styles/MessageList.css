@@ -313,6 +313,18 @@
   height: 18px;
 }
 
+/* 卡内「单行 run」：这一轮只有一块可展开内容（如只有思考的一轮），同一行既
+   带 `--first` 又带 `--last`。上面两条收口规则会同时命中、后者整段覆盖前者，
+   线变成 top:0 + height:21px —— 于是节点上方凭空多出一截 21px 的线，看着像从
+   卡头拉下来的（2026-11-27 设计师走查）。没有可连的对象就整条关掉，语义与
+   `.timeline-run--single` 一致。 */
+.messages-container--virtual
+  .focus-fold
+  .focus-fold-body
+  .timeline-row--first.timeline-row--last::after {
+  display: none;
+}
+
 /* ---------- 「回到最新」入口 ---------- */
 /* 视口离内容末尾超过 200px 时浮在消息区底部居中（spec: 离开底部时的「回到最
    新」入口）。这一层挂在内层正文列的末尾，必须是 sticky（不是 absolute）才贴
