@@ -5,6 +5,8 @@ import {
   GREP_TOOL_NAME,
   READ_TOOL_NAME,
 } from "../../constants/tools.js";
+import { parseCommandArguments } from "../../utils/commandArgumentParser.js";
+import type { BuiltinSkillHook } from "../skillHooks.js";
 
 export const code_reviewSkill: Record<string, string> = {
   "skills/code-review/SKILL.md": `---
@@ -40,7 +42,11 @@ If there are no changes, stop and tell the user.
 
 ## Phase 2: Determine Effort Level
 
-Parse \`$ARGUMENTS\` for an effort level:
+The parameters are already parsed for you — read \`## Arguments\` at the end of
+this skill instead of re-reading \`$ARGUMENTS\`. If that block carries a
+warning, tell the user in one short line as you begin.
+
+The tiers:
 - **low**: Launch 2 agents, confidence threshold 90 (only near-certain findings)
 - **medium** (default): Launch 3 agents, confidence threshold 80
 - **high**: Launch 4 agents, confidence threshold 70
@@ -99,7 +105,7 @@ GLAB CLI:
 !\`command -v glab 2>/dev/null || echo "not-installed"\`
 \`\`\`
 
-4. **Post as comment** (preferred): If the remote URL contains \`github\` and \`gh\` is installed, check if a PR exists for the current branch (\`gh pr view --json number\`), then post the review as a comment: \`gh pr comment --body "<review content>"\`. If the remote URL contains \`gitlab\` and \`glab\` is installed, check if an MR exists for the current branch (\`glab mr view\`), then post the review as a note: \`glab mr note --message "<review content>"\`.
+4. **Post as comment** (only when \`--comment\` was passed): If the remote URL contains \`github\` and \`gh\` is installed, check if a PR exists for the current branch (\`gh pr view --json number\`), then post the review as a comment: \`gh pr comment --body "<review content>"\`. If the remote URL contains \`gitlab\` and \`glab\` is installed, check if an MR exists for the current branch (\`glab mr view\`), then post the review as a note: \`glab mr note --message "<review content>"\`.
 5. **Output directly** (fallback): If no CLI is installed, no PR/MR exists, or the platform is unrecognized, output the findings directly instead.
 
 Whether posting or outputting, use this format:
@@ -143,6 +149,9 @@ Examples of false positives to exclude:
 
 ## After the review
 
+If \`--fix\` was passed, apply the findings you just reported, then say
+which files you changed.
+
 After the findings are reported: if \`verify\` has not run this session and
 the diff has a runtime surface (not test-only or docs-only), invoke the
 \`verify\` skill with the Skill tool now — this review checks that the diff
@@ -152,4 +161,105 @@ reads right; \`verify\` checks that it runs right.
 
 $ARGUMENTS
 `,
+};
+
+/**
+ * `/code-review [low|medium|high|max] [--fix] [--comment] [<pr#>|<branch>|<path>]`
+ *
+ * Claude Code 的 `Oe()`（2.1.332 反查）逐条对齐，去掉它支持而我们还给不了的档位
+ * （xhigh / ultra 云端）与 `--post` / `--max-findings`：
+ * - `--fix` / `--comment` 是唯一被剥掉的 flag，其余留在目标串里（CC 的 `at()` 同款）；
+ * - 第一个位置参数是档位槽。形似档位（`^(low|med|hig|max|ult)[a-z]*$`）却不是档位的，
+ *   只加一句 `Ignoring unrecognized effort …` 继续跑——CC 也是这么处理的，而且这个
+ *   token 会留在目标里（CC 的 `pt(P)` 把整个 P 拼起来）；
+ * - 目标串剥掉反引号和开头的 `#`（`/code-review #1234` → `1234`）。
+ *
+ * 一处对不上 CC：它把上次用过的档位记在全局状态里复用（`codeReviewLastEffort`），
+ * 我们还没有跨会话的这份存储，所以没给档位时一律 medium。
+ */
+const LEVELS = ["low", "medium", "high", "max"] as const;
+export type CodeReviewLevel = (typeof LEVELS)[number];
+
+/** 形似档位但不是档位——CC 的 `ki = ^(low|med|hig|xhi|max|ult)[a-z]*$`，去掉 xhi。 */
+const LEVEL_LIKE = /^(low|med|hig|max|ult)[a-z]*$/;
+
+export interface CodeReviewArgs {
+  level: CodeReviewLevel;
+  /** 没写档位、或写的认不出来。模型据此知道这是默认值，而不是用户明确要求的。 */
+  levelIsDefault: boolean;
+  target?: string;
+  fix: boolean;
+  comment: boolean;
+  /** 档位写错时的一句提示，随正文一起交给模型，由它转述给用户。 */
+  warning?: string;
+}
+
+export interface CodeReviewArgsParse {
+  args: CodeReviewArgs;
+  /** 给模型看的运行期上下文，接在技能正文之后。 */
+  summary: string;
+}
+
+function readLevel(token: string): CodeReviewLevel | undefined {
+  const lower = token.toLowerCase();
+  return LEVELS.find((level) => lower === level || lower === level.slice(0, 3));
+}
+
+export function parseCodeReviewArgs(raw: string): CodeReviewArgsParse {
+  const positional: string[] = [];
+  let fix = false;
+  let comment = false;
+  for (const token of parseCommandArguments(raw)) {
+    if (token === "--fix") {
+      fix = true;
+      continue;
+    }
+    if (token === "--comment") {
+      comment = true;
+      continue;
+    }
+    positional.push(token);
+  }
+
+  const first = positional[0] ?? "";
+  const level = readLevel(first);
+  const levelIsDefault = level === undefined;
+  const warning =
+    levelIsDefault && LEVEL_LIKE.test(first)
+      ? `Ignoring unrecognized effort "${first}"; valid: ${LEVELS.join(", ")}.`
+      : undefined;
+
+  const joined = (level ? positional.slice(1) : positional)
+    .filter(Boolean)
+    .join(" ")
+    // CC 的 `pt()`：剥掉反引号和开头的 `#`，于是 `/code-review #1234` 就是 PR 1234
+    .replace(/`/g, "")
+    .replace(/^#/, "");
+
+  const args: CodeReviewArgs = {
+    level: level ?? "medium",
+    levelIsDefault,
+    ...(joined ? { target: joined } : {}),
+    fix,
+    comment,
+    ...(warning ? { warning } : {}),
+  };
+
+  return { args, summary: formatArgsSummary(args) };
+}
+
+function formatArgsSummary(args: CodeReviewArgs): string {
+  const lines = [
+    `- level: ${args.level}${args.levelIsDefault ? " (default — no level was given)" : ""}`,
+    `- target: ${args.target ?? "(none — the working-tree diff)"}`,
+    `- --fix: ${args.fix ? "yes — apply the findings after reporting them" : "no"}`,
+    `- --comment: ${args.comment ? "yes — post the findings to the PR/MR" : "no"}`,
+  ];
+  if (args.warning) lines.push(`- warning: ${args.warning}`);
+  return lines.join("\n");
+}
+
+/** 第一个接上代码钩子的内置技能：`/code-review` 的参数由这个表负责解释。 */
+export const code_reviewSkillHooks: Record<string, BuiltinSkillHook> = {
+  "code-review": { describeArgs: (raw) => parseCodeReviewArgs(raw).summary },
 };
