@@ -226,6 +226,29 @@ describe("/code-review --comment", () => {
     expect(body).not.toContain("## Posting to GitHub");
   });
 
+  // CC 的 `ui()`：命令里带 `-R` 时项目已写明；只给 `!12` / 裸数字时 glab 拿的是
+  // 当前目录所属的那个项目，得提醒它待在目标项目的 checkout 里跑。
+  it("says where to run glab when the target carries no project", () => {
+    expect(prompt("--comment !7")).toContain("glab mr note 7 -m");
+    expect(prompt("--comment !7")).toContain(
+      "from inside that project's checkout",
+    );
+    expect(prompt("--comment 12", GITLAB_REMOTE)).toContain(
+      "from inside that project's checkout",
+    );
+    expect(prompt("--comment", SELF_HOSTED_REMOTE)).toContain(
+      "from inside that project's checkout",
+    );
+  });
+
+  it("keeps that hint out once the project is in the command", () => {
+    const body = prompt(
+      "--comment https://gitlab.com/group/proj/-/merge_requests/4",
+    );
+    expect(body).toContain("glab mr note 4 -R group/proj -m");
+    expect(body).not.toContain("from inside that project's checkout");
+  });
+
   it("says nothing when --comment was not passed", () => {
     const body = prompt("12", GITHUB_REMOTE);
     expect(body).not.toContain("## Posting to");
