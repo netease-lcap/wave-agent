@@ -106,5 +106,5 @@ order: 176
 
 ## 范围之外
 
-- **`chromium-cli` 这套内建工具**：CC 示例里的 `chromium-cli` 是 Claude Code 自带的 headless Chromium REPL，本项目没有。示例文件保留 CC 原文命令，只在文件顶部加一段注记说明替代路径（Playwright 脚本）；正文描述处改称 Playwright。
+- **`chromium-cli` 这套工具**：示例假定 PATH 上有一个 headless Chromium REPL，wave 不在其中（CC 的 npm 包里同样没有，CC 原文自带 `If `chromium-cli` isn't available` 兜底）。示例文件保留 CC 原文命令，只在文件顶部加一段注记；正文描述处改称 Playwright。
 - **自写示例**：6 份 `examples/*.md` 与 `template.md` 一律取 CC 二进制原文（`electron.md` 在 `.zst` 里，其余明文），只做 `.claude`→`.wave` 与上一条注记这两类偏离。CC 的生成器注册时就是 `files = { "template.md": TEMPLATE_MD, ...RUN_EXAMPLE_FILES }`——它直接复用 `/run` 那批示例，所以本项目把内容只存一份（`run-examples.ts`），两个技能按各自目录前缀展开。

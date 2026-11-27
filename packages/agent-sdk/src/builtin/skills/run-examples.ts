@@ -517,9 +517,10 @@ Or for a compiled language:
   each is needed.
 - **Generated code.** If there's a codegen step (protobuf, OpenAPI clients),
   document it - it's almost always missing from READMEs.`,
-  "playwright.md": `> The \`chromium-cli\` REPL named below is built into Claude Code, not wave.
-> Where it appears, drive the page with Playwright instead - same script
-  shape, run as a node script (\`import { chromium } from 'playwright'\`).
+  "playwright.md": `> The \`chromium-cli\` REPL named below is not part of wave. If it
+> isn't on PATH (the usual case), drive the page with the project's own
+  headless-browser automation - same script shape, run as a node script
+  (\`import { chromium } from 'playwright'\`).
 # Example: Browser-driven web app
 
 You have a dev server that serves HTML to a browser. An agent in a

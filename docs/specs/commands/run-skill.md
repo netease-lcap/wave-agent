@@ -82,7 +82,7 @@ order: 177
 - **只启动不驱动**：不算跑过。启动只证明入口能解析；技能必须驱动到用户能看到结果的状态。
 - **启动失败**：报告失败点与试过的命令，不把「编译通过」当作已跑过。
 - **共享进程状态**（端口、锁文件、临时目录）：隔离使用（独立端口、`mktemp -d`）；没有 tmux 的平台用 node-pty 真 ConPTY。
-- **示例里的 `chromium-cli`**：那是 Claude Code 自带的 headless Chromium REPL，本项目没有；示例保留原文命令，文件顶部有注记说明改用 Playwright。
+- **示例里的 `chromium-cli`**：那是示例假定 PATH 上存在的一个 headless Chromium REPL，不属于 wave——CC 的 npm 包里也没有它，CC 原文自带 `If `chromium-cli` isn't available` 的兜底。命令保留原文，文件顶部有注记说明改用项目已有的无头浏览器驱动。
 
 ## 范围之外
 
