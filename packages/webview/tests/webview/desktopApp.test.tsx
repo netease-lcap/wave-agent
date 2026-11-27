@@ -2097,6 +2097,25 @@ describe("DesktopApp", () => {
         ).toBeInTheDocument();
       });
 
+      it("does not resurrect the placeholder when a non-git reply beats the delay", () => {
+        renderDesktopApp();
+        openNewSession("/work/a", ["/work/a"]);
+
+        // 非 git 目录的查询几乎立刻失败（git 一进 cwd 就报错退出），回执落在
+        // 阈值之前 —— 那一行不允许在之后自己冒出来。
+        sendCommand("desktopGitBranches", { workdir: "/work/a", result: null });
+
+        act(() => {
+          vi.advanceTimersByTime(BRANCH_LIST_LOADING_DELAY_MS);
+        });
+        expect(
+          screen.queryByTestId("desktop-branches-loading"),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.queryByTestId("desktop-worktree-controls"),
+        ).not.toBeInTheDocument();
+      });
+
       it("clears the placeholder without showing controls when a slow directory turns out to be non-git", () => {
         renderDesktopApp();
         openNewSession("/work/a", ["/work/a"]);
