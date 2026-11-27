@@ -65,10 +65,17 @@ export const FocusFoldRow: React.FC<FocusFoldRowProps> = ({
         data-testid="focus-fold-head"
         onClick={onToggle}
       >
-        {/* 进行态的扫光由 `::after` 复制这段文案来画（data-label），所以文案
-            只在这里算一次、两处共用。 */}
-        <span className="focus-fold-label" data-label={item.live ? label : undefined}>
+        {/* 进行态的扫光要在按钮里再画一份同样的文案。那一份是纯视觉替身：
+            `aria-hidden` 让读屏只读一遍摘要 —— `::after { content: attr(…) }`
+            做不到这一点，伪元素的内容会计入按钮的 accessible name（摘要会被
+            读两遍）。文案仍只在这里算一次、两处共用。 */}
+        <span className="focus-fold-label">
           {label}
+          {item.live && (
+            <span className="focus-fold-sweep" aria-hidden="true">
+              {label}
+            </span>
+          )}
         </span>
         {meta && <span className="focus-fold-meta">{meta}</span>}
         {/* 与思考块 / 压缩块同一颗折叠图标（QueueChevronIcon，16px 盒）。

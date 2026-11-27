@@ -551,3 +551,121 @@ test("a wheel a nested region consumes does not suspend following", async ({
   // … so the list never moved and never latched an opt-out: it kept following.
   expect(Math.max(...gaps)).toBeLessThanOrEqual(30);
 });
+
+/**
+ * Expanding a block in place must keep the row the user just clicked where it
+ * was. The click used to run while the list was still pinned: the block grew by
+ * a few hundred px, the pin re-read the bottom and the row under the pointer
+ * jumped up out of view (measured 339px for a fold card, 44px for a reasoning
+ * block). The click now releases the pin first (ScrollHoldContext), so the
+ * viewport stays put — and since it is no longer at the bottom, following stays
+ * off until the user scrolls back down themselves.
+ *
+ * The click is dispatched rather than `locator.click()`: Playwright scrolls the
+ * target into view before clicking, which would move the very row being
+ * measured and eat the difference this case asserts on.
+ */
+test("expanding a block in place keeps the clicked row still instead of pinning", async ({
+  webviewPage,
+}) => {
+  const injector = new MessageInjector(webviewPage);
+  await injector.simulateExtensionMessage("setInitialState", {
+    isAuthenticated: true,
+    messages: [],
+    isStreaming: false,
+    sessions: [],
+    permissionMode: "default",
+  });
+  const history = buildHistory(60);
+  history.push({
+    id: "reason-1",
+    role: "assistant",
+    timestamp: new Date().toISOString(),
+    blocks: [
+      {
+        type: "reasoning",
+        stage: "end",
+        content: `推理过程：${"先看调用方再决定改哪一层。".repeat(120)}`,
+      },
+    ],
+  });
+  history.push({
+    id: "live-msg",
+    role: "assistant",
+    timestamp: new Date().toISOString(),
+    blocks: [{ type: "text", content: "开头", stage: "streaming" }],
+  });
+  await injector.updateMessages(history);
+  await injector.startStreaming();
+  await webviewPage.waitForSelector('[data-message-id="live-msg"]');
+  await webviewPage.waitForFunction(() => {
+    const c = document.getElementById("messagesContainer") as HTMLElement;
+    return c.scrollHeight - c.scrollTop - c.clientHeight <= 2;
+  });
+  await webviewPage.waitForTimeout(300);
+
+  // 卡头相对列表视口顶边的位置：视口坐标才是「被点的那一行有没有动」的判据
+  // （钉底时 scrollTop 会跟着长高一起变，用内容坐标看不出差别）。
+  const headerTop = () =>
+    webviewPage.evaluate(() => {
+      const c = document.getElementById("messagesContainer") as HTMLElement;
+      const h = document.querySelector<HTMLElement>(".reasoning-header");
+      if (!h) return null;
+      return {
+        gap: c.scrollHeight - c.scrollTop - c.clientHeight,
+        screenY: h.getBoundingClientRect().top - c.getBoundingClientRect().top,
+      };
+    });
+
+  const before = await headerTop();
+  expect(before).not.toBeNull();
+  expect(before!.gap).toBeLessThanOrEqual(2);
+
+  // 折叠态没有正文节点；点卡头把它就地展开。
+  await webviewPage.evaluate(() => {
+    const h = document.querySelector<HTMLElement>(".reasoning-header");
+    if (!h) throw new Error("no reasoning header");
+    h.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await webviewPage.waitForSelector(".reasoning-content");
+  await webviewPage.waitForTimeout(200);
+
+  const after = await headerTop();
+  console.log(
+    `[expand-hold] gap ${before!.gap.toFixed(0)} -> ${after!.gap.toFixed(0)}, headerY ${before!.screenY.toFixed(0)} -> ${after!.screenY.toFixed(0)}`,
+  );
+  // 内容真的长高了（否则这条用例证明不了什么）……
+  expect(after!.gap).toBeGreaterThan(before!.gap + 100);
+  // ……而被点的那一行停在同一处（钉底若没解除，它会整体上移同样的量）。
+  expect(Math.abs(after!.screenY - before!.screenY)).toBeLessThanOrEqual(2);
+
+  // 用户自己滚回底部：重新贴底，并且跟随恢复——后面这段流式不再把视口甩开。
+  const box = await webviewPage.locator("#messagesContainer").boundingBox();
+  if (!box) throw new Error("no container box");
+  // 落点避开思考块自己（它内部可滚，滚轮会被它吃掉），取列表左下角。
+  await webviewPage.mouse.move(box.x + 12, box.y + box.height - 12);
+  for (let i = 0; i < 5; i++) {
+    if ((await geometry(webviewPage)).gap <= 2) break;
+    await webviewPage.mouse.wheel(0, 4000);
+    await webviewPage.waitForTimeout(120);
+  }
+  await webviewPage.waitForFunction(() => {
+    const c = document.getElementById("messagesContainer") as HTMLElement;
+    return c.scrollHeight - c.scrollTop - c.clientHeight <= 2;
+  });
+
+  const gaps: number[] = [];
+  for (let i = 1; i <= 6; i++) {
+    await injector.simulateExtensionMessage("updateStreamingContent", {
+      messageId: "live-msg",
+      chunk: chunk(i),
+      stage: "streaming",
+    });
+    await webviewPage.waitForTimeout(60);
+    gaps.push((await geometry(webviewPage)).gap);
+  }
+  console.log(
+    `[expand-hold] gaps after scrolling back=${JSON.stringify(gaps.map((g) => Math.round(g)))}`,
+  );
+  expect(Math.max(...gaps)).toBeLessThanOrEqual(30);
+});

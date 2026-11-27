@@ -89,6 +89,37 @@ describe("FocusFoldRow", () => {
     expect(head.querySelector(".focus-fold-dot")).toBeNull();
   });
 
+  it("卡头左内衬归零、右侧留 8px（插件档也不为圆点留位）", () => {
+    // base 的 padding-left 只要留 8px，没有 `data-host="desktop"` 覆盖的那几端
+    // （插件端 / 远控页）卡头文案就比卡外答复正文右移 8px。右侧那 8px 是给
+    // 整行按钮留的边，别一起归零。
+    renderRow(foldItem());
+    const style = getComputedStyle(screen.getByTestId("focus-fold-head"));
+    expect(style.paddingLeft).toBe("0px");
+    expect(style.paddingRight).toBe("8px");
+  });
+
+  it("进行态扫光是 aria-hidden 的视觉替身：读屏只读一遍摘要", () => {
+    // `::after { content: attr(data-label) }` 会在按钮里再生成一份同样的文案，
+    // 而伪元素的内容计入 accessible name —— 读屏会把摘要读两遍。换成真实元素
+    // 后靠 `aria-hidden` 把它挡在可访问性树外，按钮名仍是那一份文案。
+    renderRow(foldItem({ live: true, runningToolName: "Bash" }));
+    const head = screen.getByTestId("focus-fold-head");
+    expect(screen.getByRole("button", { name: "正在执行 Bash…" })).toBe(head);
+
+    const sweep = head.querySelector(".focus-fold-sweep");
+    expect(sweep).not.toBeNull();
+    expect(sweep?.getAttribute("aria-hidden")).toBe("true");
+    expect(sweep?.textContent).toBe("正在执行 Bash…");
+  });
+
+  it("结算后不再有扫光节点（只挂进行态）", () => {
+    renderRow(foldItem({ callCount: 3 }));
+    const head = screen.getByTestId("focus-fold-head");
+    expect(head.querySelector(".focus-fold-sweep")).toBeNull();
+    expect(screen.getByRole("button", { name: "3 次工具调用" })).toBe(head);
+  });
+
   it("展开后把这一轮的消息交给 renderMessage 渲染", () => {
     renderRow(foldItem(), true);
 

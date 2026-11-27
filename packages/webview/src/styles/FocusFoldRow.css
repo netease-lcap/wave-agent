@@ -11,11 +11,13 @@
   align-items: center;
   /* 卡头没有圆点，也不再带底板（hover 只换文字色），所以左侧不再为「圆点 +
      间距」留内衬：文案直接贴到卡片左缘，与卡内时间线同一条基准线
-     （2026-11-27 定档）。 */
+     （2026-11-27 定档）—— 三个宿主共用这一条，不能只在桌面端的覆盖里归零，
+     否则插件端 / 远控页的卡头比卡外答复右移 8px。右侧那 8px 留着：卡头是整行
+     按钮，文字与箭头贴到最右边缘会显得出框，也给超长文案的省略号留余地。 */
   gap: 6px;
   width: 100%;
   min-height: 30px;
-  padding: 4px 8px;
+  padding: 4px 8px 4px 0;
   background: transparent;
   border: 0;
   border-radius: 4px;
@@ -71,17 +73,18 @@
    这一轮还活着；结算后文案换回「N 次工具调用」，也不再需要动。所以扫光只挂在
    进行态上（2026-11-27 设计师走查）。
 
-   画法：底层是常态文字色（不动 color，hover 换色照旧），`::after` 用
-   `data-label` 复制同一段文案、涂成正文色，再用一条会移动的 mask 只露出其中
-   一道斜光。mask 用 `no-repeat`，光带之外遮掉即等于透明 —— 底层基色露出来，
-   所以不需要保证渐变平铺满整行，也就不受文字变长（「正在思考…」↔「正在执行
-   Xxx…」）影响。 */
+   画法：底层是常态文字色（不动 color，hover 换色照旧），旁边的
+   `.focus-fold-sweep` 复制同一段文案、涂成正文色，再用一条会移动的 mask 只
+   露出其中一道斜光。mask 用 `no-repeat`，光带之外遮掉即等于透明 —— 底层基色
+   露出来，所以不需要保证渐变平铺满整行，也就不受文字变长（「正在思考…」↔
+   「正在执行 Xxx…」）影响。
+   那一份文案是纯视觉的：`aria-hidden` 让它不进可访问性树，读屏不会把摘要
+   读两遍（原因见 FocusFoldRow.tsx）。 */
 .focus-fold.is-live .focus-fold-label {
   position: relative;
 }
 
-.focus-fold.is-live .focus-fold-label::after {
-  content: attr(data-label);
+.focus-fold.is-live .focus-fold-sweep {
   position: absolute;
   left: 0;
   top: 0;
@@ -96,7 +99,12 @@
     #000 50%,
     transparent 70%
   );
-  mask-image: linear-gradient(100deg, transparent 30%, #000 50%, transparent 70%);
+  mask-image: linear-gradient(
+    100deg,
+    transparent 30%,
+    #000 50%,
+    transparent 70%
+  );
   -webkit-mask-size: 220% 100%;
   mask-size: 220% 100%;
   -webkit-mask-repeat: no-repeat;
@@ -118,7 +126,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .focus-fold.is-live .focus-fold-label::after {
+  .focus-fold.is-live .focus-fold-sweep {
     display: none;
   }
 }
