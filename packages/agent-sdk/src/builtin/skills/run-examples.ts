@@ -517,8 +517,8 @@ Or for a compiled language:
   each is needed.
 - **Generated code.** If there's a codegen step (protobuf, OpenAPI clients),
   document it - it's almost always missing from READMEs.`,
-  "playwright.md": `> The \`chromium-cli\` REPL named below is not part of wave. If it
-> isn't on PATH (the usual case), drive the page with the project's own
+  "playwright.md": `> The \`chromium-cli\` REPL named below is not part of the agent's
+toolset. If it isn't on PATH (the usual case), drive the page with the project's own
   headless-browser automation - same script shape, run as a node script
   (\`import { chromium } from 'playwright'\`).
 # Example: Browser-driven web app

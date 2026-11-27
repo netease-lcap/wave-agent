@@ -85,7 +85,7 @@ describe("builtin verify / run-skill-generator", () => {
     // The command lines are CC's: they name a REPL that ships inside Claude Code.
     expect(body).toContain("chromium-cli --session app");
     // The note at the top is the only wave-side addition.
-    expect(body).toContain("not part of wave");
+    expect(body).toContain("not part of the agent");
   });
 
   it("code-review hands off to verify by skill name, not a slash string", () => {

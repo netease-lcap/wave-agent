@@ -95,7 +95,7 @@ The skill lives at \`<unit>/.wave/skills/run-<unit-name>/\`, where
 \`<unit>\` is the directory for **one deployable thing** - an app, a
 service, a library.
 
-Wave **natively discovers** skills from nested \`.wave/skills/\`
+**Skills are discovered natively** from nested \`.wave/skills/\`
 directories (and \`.claude/skills/\` from Claude Code-era repos): an agent working anywhere inside \`<unit>\` will see
 \`/run-<unit-name>\` as an available skill, and it auto-loads when the
 request matches its description (e.g. "run the desktop app," "take a
