@@ -228,6 +228,26 @@ monorepo 场景里，子系统/子包会自带技能（`packages/api/.wave/skill
 
 ---
 
+### 用户故事：评审目标是 PR/MR 时直连它的 diff（优先级：P2）
+
+敲 `/code-review 1234`、`/code-review !12` 或整条 PR 链接时，评的是那个 PR/MR 自己的 diff，而不是本地检出的工作区；带 `--comment` 时把结论发回那个 PR/MR。
+
+**为什么是这个优先级**：本地检出可能落后、可能停在别的分支，而「评一个我指定的 PR」正是这个技能最常见的用法——技能正文早就写着自己接受 `<pr#>`，但此前每一步都只读工作区，参数里的目标其实被丢掉了。发回 PR 还需要两条此前没有的通道：读 PR 的 diff、往 PR 写评论，两者都得在 `allowed-tools` 里预授权，否则用户每敲一次都要过一遍确认。
+
+**独立测试**：敲 `/code-review 12`，检查注入正文里有「这次评的是哪个对象的 diff」一段、给出 `gh pr diff 12` 与 `gh api repos/{owner}/{repo}/pulls/12 …` 的兜底；敲 `/code-review --comment !7`，检查换成 `glab mr diff 7` 与 `glab mr note 7 -m "<body>"`；敲 `/code-review --fix 12`，检查读不到 diff 时要求停下而不是退回工作区。
+
+**验收场景**：
+
+1. **假设**参数里是 PR 号、PR/MR 链接或 `!N`，**当**调用发生时，**则**注入一段说明「这次评的是哪个对象的 diff」并给出唯一一条取 diff 的命令，该命令替换正文里所有取 diff 的 `git diff` 命令
+2. **假设**目标是 GitHub PR 且链接里带仓库，**当**注入取 diff 命令时，**则**带上 `-R owner/repo`，并说明这份检出可能停在别的分支或属于别的仓库——因此引用本地文件前要先确认它已经含这段改动
+3. **假设**目标无法解析成 PR/MR（分支名、路径、未知 flag），**当**调用发生时，**则**不注入目标段，行为与不带目标完全一致
+4. **假设**取 diff 的命令被拒绝或失败，**当**同时带 `--fix` 或目标在另一个仓库时，**则**要求模型停下：不发任何东西、不改任何文件，只用一句固定说法说明没看成；其余情况才退回「评当前检出的分支」，并声明这份 review 是替代品
+5. **假设**带 `--comment` 且目标是 GitHub PR，**当**评审结束时，**则**逐条以内联评论发回（`gh api …/pulls/<n>/comments`）；目标是 GitLab MR 时改为发一条总 MR note（`glab mr note`），并说明 glab 没有行内评论的单条命令
+6. **假设**带 `--comment` 但评论通道不可用（命令被拒、没装 CLI、目标不是 PR/MR），**当**评审结束时，**则**把结论打印到终端，不静默丢弃
+7. **假设**技能声明了读 PR diff 与发评论要用的命令，**当**技能被调用时，**则**这些命令已在 `allowed-tools` 里预授权，不因权限确认打断整轮
+
+---
+
 ### 用户故事：注入命令执行前的权限校验（优先级：P1）
 
 作为用户，我希望技能与自定义命令正文里的内联注入命令（``!`cmd` ``）与代码块形式的注入命令在执行前经过**与会话 shell 工具（`Bash` 或 `PowerShell`）同一套**权限规则判定，未被允许的命令不执行，以便第三方分发来的技能不会借"正文注入"这条路径拿到超出我已授权范围的执行权。
@@ -338,3 +358,5 @@ monorepo 场景里，子系统/子包会自带技能（`packages/api/.wave/skill
 - **为什么不直接抄 Claude Code 的 `--setting-sources`？** Claude Code 的技能来源本身挂在 setting source 上（`~/.claude/skills` 由 `isSettingSourceEnabled('userSettings')` 门控），所以它不需要技能专属开关；代价是关掉用户级技能会连带关掉 `~/.claude/settings.json`（模型、env、权限、hooks、CLAUDE.md 一起走）。我方配置链没有 policy/managed/flag 分层，技能目录也不是来源的函数，照抄要先把这套分层引进配置链，影响面覆盖权限、MCP、hooks 与 CLAUDE.md。技能评测要的是「模型看到的技能集合可控」，不是「整份用户配置消失」，所以开关收到技能这一层；值域与命名沿用 Claude Code 内部已有的来源归类（User / Project / Plugin / Built-in），不造新词汇。
 - **关掉一个来源后，同名技能的去重怎么算？** 被关掉的来源直接不参与发现，因此也不参与同名覆盖：用户级与项目级都有 `foo` 时，`--skills-sources project` 得到的是项目级那份（不是「被关掉的那份仍占着位置」）。
 - **`--add-dir` 加载技能是不是行为变更？** 是，且是刻意对齐 Claude Code 的：它的 `--add-dir` 除了放行工具访问，还会扫该目录下的 `.claude/skills`。对现有用户的影响是「`--add-dir` 的目录里如果有技能，现在会出现在清单里」；不想要就同时收窄 `--skills-sources`。
+- **评审目标写成裸数字时，怎么知道是哪个平台？** 按 GitHub PR 处理。Claude Code 能靠当前仓库的 `git remote` 认出托管方（`TA(LRn())`）再决定用 `gh` 还是 `glab`；我方渲染正文时拿不到远端地址，所以这一层推断给不了——要评 GitLab 的合并请求就写 `!12` 或整条 GitLab 链接。宁可给一条能执行的明确命令，也不猜。
+- **发评论的命令为什么写进 `allowed-tools` 预授权？** 用户敲了 `--comment` 就是明确要把结论发出去，不预授权会让每条内联评论都弹一次确认。放行范围只覆盖这两个动作本身（`gh api repos/*/pulls/*`、`glab mr note*`），不含其它 API 写操作。
