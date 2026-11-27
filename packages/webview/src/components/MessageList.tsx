@@ -63,6 +63,19 @@ const TEXT_WIDTH_INSET_PX = 32;
 // 「已经在顶部」这个状态本身。
 const EARLIER_TRIGGER_PX = 160;
 
+// 已加载的内容撑不满视口时，用户其实已经翻不动了——下方没有东西可看，也就不会
+// 再派发滚动事件去要下一页。所以取更早还有第二个触发点：几何判据（spec
+// ui/message-rendering-system.md「内容不足一屏 ⇒ 继续往前取（填窗）」）。余量与
+// 参考物的 sparse_tail_drain 同档（1200px ≈ 一两屏），留宽一点是因为这一条只在
+// 「确实没得看」时成立，多要一页远好过用户对着半屏空白发愣。
+const FILL_VIEWPORT_MARGIN_PX = 1200;
+// 视口高度量不到时（旁路 pane 未激活，clientHeight / offsetHeight 都是 0）退回
+// 条数判据：拿 0 去比「撑满了」会在每个隐藏 pane 上都要一页。
+const FILL_VIEWPORT_MIN_ROWS = 10;
+// 每触发一次填窗最多连取几页（与参考物同值）。每页只有一两行的会话否则会把请求
+// 打成无底洞；到顶就停在这一页，等用户再上翻或窗口再变高。
+const FILL_VIEWPORT_MAX_PAGES = 3;
+
 // 离内容末尾超过这么远就浮出「回到最新」入口。与参考物（Claude 桌面端的
 // jump-to-latest）同档：比「已离开底部」的个位数阈值宽得多——这里问的是「远到
 // 需要一个入口了吗」，不是「还要不要跟着新内容走」。
@@ -657,6 +670,28 @@ export const MessageList = forwardRef<
   isLoadingEarlierRef.current = !!isLoadingEarlier;
   const onLoadEarlierRef = useRef(onLoadEarlier);
   onLoadEarlierRef.current = onLoadEarlier;
+  // 本次填窗已经连追了几页。撑满视口、或者用户再次上翻时归零——它是「一段连追」
+  // 的计数器，不是本会话的累计。
+  const fillPagesRef = useRef(0);
+  // 上翻意图把计数归零还不够：判据跑在 effect 里，没有别的依赖变化就不会重跑，
+  // 于是「到上限停下、等用户下一次上翻再接着取」这句话落不了地（实测第 4 页不来）。
+  // 这一个 tick 就是那个触发点。
+  const [fillRetryTick, setFillRetryTick] = useState(0);
+
+  // 「要一页更早的」。滚到顶（用户上翻）与填窗（内容撑不满视口）两个触发点共用
+  // 这一个入口，返回是否真的发出了请求（没有更早 / 上一页还在飞 / 锚点缺失都返回
+  // false）。判据走 ref 而不是 props：滚动 handler 一帧里可能连发多次事件，等
+  // setState 生效再拦就已经发了两个请求。
+  const requestEarlierPage = useCallback((): boolean => {
+    const load = onLoadEarlierRef.current;
+    const first = visibleMessagesRef.current[0]?.id;
+    if (!load || !first) return false;
+    if (!hasEarlierRef.current || isLoadingEarlierRef.current) return false;
+    if (earlierPendingRef.current) return false;
+    earlierPendingRef.current = true;
+    load(first);
+    return true;
+  }, []);
   stickyRef.current = stickyMessage;
 
   // Per-message timeline run data. A run is a maximal sequence of consecutive
@@ -1191,15 +1226,8 @@ export const MessageList = forwardRef<
     // 到顶部（比如整表替换后视口被重新定位），那时只要确实还有更早的内容，把它取
     // 回来就是对的。
     const maybeRequestEarlier = () => {
-      if (!hasEarlierRef.current || isLoadingEarlierRef.current) return;
-      if (earlierPendingRef.current) return;
-      const load = onLoadEarlierRef.current;
-      if (!load) return;
       if (container.scrollTop > EARLIER_TRIGGER_PX) return;
-      const first = visibleMessagesRef.current[0]?.id;
-      if (!first) return;
-      earlierPendingRef.current = true;
-      load(first);
+      requestEarlierPage();
     };
 
     // 显隐要读 scrollHeight / clientHeight（一次布局读）。滚动一帧可能派发多次
@@ -1236,6 +1264,7 @@ export const MessageList = forwardRef<
     computeSticky,
     computeVisibleOutlineIds,
     containerRef,
+    requestEarlierPage,
     updateJumpToBottom,
   ]);
 
@@ -1275,9 +1304,18 @@ export const MessageList = forwardRef<
     const container = containerRef.current;
     if (!container) return;
 
+    // 上翻意图同时把填窗的连追计数归零并触发一次重判：用户明确在要更早的内容，
+    // 这一轮该接着往下追（spec 场景 6「等用户下一次上翻再接着取」）。只在确实
+    // 有一段连追在进行/刚撞上上限时才动状态，别让每个滚轮刻度都多刷一帧。
+    const resumeFill = () => {
+      if (fillPagesRef.current === 0) return;
+      fillPagesRef.current = 0;
+      setFillRetryTick((n) => n + 1);
+    };
     const handleWheel = (e: WheelEvent) => {
       if (e.ctrlKey || e.deltaY >= 0) return;
       if (ownsVerticalScroll(e.target)) return;
+      resumeFill();
       unpin();
     };
 
@@ -1296,6 +1334,7 @@ export const MessageList = forwardRef<
         y > lastTouchY &&
         !ownsVerticalScroll(e.target)
       ) {
+        resumeFill();
         unpin();
       }
       lastTouchY = y;
@@ -1307,6 +1346,7 @@ export const MessageList = forwardRef<
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const up = e.key === "ArrowUp" || e.key === "PageUp" || e.key === "Home";
       if (!up || ownsVerticalScroll(e.target)) return;
+      resumeFill();
       unpin();
     };
 
@@ -1325,10 +1365,45 @@ export const MessageList = forwardRef<
   }, [containerRef, ownsVerticalScroll, unpin]);
 
   // 请求失败 / 回包为空时父组件把 loading 落回 false，那一页就到此为止，别把
-  // pending 一直挂住——否则这段历史再也翻不动。
+  // pending 一直挂住——否则这段历史再也翻不动。只按 `isLoadingEarlier` 的变化重跑：
+  // 父组件的 loading 是异步落地的，中间那几帧 props 仍是 false，按渲染期复位会在
+  // 那里把锁清掉、当场连发第二页。而它必须排在下面那个填窗 effect **前面** ——
+  // 同一个提交里先清锁，连追才能接着要下一页。
   useEffect(() => {
     if (!isLoadingEarlier) earlierPendingRef.current = false;
   }, [isLoadingEarlier]);
+
+  // 填窗：已加载的内容撑不满视口时继续往前取（spec ui/message-rendering-system.md
+  // 「内容不足一屏 ⇒ 继续往前取（填窗）」）。三种时刻都会重跑本 effect ——
+  // keys 变（消息增减、聚焦视图折叠/展开）、listViewportHeight 变（容器尺寸）、
+  // isLoadingEarlier 落回（一页回来了，接着量一次）。链式连追就是这条：
+  // 一页接上来 ⇒ keys 变 ⇒ 再判一次，直到撑满、没有更早、或撞上轮次上限。
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !hasEarlier || isLoadingEarlier || !onLoadEarlier) return;
+    // 视口高度量不到时（旁路 pane 未激活）退回条数判据。
+    const viewport = container.clientHeight || container.offsetHeight;
+    const unfilled =
+      viewport > 0
+        ? container.scrollHeight - viewport < FILL_VIEWPORT_MARGIN_PX
+        : visibleMessagesRef.current.length < FILL_VIEWPORT_MIN_ROWS;
+    if (!unfilled) {
+      // 撑满了：这一段连追到此结束，下次填窗从零开始数。
+      fillPagesRef.current = 0;
+      return;
+    }
+    if (fillPagesRef.current >= FILL_VIEWPORT_MAX_PAGES) return;
+    if (requestEarlierPage()) fillPagesRef.current += 1;
+  }, [
+    containerRef,
+    fillRetryTick,
+    hasEarlier,
+    isLoadingEarlier,
+    keys,
+    listViewportHeight,
+    onLoadEarlier,
+    requestEarlierPage,
+  ]);
 
   return (
     <div
