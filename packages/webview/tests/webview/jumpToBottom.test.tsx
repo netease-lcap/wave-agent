@@ -8,6 +8,7 @@ import {
   fireEvent,
   pinScrollBoxHeight,
 } from "./test-utils";
+import { MockDataGenerator } from "../fixtures/mockData";
 
 /**
  * 一段真的能撑出溢出的正文：每段一行（markdown 渲染成多个段落）。虚拟列表的
@@ -161,6 +162,75 @@ describe("回到最新入口", () => {
     });
 
     expect(jumpButton()).toHaveAttribute("aria-hidden", "false");
+  });
+
+  /**
+   * 聚焦视图里把展开的一轮收起，会把内容从「高过一屏」压回「一屏之内」。
+   * 这一下 `scrollTop` 一动不动（浏览器没有可夹的量 ⇒ 不派发 scroll 事件），
+   * 显隐若只跟着 scroll / 内容变化走，上一帧算出的「显示」就会一直挂着；而那颗
+   * 按钮是 sticky 在内容列末尾的，内容一矮就贴到折叠后的内容上 —— 用户报障：
+   * 「收起时那个 loading 图标被带到折叠态里，大概一秒钟后才消失」。账本一变
+   * （行高从一大截压成一行）就得在同一帧里重新对一次账。
+   */
+  it("收起的这一轮把内容压回一屏内时，入口当场收回而不是等下一个事件", async () => {
+    window.localStorage.setItem("wave.chat.focusView", "1");
+    try {
+      renderChatApp();
+      act(() => {
+        sendCommand("updateMessages", {
+          messages: [
+            MockDataGenerator.createUserMessage("问题", "u1"),
+            MockDataGenerator.createAssistantMessage(tallText(40), "a1"),
+            MockDataGenerator.createAssistantMessageWithTool(
+              "",
+              "Read",
+              "{}",
+              "文件内容",
+            ),
+            MockDataGenerator.createAssistantMessage("答复", "a3"),
+          ],
+        });
+      });
+
+      // 展开这一轮：内容高过一屏，入口才有出现的余地。
+      act(() => {
+        fireEvent.click(screen.getByTestId("focus-fold-head"));
+      });
+      await waitFor(() =>
+        expect(screen.getByTestId("focus-fold-body")).toBeInTheDocument(),
+      );
+      await waitFor(() =>
+        expect(
+          container().scrollHeight - container().clientHeight,
+        ).toBeGreaterThan(800),
+      );
+
+      // 停在内容最顶上：离末尾很远 ⇒ 入口出现；收起后 scrollTop 仍是 0，
+      // 浏览器没有可夹的量，所以整件事里一个 scroll 事件都不会有。
+      act(() => {
+        const c = container();
+        c.scrollTop = 0;
+        fireEvent.scroll(c);
+      });
+      await waitFor(() =>
+        expect(jumpButton()).toHaveAttribute("aria-hidden", "false"),
+      );
+
+      act(() => {
+        fireEvent.click(screen.getByTestId("focus-fold-head"));
+      });
+      await waitFor(() =>
+        expect(
+          container().scrollHeight - container().clientHeight,
+        ).toBeLessThanOrEqual(0),
+      );
+
+      // 内容已经装进一屏：没有「更后面的内容」可回，入口必须已经收回 ——
+      // 没跟上账本的话它会一直挂着（sticky 到折叠后的内容末尾）。
+      expect(jumpButton()).toHaveAttribute("aria-hidden", "true");
+    } finally {
+      window.localStorage.clear();
+    }
   });
 
   it("还没有消息时不渲染入口", () => {

@@ -1100,6 +1100,22 @@ export const MessageList = forwardRef<
     setShowJumpToBottom(next);
   }, [containerRef, visualOffset]);
 
+  /**
+   * 折叠行的展开/收起会大幅改写行高账本：收起这一下能把内容从「高过一屏」压回
+   * 「一屏之内」，而这时 `scrollTop` 一动不动（浏览器没有可夹的量），**一个 scroll
+   * 事件都不会派发**。只靠 scroll / 内容变化重算的话，上一帧的 true 会一直挂着：
+   * 那颗按钮 sticky 在内容列末尾，内容一矮就贴到折叠后的内容上（用户报障：收起时
+   * loading 图标被「带」到折叠态里，约一秒后——下一条流式 chunk 顺带重算——才消失）。
+   *
+   * 所以账本一换（`totalSize` 是行高账本的直接投影）就在**绘制之前**对一次账：
+   * 放进 layout 期，等下一帧再改就晚了，那一帧已经把按钮画在错的地方了。内核的
+   * 定位效应在同一次提交里先跑（钩子按声明顺序执行），读到的 scrollTop 是它修正后
+   * 的值。
+   */
+  useLayoutEffect(() => {
+    updateJumpToBottom();
+  }, [totalSize, updateJumpToBottom]);
+
   const jumpToBottom = useCallback(() => {
     // 窗口停在历史里时这颗按钮的语义从「滚到内容末尾」变成「回到最新一页」
     // （spec 场景 18）：历史窗口的末尾并不等于会话的末尾，滚到底只是走到这一页
