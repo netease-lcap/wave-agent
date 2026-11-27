@@ -32,11 +32,16 @@ order: 37
 8. **假设** 被调用的是 MCP 工具，**当** 参数不完整时，**则** 不由 wave 校验（参数契约属于 MCP 服务端，wave 只透传），行为与本规格之前一致。
 9. **假设** 被调用的是 `buildTool()` / `customTools` 注册的自定义工具，**当** 参数不完整时，**则** 不由 wave 校验——其 schema 由 SDK 用户定义，行为保持不变。
 10. **假设** 一次调用参数有误，**当** 校验失败时，**则** 不触发 PreToolUse hook、也不进入权限判定——参数错的调用不该弹权限框、也不该在 hook 里留下痕迹。
+11. **假设** 一个数组参数声明了 `maxItems: 32`，**当** 调用传了 33 个元素时，**则** 返回 ``The parameter `findings` is invalid: expected at most 32 items but provided 33``，整份入参被拒（不截断成 32 条），工具实现**没有**被执行；恰好 32 个元素时通过。
+12. **假设** 一个字符串参数声明了 `maxLength: 12`，**当** 调用传了 13 个字符时，**则** 返回 ``The parameter `questions[0].header` is invalid: expected at most 12 characters but provided 13``；恰好 12 个字符时通过。长度按 JSON Schema 规范的「字符」计，即 Unicode 码点数——4 个 emoji 是 4 个字符，不是 8。
+13. **假设** 某个工具的参数声明里既没有 `maxItems` 也没有 `maxLength`，**当** 它收到任意长的数组或字符串时，**则** 行为与本规格之前完全一致，不因这一层被拦。
+14. **假设** 声明了 `maxItems` 的字段收到的值不是数组（类型判定已先失败），**当** 校验发生时，**则** 只报类型不符，不额外报长度、也不抛异常——长度对那种值没有意义。
 
 **口径与边界**：
 
 - **真相源是工具自己声明的 `config.function.parameters`**，不新增第二份 schema：不引入 zod 再导出 JSON Schema 的双写形态（CC 用 zod 是因为它的 schema 本来就以 zod 定义；wave 反过来）。
-- **支持的子集**：`type`、`required`、`enum`、未知键、嵌套 object 的 `properties`、数组 `items` 的逐元素类型。`oneOf` / `anyOf` / `$ref` / 数值区间等不解释——解释不了的声明不拦截，避免把"没实现的 constraint"读成"校验通过"以外的含义。
+- **支持的子集**：`type`、`required`、`enum`、未知键、嵌套 object 的 `properties`、数组 `items` 的逐元素类型，以及两个长度上限 `maxItems`（数组条数）与 `maxLength`（字符串字符数）。长度族里**只认这两个**：`minItems` / `minLength` / `pattern` / `uniqueItems` 与 `oneOf` / `anyOf` / `$ref` / 数值区间一样不解释——解释不了的声明不拦截，避免把"没实现的 constraint"读成"校验通过"以外的含义。
+- **为什么只有上界**：模型的典型失误是"多给了"（一次报 40 条发现、`header` 写成一整句），不是"少给了"；下界（如 `minItems: 1`）目前由各工具自己的语义校验承担，够用。这条子集要扩，先补用例再动实现。
 - **未知键默认报错**（对齐 CC 的 zod strict 语义）：schema 显式声明 `additionalProperties: true` 时放开；声明为**对象 schema**（如 `metadata` 的 `{type: "string"}`）时按其校验值，不按"未知键"处理。
 - **文案对齐 Claude Code**：三句固定形态（缺失 / 多余 / 类型不符）+ 一句 `enum` 与其它取值错误，汇总成 `` `${toolName} failed due to the following issue(s):` `` 加逐行明细；一次调用里的问题全部列出，不只报第一个。
 - **不做 `coerceInput` 那类兼容层**：先把真实错误暴露出来，等有了校验失败的数据再决定兼容什么，避免"为兼容而兼容"。

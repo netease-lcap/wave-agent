@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { validateToolInput } from "../../src/tools/inputValidation.js";
 import { askUserQuestionTool } from "../../src/tools/askUserQuestion.js";
+import { reportFindingsTool } from "../../src/tools/reportFindingsTool.js";
 
 import type { ToolPlugin } from "../../src/tools/types.js";
 /** The schema TaskUpdate actually declares, trimmed to what these tests need. */
@@ -394,5 +395,218 @@ describe("validateToolInput against the real built-in schemas", () => {
         `${plugin.name} rejected its own minimal call`,
       ).toBeNull();
     }
+  });
+});
+
+describe("validateToolInput 认识 maxItems / maxLength", () => {
+  /** 两个关键字各一个字段：一个数组上限、一个字符串上限。 */
+  const schema = {
+    type: "object",
+    properties: {
+      findings: { type: "array", maxItems: 2, items: { type: "string" } },
+      header: { type: "string", maxLength: 4 },
+    },
+  };
+
+  it("数组超过 maxItems：拒绝，并点名字段路径、实际条数、上限", () => {
+    expect(
+      validateToolInput("ReportFindings", schema, {
+        findings: ["a", "b", "c"],
+      }),
+    ).toBe(
+      [
+        "ReportFindings failed due to the following issue:",
+        "The parameter `findings` is invalid: expected at most 2 items but provided 3",
+      ].join("\n"),
+    );
+  });
+
+  it("字符串超过 maxLength：拒绝，并点名字段路径、实际字数、上限", () => {
+    expect(
+      validateToolInput("AskUserQuestion", schema, { header: "abcde" }),
+    ).toBe(
+      [
+        "AskUserQuestion failed due to the following issue:",
+        "The parameter `header` is invalid: expected at most 4 characters but provided 5",
+      ].join("\n"),
+    );
+  });
+
+  it("恰好等于上限是通过，不是越界", () => {
+    expect(
+      validateToolInput("T", schema, { findings: ["a", "b"], header: "abcd" }),
+    ).toBeNull();
+  });
+
+  it("maxLength 数的是字符数，不是 UTF-16 长度", () => {
+    // 四个 emoji 在 JS 里 length 是 8；JSON Schema 说的是「字符」，4 个字符的
+    // 值不能因为 UTF-16 占两格就被判越界。
+    expect(validateToolInput("T", schema, { header: "😀😀😀😀" })).toBeNull();
+    expect(validateToolInput("T", schema, { header: "😀😀😀😀😀" })).toContain(
+      "expected at most 4 characters but provided 5",
+    );
+  });
+
+  it("数组元素里的上限同样生效", () => {
+    const nested = {
+      type: "object",
+      properties: {
+        questions: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              options: {
+                type: "array",
+                maxItems: 2,
+                items: { type: "object" },
+              },
+              header: { type: "string", maxLength: 4 },
+            },
+          },
+        },
+      },
+    };
+
+    expect(
+      validateToolInput("AskUserQuestion", nested, {
+        questions: [{ options: [{}, {}, {}], header: "Library" }],
+      }),
+    ).toBe(
+      [
+        "AskUserQuestion failed due to the following issues:",
+        // 同一层里按参数对象的键序走：先 `options` 后 `header`。
+        "The parameter `questions[0].options` is invalid: expected at most 2 items but provided 3",
+        "The parameter `questions[0].header` is invalid: expected at most 4 characters but provided 7",
+      ].join("\n"),
+    );
+  });
+
+  it("值类型不符时只报类型，长度关键字不参与判定也不崩", () => {
+    // 声明了 maxItems 的字段收到字符串、声明了 maxLength 的字段收到数字：
+    // 长度对这类值没有意义，能报的只有类型，报完就停在这一层。
+    expect(validateToolInput("T", schema, { findings: "abc" })).toBe(
+      "T failed due to the following issue:\nThe parameter `findings` type is expected as `array` but provided as `string`",
+    );
+    expect(validateToolInput("T", schema, { header: 123 })).toBe(
+      "T failed due to the following issue:\nThe parameter `header` type is expected as `string` but provided as `integer`",
+    );
+    // 没声明 type、值又不是数组时也一样：跳过，不报越界。
+    expect(
+      validateToolInput(
+        "T",
+        { type: "object", properties: { a: { maxItems: 1 } } },
+        { a: "abc" },
+      ),
+    ).toBeNull();
+  });
+
+  it("没声明这两个关键字的工具行为完全不变", () => {
+    const unconstrained = {
+      type: "object",
+      properties: {
+        list: { type: "array", items: { type: "string" } },
+        text: { type: "string" },
+      },
+    };
+
+    expect(
+      validateToolInput("T", unconstrained, {
+        list: Array.from({ length: 100 }, () => "x"),
+        text: "x".repeat(1000),
+      }),
+    ).toBeNull();
+  });
+
+  it("越界与别的 issue 一起列出，位置在类型与 enum 之后", () => {
+    const message = validateToolInput(
+      "T",
+      {
+        type: "object",
+        properties: {
+          mode: { type: "string", enum: ["a"] },
+          findings: { type: "array", maxItems: 2 },
+          header: { type: "string", maxLength: 4 },
+        },
+        required: ["header"],
+      },
+      { mode: "b", findings: [1, 2, 3], header: "abcde", zzz: 1 },
+    );
+
+    expect(message?.split("\n")).toEqual([
+      "T failed due to the following issues:",
+      "An unexpected parameter `zzz` was provided",
+      'The parameter `mode` is invalid: expected one of "a"',
+      "The parameter `findings` is invalid: expected at most 2 items but provided 3",
+      "The parameter `header` is invalid: expected at most 4 characters but provided 5",
+    ]);
+  });
+});
+
+describe("maxItems / maxLength 落在真实内置 schema 上", () => {
+  const askGate = (questions: unknown[]) =>
+    validateToolInput(
+      "AskUserQuestion",
+      askUserQuestionTool.config.function.parameters,
+      { questions },
+    );
+
+  const question = (over: Record<string, unknown> = {}) => ({
+    question: "Which library should we use for date formatting?",
+    header: "Library",
+    options: [{ label: "A" }, { label: "B" }],
+    ...over,
+  });
+
+  it("AskUserQuestion 四问、十二字 header 通过", () => {
+    expect(
+      askGate([
+        question(),
+        question(),
+        question(),
+        question({ header: "Twelve chars" }),
+      ]),
+    ).toBeNull();
+  });
+
+  it("AskUserQuestion 五问被拒", () => {
+    expect(
+      askGate([question(), question(), question(), question(), question()]),
+    ).toContain(
+      "The parameter `questions` is invalid: expected at most 4 items but provided 5",
+    );
+  });
+
+  it("AskUserQuestion header 超十二字被拒", () => {
+    expect(askGate([question({ header: "Thirteen char" })])).toContain(
+      "The parameter `questions[0].header` is invalid: expected at most 12 characters but provided 13",
+    );
+  });
+
+  it("ReportFindings 33 条在闸上就被拒，32 条过闸", () => {
+    const findings = (count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        file: "a.ts",
+        line: index + 1,
+        summary: "s",
+        failure_scenario: "f",
+      }));
+
+    expect(
+      validateToolInput(
+        "ReportFindings",
+        reportFindingsTool.config.function.parameters,
+        { findings: findings(32) },
+      ),
+    ).toBeNull();
+    expect(
+      validateToolInput(
+        "ReportFindings",
+        reportFindingsTool.config.function.parameters,
+        { findings: findings(33) },
+      ),
+    ).toBe(
+      "ReportFindings failed due to the following issue:\nThe parameter `findings` is invalid: expected at most 32 items but provided 33",
+    );
   });
 });
