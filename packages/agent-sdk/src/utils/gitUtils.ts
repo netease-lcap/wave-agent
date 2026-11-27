@@ -65,6 +65,29 @@ export function getGitCommonDir(cwd: string): string {
 }
 
 /**
+ * 当前仓库 `origin` 的远端地址，没配远端时 `null`。
+ *
+ * 技能钩子要按托管方分叉（`/code-review` 决定敲 `gh` 还是 `glab`），而正文在这一轮
+ * 就得把段落选好，不能等模型自己去 `git remote`。与 `detectSessionRepo` 同口径
+ * **每次现读**：用户可能在会话中间改 remote。没配远端是正常状态（本地 init 的
+ * 仓库），返回 `null` 而不是抛错。
+ *
+ * @param cwd Working directory
+ */
+export function getRemoteUrl(cwd: string): string | null {
+  try {
+    const url = execFileSyncHidden(
+      "git",
+      ["config", "--get", "remote.origin.url"],
+      { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+    ).trim();
+    return url.length > 0 ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Get the main repository root directory (the first worktree in the list)
  * @param cwd Working directory
  * @returns Main repository root path

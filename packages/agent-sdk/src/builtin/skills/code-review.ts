@@ -7,6 +7,7 @@ import {
   REPORT_FINDINGS_TOOL_NAME,
 } from "../../constants/tools.js";
 import { parseCommandArguments } from "../../utils/commandArgumentParser.js";
+import { repoHostOf, type RepoHost } from "../../utils/repoHost.js";
 import type { BuiltinSkillHook, SkillPromptContext } from "../skillHooks.js";
 
 export const code_reviewSkill: Record<string, string> = {
@@ -274,16 +275,16 @@ ignored.
 `;
 
 /** CC 的 `ui()`：同一件事发到 GitLab，顺带说清 glab 没有行内评论的单条命令。 */
-function renderGitlabCommentSection(target: ReviewTarget): string {
+function renderGitlabCommentSection(target: ReviewTarget | undefined): string {
   const ref =
-    target.platform === "gitlab"
-      ? target.command.replace(/^glab mr diff /, "")
+    target?.platform === "gitlab"
+      ? ` ${target.command.replace(/^glab mr diff /, "")}`
       : "";
   return `## Posting to GitLab (--comment)
 
 The \`--comment\` flag was passed. After producing the findings list, if the
 review target is a GitLab merge request, post the findings as one general MR
-note via \`glab mr note ${ref} -m "<body>"\` (every finding with its file:line,
+note via \`glab mr note${ref} -m "<body>"\` (every finding with its file:line,
 the issue, and the suggested fix). glab has no single verb for line-anchored
 comments; those require \`glab api projects/:id/merge_requests/:iid/discussions\`,
 so post the general note unless the user asks for inline threads. If glab is not
@@ -378,9 +379,10 @@ review agents. Do that work yourself, in this same context:
 /**
  * 评审目标是哪个 PR / MR——CC 的 `gi()` 同款，只认目标串本身写得出来的东西。
  *
- * 裸数字按 GitHub PR 处理；要指 GitLab 的合并请求就写 `!12` 或整条 GitLab URL。
- * CC 能靠 `git remote` 认出当前仓库的托管方（`TA(LRn())`），我方渲染正文时拿不到
- * 远端地址，所以这一层推断给不了。
+ * 裸数字本身看不出平台，按远端托管方判（CC 的 `Uka()`，`0215-6730B-aX.js:206`）：
+ * GitLab 仓库里它是 MR 号，Bitbucket 仓库里不注入（CC 的 `gi()`，
+ * `1091-228433B-Vdr.js:1998`），认不出来或 GitHub 仓库时仍按 PR 处理。
+ * 要指别的仓库的 GitLab MR 就写 `!12`，或者给整条 GitLab URL。
  */
 export type ReviewTarget =
   | {
@@ -400,7 +402,10 @@ const GITLAB_MR_URL =
 const GITHUB_PR_URL =
   /^https?:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/(\d{1,9})(?:[/?#]|$)/;
 
-export function resolveReviewTarget(raw: string): ReviewTarget | undefined {
+export function resolveReviewTarget(
+  raw: string,
+  host?: RepoHost,
+): ReviewTarget | undefined {
   const target = raw.trim();
   if (!target) return undefined;
 
@@ -435,6 +440,18 @@ export function resolveReviewTarget(raw: string): ReviewTarget | undefined {
   }
   const pr = /^(\d{1,6})$/.exec(target);
   if (pr) {
+    // CC 的 `gi()`（`1091-228433B-Vdr.js:1998`）：Bitbucket 仓库里裸数字不注入目标，
+    // 让模型照常评审当前分支 —— 那家没有 gh 也没有 glab 能用。
+    if (host === "bitbucket") return undefined;
+    // CC 的 `Uka()`（`0215-6730B-aX.js:206`）：目标串看不出平台时按远端托管方判，
+    // GitLab 仓库里的裸数字是合并请求号，补一个 `!` 就是同一条命令。
+    if (host === "gitlab") {
+      return {
+        platform: "gitlab",
+        name: `GitLab merge request !${pr[1]}`,
+        command: `glab mr diff ${pr[1]}`,
+      };
+    }
     return {
       platform: "github",
       name: `GitHub pull request ${pr[1]}`,
@@ -494,7 +511,11 @@ export function buildCodeReviewPrompt(
   ctx: SkillPromptContext,
 ): string {
   const { args } = parseCodeReviewArgs(raw);
-  const target = args.target ? resolveReviewTarget(args.target) : undefined;
+  // 托管方决定裸数字是 PR 还是 MR、`--comment` 走哪一段，所以在选段落之前先算。
+  const host = repoHostOf(ctx.gitRemoteUrl);
+  const target = args.target
+    ? resolveReviewTarget(args.target, host)
+    : undefined;
   // 有清单工具就整份清单走工具、正文不再复述；没有就落回正文里那段可读格式。
   const hasFindingsTool = ctx.toolNames.includes(REPORT_FINDINGS_TOOL_NAME);
   const sections: string[] = [];
@@ -504,10 +525,11 @@ export function buildCodeReviewPrompt(
     sections.push(SINGLE_PASS_SECTION);
   }
   if (args.comment) {
+    // CC 的 `Uka()`（`0215-6730B-aX.js:206`）：给了目标串就看它，没给就看远端 ——
+    // GitLab 仓库默认会评的是 MR，评论自然该走 glab。
+    const gitlab = target ? target.platform === "gitlab" : host === "gitlab";
     sections.push(
-      target?.platform === "gitlab"
-        ? renderGitlabCommentSection(target)
-        : GITHUB_COMMENT_SECTION,
+      gitlab ? renderGitlabCommentSection(target) : GITHUB_COMMENT_SECTION,
     );
   }
   if (args.fix) sections.push(renderFixSection(hasFindingsTool));

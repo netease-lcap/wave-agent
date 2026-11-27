@@ -15,11 +15,17 @@ import { FINDING_VERDICTS } from "../../src/tools/resultData/reportFindings.js";
 const WITH_AGENT = {
   toolNames: [AGENT_TOOL_NAME, "Read"],
   availableSkills: [],
+  gitRemoteUrl: null,
 };
-const NO_AGENT = { toolNames: ["Read", "Grep"], availableSkills: [] };
+const NO_AGENT = {
+  toolNames: ["Read", "Grep"],
+  availableSkills: [],
+  gitRemoteUrl: null,
+};
 const WITH_FINDINGS = {
   toolNames: [AGENT_TOOL_NAME, REPORT_FINDINGS_TOOL_NAME, "Read"],
   availableSkills: [],
+  gitRemoteUrl: null,
 };
 
 describe("buildCodeReviewPrompt", () => {

@@ -17,6 +17,14 @@ export interface SkillPromptContext {
   toolNames: string[];
   /** 此刻清单里有哪些技能名——判「要不要顺手引用另一个技能」。 */
   availableSkills: string[];
+  /**
+   * 当前仓库 `origin` 的远端地址，没配远端时 `null`。
+   *
+   * 有些指示要按托管方分叉（敲 `gh` 还是 `glab`、评论走 GitHub 还是 GitLab 的段，
+   * 判据见 `utils/repoHost.ts`）。模型自己跑 `git remote` 也读得到，但正文得在这一轮
+   * 就把段落选好，所以地址提前进来；传地址而不传平台结论，判据留在消费侧。
+   */
+  gitRemoteUrl: string | null;
 }
 
 export interface BuiltinSkillHook {
