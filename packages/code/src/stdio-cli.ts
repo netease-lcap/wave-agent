@@ -6,7 +6,11 @@
  * the client sends an "initialize" request.
  */
 
-import { ensureRuntimeDeps, setTelemetryStdoutProtected } from "wave-agent-sdk";
+import {
+  claimUnhandledRejection,
+  ensureRuntimeDeps,
+  setTelemetryStdoutProtected,
+} from "wave-agent-sdk";
 import { StdioServer } from "./stdio/stdioServer.js";
 import { reportStartupStage } from "./stdio/startupStage.js";
 import { createRemoteControlSinkFactory } from "./remote/remoteControlSink.js";
@@ -75,9 +79,17 @@ export async function startStdioCli(): Promise<void> {
   process.on("uncaughtException", (error) =>
     crashHandler("uncaughtException", error),
   );
-  process.on("unhandledRejection", (reason) =>
-    crashHandler("unhandledRejection", reason),
-  );
+  // A REPL script that leaves a promise unread is a script mistake, not a host
+  // crash: its rejection is claimed here and logged, and the session survives.
+  // Anything else keeps the crash semantics below.
+  process.on("unhandledRejection", (reason, promise) => {
+    const claimed = claimUnhandledRejection(reason, promise);
+    if (claimed !== null) {
+      logger.warn(`[stdio] ${claimed}`);
+      return;
+    }
+    crashHandler("unhandledRejection", reason);
+  });
 
   const server = new StdioServer({
     // This child owns the sessions its host shows, so it — not a daemon on the
