@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { useRovingMenu } from "../utils/useRovingMenu";
 import { useClickOutside } from "../utils/useClickOutside";
@@ -13,10 +13,15 @@ import {
   MoreMenuHelpDocsIcon,
   MoreMenuLogOutIcon,
   MoreMenuSettingsIcon,
+  QueueChevronIcon,
 } from "./HeaderIcons";
 import type { PushNotificationControl } from "../types";
 import type { AccountCredential } from "wave-webview-fixtures";
 import { gatewayHostLabel, resolveCredentialKind } from "../utils/credential";
+import {
+  readFocusViewPreference,
+  writeFocusViewPreference,
+} from "../utils/displayPreferences";
 import "../styles/MoreMenu.css";
 
 /** One roving item: what it says, what it does, how it is dressed. */
@@ -170,6 +175,13 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
   // are just URLs, and the page's handler opens them in a browser tab
   // (spec remote/remote-web.md 场景 21).
   const remotePage = isRemotePageHost();
+  // 聚焦视图开关（spec ui/focus-view.md 场景 1、remote/remote-web.md 场景 25）：
+  // 这一页没有设置页，所以这条显示偏好的入口落在菜单里，与「切换电脑」「通知」同档。
+  // 只读写 localStorage —— 聊天视图自己订阅同一颗键，点完当场生效；菜单关掉再打开
+  // 时这一行的文案就是当前状态（组件随菜单开合重挂，初值重新从本地读）。
+  const [focusViewEnabled, setFocusViewEnabled] = useState(
+    readFocusViewPreference,
+  );
 
   // Roving keyboard model shared with the other custom dropdowns: Arrow keys
   // move, Enter/Space activate, Escape closes back to the trigger. The hook
@@ -223,6 +235,30 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
         ]
       : []),
     ...(push?.entry ? [push.entry] : []),
+    // 聚焦视图（spec remote/remote-web.md 场景 25）：纯显示偏好的开关，点一下
+    // 就把「工具活动收成一行摘要」打开或关掉，不发任何宿主命令。
+    ...(remotePage
+      ? [
+          {
+            id: focusViewEnabled
+              ? "more-menu-focus-view-off"
+              : "more-menu-focus-view-on",
+            run: () => {
+              const next = !focusViewEnabled;
+              setFocusViewEnabled(next);
+              writeFocusViewPreference(next);
+            },
+            content: (
+              <>
+                <QueueChevronIcon className="more-menu-item-icon" />
+                <span>
+                  {focusViewEnabled ? "关闭聚焦视图" : "开启聚焦视图"}
+                </span>
+              </>
+            ),
+          },
+        ]
+      : []),
     ...(remotePage
       ? []
       : [
