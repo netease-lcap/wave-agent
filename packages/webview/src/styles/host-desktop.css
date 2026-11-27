@@ -8514,3 +8514,46 @@
   outline-offset: 0;
   box-shadow: none;
 }
+
+/* ═══ 1120 评论：面板工具条图标键的禁用态（桌面端）══════════════════════════
+   设计师评论（点 `button.preview-pane-button`「后退」，锚路径的父级是工具条里的
+   `span` 包装）：「这两个按钮禁用时鼠标要显示禁用，hover不出现背景色」——
+   指预览面板工具条最左这对「后退 / 前进」（没有历史时原生 disabled）。
+   实测（改前，暗色 / 1440×900）：两只都是 24×24、`cursor: default`、`opacity: .4`，
+   静止底透明；但**强制 hover 后底变成 `rgba(255,255,255,.08)`、字形从
+   `rgb(154,158,165)` 提到 `#fff`**（浅色则是 `#EEF0F3` + `#1F2329`）——
+   灰着的键一亮一亮，正是 DesktopApp.css 那条 base 注释想防的情况。
+
+   根因是特异性竞争，不是漏写规则：base 里 `.preview-pane-button:disabled:hover
+   { background: transparent }`（0,3,0）被本文件第 2957 / 2964 行的主题 hover
+   `[data-host][data-theme] .preview-pane-button:hover`（0,4,0）盖掉，字形也跟着被提亮。
+   ⇒ 桌面端补一条同权重（0,4,0）写在文件末尾，同权重靠顺序取胜：悬停与静止逐值相同。
+
+   指针这里**刻意偏离** base 的 `default`（那句注释的理由是「没有历史 ≠ 暂时不能点」）：
+   设计师明确要求「鼠标要显示禁用」，按她的点名走；`not-allowed` 与同页
+   `.file-pane-status--deleted` 的禁用键、`.artifacts-header-icon-btn:disabled`
+   一致，全仓禁用语义也就此统一。只作用桌面宿主，插件端保持 base 的 default 指针。
+
+   ── 1127 设计师裁决（待裁项 ③）：「3 替换为 token，修改之前推的」──
+   1120 那版只把 hover 压平，禁用的「淡」仍靠 base 的 `opacity: .4` 整颗混色 ——
+   混色是把字形和图标按面板底重新合成，深色下等于把 `#9A9EA5` 又压暗一档，
+   既不可预期，也和契约给的禁用配方对不上。
+   第一稿照 references/dark-theme.md:56 的整条配方落了三件套（底 `--cc-fill-light`
+   + 字 `--cc-text-disabled` + 1px `--cc-border-lighter`），设计师当场改口：
+   「不是token三件套，不要边框线和背景色，只改图标颜色就好了」——
+   这对键是工具条里的裸图标，底色加描边会把它们变成一颗「按钮框」，
+   与同一行的其它图标键不同族（那三件套是给有文字的动作键用的）。
+   ⇒ 只取配方里的字一档：
+     字 --cc-text-disabled（浅 #BEC1C6 / 深 #62686B）
+     底保持透明、不加边、`opacity` 归 1（不再整颗混色）
+   净效果：盒仍是 24×24 的裸图标，只有图标本身变淡；悬停与静止逐值相同。
+   两主题共用一条规则：`[data-host][data-theme]` 的属性选择器计数与主题 hover
+   那条相同（0,4,0），靠写在文件末尾取胜；`:disabled` / `:disabled:hover` 两态
+   都点名，保证悬停时不亮。 */
+[data-host="desktop"][data-theme] .preview-pane-button:disabled,
+[data-host="desktop"][data-theme] .preview-pane-button:disabled:hover {
+  background: transparent;
+  color: var(--cc-text-disabled, #bec1c6);
+  opacity: 1;
+  cursor: not-allowed;
+}
