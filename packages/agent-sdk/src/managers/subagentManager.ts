@@ -28,6 +28,7 @@ import {
 } from "../utils/abortUtils.js";
 import { BackgroundTaskManager } from "./backgroundTaskManager.js";
 import { resolveTempDir } from "../utils/tempDir.js";
+import { getMaxSubagentSpawnDepth } from "../utils/subagentDepth.js";
 import { MessageQueue } from "./messageQueue.js";
 import { logger } from "../utils/globalLogger.js";
 import { taskNotificationToXml } from "../utils/notificationXml.js";
@@ -119,6 +120,8 @@ export interface SubagentWorktreeState {
 
 export interface SubagentInstance {
   subagentId: string;
+  /** 派发它的那个代理的实例 id；主代理直接派出时为 undefined。 */
+  parentAgentId?: string;
   configuration: SubagentConfiguration;
   aiManager: AIManager;
   messageManager: MessageManager;
@@ -528,6 +531,16 @@ export class SubagentManager {
        * {@link seedFromParentContext} for the isolation boundary.
        */
       inheritParentContext?: boolean;
+      /**
+       * 派发它的那个代理的实例 id（ToolContext.agentId）。主代理派出的不带，
+       * 子代理派的带上一层自己的 id——宿主的子代理清单据此挂到正确的父下。
+       */
+      parentAgentId?: string;
+      /**
+       * 派发它的那个代理的深度（ToolContext.agentSpawnDepth）。必须由调用方传：
+       * SubagentManager 只有主容器一份，从 this.container 读到的永远是 0。
+       */
+      parentSpawnDepth?: number;
     },
     runInBackground?: boolean,
     onUpdate?: () => void,
@@ -568,6 +581,21 @@ export class SubagentManager {
       const depth = this.container.get<number>("ModAgentDepth") ?? 0;
       subagentContainer.register("ModAgentDepth", depth + 1);
     }
+
+    // 嵌套委派的深度：主代理是 0，每层 +1（spec multi-agent/subagent
+    // 「子代理嵌套委派」）。Agent 工具与下面那组 deny 规则都读这两个槽。
+    const childSpawnDepth = (parameters.parentSpawnDepth ?? 0) + 1;
+    subagentContainer.register("AgentSpawnDepth", childSpawnDepth);
+    // 下一层委派要靠它把新实例记成「这个子代理的子任务」，而不是主代理的
+    // 直接子任务——SubagentManager 只有主容器一份，从容器反推不出父是谁。
+    subagentContainer.register("AgentId", subagentId);
+
+    // 到顶就不要再派。mod 派出的一律按深度 1，不随 WAVE_MAX_SUBAGENT_SPAWN_DEPTH
+    // 放开：那是第三方代码的指数级开进程风险，与内置委派不是一回事。
+    const canDelegateAtDepth =
+      !parameters.modSpawned &&
+      childSpawnDepth <
+        getMaxSubagentSpawnDepth(this.container.get<string>("SessionWorkdir"));
 
     // Worktree isolation must be wired before any manager is constructed: the
     // child container's "CurrentWorkdir" slot is what AIManager resolves at run time,
@@ -637,7 +665,10 @@ export class SubagentManager {
             parentPermissionManager?.getInstanceAllowedRules?.(),
           instanceDeniedRules: [
             ...(parentPermissionManager?.getInstanceDeniedRules?.() || []),
-            AGENT_TOOL_NAME, // Always deny Agent tool in subagents to prevent recursion
+            // 到顶的子代理拿不到 Agent 工具。deny 生效的位置是
+            // ToolManager.shouldEnableTool → isToolDenied，也就是**工具根本不
+            // 进清单**、模型看不到它；而不是看得到、调用了才被拒。
+            ...(canDelegateAtDepth ? [] : [AGENT_TOOL_NAME]),
             // Deny Task tools in subagents — they share the parent's TaskManager
             // and could mutate the main agent's task list
             TASK_CREATE_TOOL_NAME,
@@ -771,6 +802,7 @@ export class SubagentManager {
 
       const instance: SubagentInstance = {
         subagentId,
+        parentAgentId: parameters.parentAgentId,
         configuration,
         aiManager,
         messageManager,

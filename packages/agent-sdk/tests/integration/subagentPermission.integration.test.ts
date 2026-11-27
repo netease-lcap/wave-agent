@@ -262,7 +262,10 @@ describe("Subagent Permission Integration", () => {
 
     // Task tools must be in instanceDeniedRules
     const denied = subagentPermissionManager.getInstanceDeniedRules();
-    expect(denied).toContain("Agent");
+    // Agent is NOT denied at this level: the default spawn-depth limit is 3, so a
+    // subagent the main agent spawned may delegate once more（spec
+    // multi-agent/subagent「子代理嵌套委派」）。
+    expect(denied).not.toContain("Agent");
     expect(denied).toContain("TaskCreate");
     expect(denied).toContain("TaskGet");
     expect(denied).toContain("TaskUpdate");
@@ -276,6 +279,87 @@ describe("Subagent Permission Integration", () => {
     expect(registeredNames).not.toContain("TaskGet");
     expect(registeredNames).not.toContain("TaskUpdate");
     expect(registeredNames).not.toContain("TaskList");
+    // …while the Agent tool stays in the list for this level.
+    expect(registeredNames).toContain("Agent");
+  });
+
+  /**
+   * 深度上限（spec multi-agent/subagent「子代理嵌套委派」）：默认 3，主代理是 0。
+   * 到顶那一层的 Agent 工具**根本不进清单**——不是调用后被权限拒。
+   */
+  it("should hide the Agent tool once the spawn depth limit is reached", async () => {
+    const parentPermissionManager = new PermissionManager(container, {});
+    container.register("PermissionManager", parentPermissionManager);
+
+    const mockConfig: SubagentConfiguration = {
+      name: "test-agent",
+      description: "test",
+      systemPrompt: "test",
+      model: "inherit",
+      filePath: "/tmp/test.md",
+      scope: "project",
+      priority: 1,
+    };
+
+    // 父代理已经是深度 2 → 这一层是深度 3，正好到顶。
+    const instance = await subagentManager.createInstance(mockConfig, {
+      description: "deep task",
+      prompt: "deep prompt",
+      subagent_type: "test-agent",
+      parentSpawnDepth: 2,
+    });
+
+    const subagentContainer = (
+      instance.aiManager as unknown as { container: Container }
+    ).container;
+    const subagentPermissionManager =
+      subagentContainer.get<PermissionManager>("PermissionManager")!;
+    expect(subagentPermissionManager.getInstanceDeniedRules()).toContain(
+      "Agent",
+    );
+
+    const subagentToolManager =
+      subagentContainer.get<ToolManager>("ToolManager")!;
+    expect(subagentToolManager.getTools().map((t) => t.name)).not.toContain(
+      "Agent",
+    );
+  });
+
+  it("should read the spawn depth limit from WAVE_MAX_SUBAGENT_SPAWN_DEPTH", async () => {
+    vi.stubEnv("WAVE_MAX_SUBAGENT_SPAWN_DEPTH", "1");
+    try {
+      const parentPermissionManager = new PermissionManager(container, {});
+      container.register("PermissionManager", parentPermissionManager);
+
+      const mockConfig: SubagentConfiguration = {
+        name: "test-agent",
+        description: "test",
+        systemPrompt: "test",
+        model: "inherit",
+        filePath: "/tmp/test.md",
+        scope: "project",
+        priority: 1,
+      };
+
+      // 上限 1 → 主代理派出的第一层就已经到顶。
+      const instance = await subagentManager.createInstance(mockConfig, {
+        description: "flat task",
+        prompt: "flat prompt",
+        subagent_type: "test-agent",
+        parentSpawnDepth: 0,
+      });
+
+      const subagentContainer = (
+        instance.aiManager as unknown as { container: Container }
+      ).container;
+      const subagentPermissionManager =
+        subagentContainer.get<PermissionManager>("PermissionManager")!;
+      expect(subagentPermissionManager.getInstanceDeniedRules()).toContain(
+        "Agent",
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("should verify that skillTool passes allowedTools to subagentManager.createInstance", async () => {

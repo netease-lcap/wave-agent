@@ -916,6 +916,8 @@ class ToolManager {
         ? this.container.get<ModManager>("ModManager")
         : undefined,
       modAgentDepth: this.container.get<number>("ModAgentDepth") ?? 0,
+      agentSpawnDepth: this.container.get<number>("AgentSpawnDepth") ?? 0,
+      agentId: this.container.get<string>("AgentId"),
       sandboxManager: this.container.has("SandboxManager")
         ? this.container.get<
             import("../sandbox/SandboxManager.js").SandboxManager
