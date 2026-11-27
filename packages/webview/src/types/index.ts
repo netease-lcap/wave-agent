@@ -691,6 +691,9 @@ export interface DesktopWorkdirState {
 export interface MessageListProps {
   messages: Message[];
   queuedMessages?: QueuedMessage[];
+  /** 聚焦视图：把每一轮的工具活动收成一行摘要（spec ui/focus-view.md）。
+   * 纯显示层开关，消息与分页都不受影响。 */
+  focusView?: boolean;
   isStreaming?: boolean;
   isCompacting?: boolean;
   /** Compaction tail, accumulated from the per-frame deltas the host sends
@@ -1154,6 +1157,14 @@ export interface ChatHeaderProps {
    * Esc 回滚。三端共用头部，因此三端一起获得该入口。缺省时不提供就地编辑。
    */
   onRenameSession?: RenameSessionHandler;
+  /**
+   * 聚焦视图开关（spec ui/focus-view.md 场景 1）：纯显示偏好，由 ChatApp 持有。
+   * 挂在顶栏按钮行（与「更多 / 面板」同层）而不是输入框工具行 —— 后者已有附件、
+   * 终端、权限模式、发送，手机窄屏放不下（2026-11-27 用户反馈）。
+   * 不传 ⇒ 不渲染（空会话没有可折叠的轮）。
+   */
+  focusView?: boolean;
+  onToggleFocusView?: () => void;
 }
 
 // Matches wave-agent-sdk's QueuedMessage type

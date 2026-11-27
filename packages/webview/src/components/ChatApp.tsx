@@ -142,6 +142,10 @@ import { requestPreviewSource } from "../utils/previewSourceRequest";
 import { isMacHiddenTitlebar, isRemotePageHost } from "../utils/platform";
 import { useMediaQuery } from "../utils/useMediaQuery";
 import {
+  readFocusViewPreference,
+  writeFocusViewPreference,
+} from "../utils/displayPreferences";
+import {
   measureElementCells,
   measureViewportCells,
   modSurfaceMetrics,
@@ -712,6 +716,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const [branchesOverdueFor, setBranchesOverdueFor] = useState<string | null>(
     null,
   );
+  // 聚焦视图开关（spec ui/focus-view.md 场景 1）：纯显示偏好，按端落
+  // localStorage —— 不进 settings，就不用同步四端白名单与内置 settings 技能。
+  const [focusView, setFocusView] = useState(readFocusViewPreference);
+  const handleToggleFocusView = useCallback(() => {
+    setFocusView((prev) => {
+      const next = !prev;
+      writeFocusViewPreference(next);
+      return next;
+    });
+  }, []);
   // The pane's effective cwd: its own session workdir wins; a new-session pane
   // (state.workdir empty during spawn) falls back to the most recently selected
   // repo root from recents — never to the host-level workdir, which follows the
@@ -6710,6 +6724,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           key={state.currentSession?.id}
           ref={messageListRef}
           messages={state.messages}
+          focusView={focusView}
           queuedMessages={state.queuedMessages}
           isStreaming={state.isStreaming}
           isCompacting={state.isCompacting}
@@ -7370,6 +7385,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         </div>
       )}
       <ChatHeader
+        // 聚焦视图开关（spec ui/focus-view.md 场景 1）：顶栏而不是输入框工具行。
+        // 空会话没有可折叠的轮 ⇒ 不传，按钮不渲染（欢迎页保持原样）。
+        focusView={focusView}
+        onToggleFocusView={
+          hasVisibleMessages ? handleToggleFocusView : undefined
+        }
         leading={collapsedLeading(expandBtn)}
         macTrafficSpacer={macTrafficSpacer}
         windowDrag={windowDragHeader}
