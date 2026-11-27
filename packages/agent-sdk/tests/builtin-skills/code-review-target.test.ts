@@ -4,15 +4,26 @@ import {
   code_reviewSkill,
   resolveReviewTarget,
 } from "../../src/builtin/skills/code-review.js";
+import type { SkillPromptContext } from "../../src/builtin/skillHooks.js";
 import { AGENT_TOOL_NAME } from "../../src/constants/tools.js";
 
 const WITH_AGENT = {
   toolNames: [AGENT_TOOL_NAME, "Read"],
   availableSkills: [],
+  gitRemoteUrl: null,
+};
+// 远端托管方决定裸数字是 PR 还是 MR、`--comment` 走哪一段。
+const GITLAB_REMOTE = {
+  ...WITH_AGENT,
+  gitRemoteUrl: "git@gitlab.com:group/proj.git",
+};
+const BITBUCKET_REMOTE = {
+  ...WITH_AGENT,
+  gitRemoteUrl: "https://bitbucket.org/team/repo.git",
 };
 
-function prompt(raw: string): string {
-  return buildCodeReviewPrompt(raw, WITH_AGENT);
+function prompt(raw: string, ctx: SkillPromptContext = WITH_AGENT): string {
+  return buildCodeReviewPrompt(raw, ctx);
 }
 
 describe("resolveReviewTarget", () => {
@@ -57,6 +68,26 @@ describe("resolveReviewTarget", () => {
       name: "GitLab merge request group/sub/proj!4",
       command: "glab mr diff 4 -R group/sub/proj",
     });
+  });
+
+  // CC 的 `Uka()`（`0215-6730B-aX.js:206`）：裸数字看不出平台时按远端托管方判。
+  it("reads a bare number as a merge request on a GitLab remote", () => {
+    expect(resolveReviewTarget("12", "gitlab")).toEqual({
+      platform: "gitlab",
+      name: "GitLab merge request !12",
+      command: "glab mr diff 12",
+    });
+    // 显式写了 `!12` 的当然还是 MR，与远端无关
+    expect(resolveReviewTarget("!12", "github")?.platform).toBe("gitlab");
+  });
+
+  // CC 的 `gi()`（`1091-228433B-Vdr.js:1998`）：Bitbucket 上没有 gh 也没有 glab，
+  // 裸数字不注入目标，让模型照常评审当前分支。
+  it("injects nothing for a bare number on a Bitbucket remote", () => {
+    expect(resolveReviewTarget("12", "bitbucket")).toBeUndefined();
+    expect(buildCodeReviewPrompt("12", BITBUCKET_REMOTE)).not.toContain(
+      "## Review target",
+    );
   });
 
   it("leaves branch names, paths and unknown flags alone", () => {
@@ -108,6 +139,14 @@ describe("/code-review --comment", () => {
     expect(body).toContain("## Posting to GitLab (--comment)");
     expect(body).toContain('glab mr note 7 -m "<body>"');
     expect(body).not.toContain("## Posting to GitHub");
+  });
+
+  // CC 的 `Uka()`：没给目标串时看远端 —— GitLab 仓库里默认评审的会是个 MR。
+  it("picks the GitLab wording from the remote alone", () => {
+    const body = prompt("--comment", GITLAB_REMOTE);
+    expect(body).toContain("## Posting to GitLab (--comment)");
+    // 没有目标串就没得填 ref，命令得仍然能读
+    expect(body).toContain('glab mr note -m "<body>"');
   });
 
   it("says nothing when --comment was not passed", () => {

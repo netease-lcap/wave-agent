@@ -35,6 +35,7 @@ import type { ToolManager } from "./toolManager.js";
 import type { HookManager } from "./hookManager.js";
 import type { ModManager } from "./modManager.js";
 import { getBuiltinSkillsDir } from "../utils/configPaths.js";
+import { getRemoteUrl } from "../utils/gitUtils.js";
 import { BUILTIN_SKILL_HOOKS } from "../builtin/index.js";
 import type { SkillPromptContext } from "../builtin/skillHooks.js";
 import { isArtifactEnabled } from "../services/artifactAvailability.js";
@@ -1090,7 +1091,15 @@ export class SkillManager extends EventEmitter {
     const availableSkills = this.initialized
       ? this.getAvailableSkills().map((skill) => skill.name)
       : [];
-    return { toolNames, availableSkills };
+    // 正文要按托管方选段落，所以远端地址在这里读一次。读的是「会动」的那个会话
+    // 目录（`CurrentWorkdir`）：会话里 `cd` 到另一个仓库后，托管方就该跟着变。
+    const workdir =
+      this.container.get<string>("CurrentWorkdir") ?? this.workdir;
+    return {
+      toolNames,
+      availableSkills,
+      gitRemoteUrl: getRemoteUrl(workdir),
+    };
   }
 
   /**
