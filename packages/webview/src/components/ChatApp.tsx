@@ -716,6 +716,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const [branchesOverdueFor, setBranchesOverdueFor] = useState<string | null>(
     null,
   );
+  // 挂着的超时计时器 + 它服务的那个 workdir。查询**已经回包**这件事计时器自己
+  // 记不住：非 git 目录的分支查询几十毫秒就回 null（git 一进 cwd 就报错退出），
+  // 回执落到阈值之前，计时器还挂着，300ms 后照样把占位行点亮 —— 而回执早来过
+  // 了、不会再来第二次，那一行就永久停在「分支加载中…」（用户可见的报障：选一个
+  // 非 git 仓库的目录，输入框下方一直卡在分支加载中）。所以回执一到就把计时器
+  // 拆掉（spec desktop-sessions.md 场景 7/8：阈值内返回则不得出现加载占位）。
+  const branchQueryTimerRef = useRef<{
+    workdir: string;
+    timer: ReturnType<typeof setTimeout>;
+  } | null>(null);
   // 聚焦视图开关（spec ui/focus-view.md 场景 1）：纯显示偏好，按端落
   // localStorage —— 不进 settings，就不用同步四端白名单与内置 settings 技能。
   // 开关本体在设置页（全局设置 › 聊天显示，2026-11-27 用户拍板）：聊天界面不再
@@ -2168,6 +2178,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // late reply for a directory the user already switched away from must
         // not hide the placeholder of the in-flight query for the new one.
         setBranchesOverdueFor((cur) => (cur === message.workdir ? null : cur));
+        // 回执也可能落在阈值**之前**（本地非 git 目录：git 立刻报错），那时
+        // `branchesOverdueFor` 还是 null，上面这行什么也没清，计时器照样在
+        // 300ms 后点亮占位行、而不会再有一次回执把它收掉。所以这里还要拆掉
+        // 本次查询的计时器。
+        const pendingQuery = branchQueryTimerRef.current;
+        if (pendingQuery && pendingQuery.workdir === message.workdir) {
+          clearTimeout(pendingQuery.timer);
+          branchQueryTimerRef.current = null;
+        }
         break;
       case "desktopWorktreeCreated":
         // Worktree creation finished (success or failure) — clear the
@@ -3585,12 +3604,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       () => setBranchesOverdueFor(pickerWorkdir),
       BRANCH_LIST_LOADING_DELAY_MS,
     );
+    branchQueryTimerRef.current = { workdir: pickerWorkdir, timer };
     postToHost({
       command: "desktopListGitBranches",
       workdir: pickerWorkdir,
       paneId,
     });
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      if (branchQueryTimerRef.current?.timer === timer) {
+        branchQueryTimerRef.current = null;
+      }
+    };
   }, [pickerWorkdir, isDesktop, postToHost, paneId]);
 
   // 「原地守卫」：清空（`/clear`）或原地恢复替换当前会话会把正在跑的这一轮生成、
