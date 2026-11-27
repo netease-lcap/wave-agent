@@ -34,6 +34,14 @@ export const ARTIFACT_TOOL_NAME = "Artifact";
 export const ARTIFACT_COMMENTS_TOOL_NAME = "ArtifactComments";
 
 /**
+ * `/code-review` 把清单交给宿主渲染的专用工具（对齐 CC 2.1.332 的同名工具）。
+ *
+ * 模型侧只收到一句桩，明细全在 `data` 里——这样它没有可抄的清单，就不会在正文
+ * 里把同一批发现再列一遍（见 `tools/reportFindingsTool.ts`）。
+ */
+export const REPORT_FINDINGS_TOOL_NAME = "ReportFindings";
+
+/**
  * Delivers files the model just produced (reports, screenshots, build output)
  * to the user. The tool result carries a clickable path per file; clicking
  * reuses the existing text / image / OS-opener routes

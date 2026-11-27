@@ -24,6 +24,7 @@ import { sendUserFileTool } from "../tools/sendUserFileTool.js";
 import { artifactTool } from "../tools/artifactTool.js";
 import { replTool } from "../tools/replTool.js";
 import { artifactCommentsTool } from "../tools/artifactCommentsTool.js";
+import { reportFindingsTool } from "../tools/reportFindingsTool.js";
 import { pollTool } from "../tools/pollTool.js";
 import { isArtifactEnabled } from "../services/artifactAvailability.js";
 import { isKnowledgeBaseEnabled } from "../services/knowledgeBaseAvailability.js";
@@ -431,6 +432,7 @@ class ToolManager {
       cronListTool,
       webFetchTool,
       sendUserFileTool,
+      reportFindingsTool,
       enterWorktreeTool,
       exitWorktreeTool,
       workflowTool,
