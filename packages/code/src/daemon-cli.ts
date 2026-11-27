@@ -9,12 +9,26 @@
  * alive — there is no stdin to wait on.
  */
 
-import { ensureRuntimeDeps } from "wave-agent-sdk";
+import {
+  ensureRuntimeDeps,
+  installUnhandledRejectionClaim,
+  rethrowUnhandledRejection,
+} from "wave-agent-sdk";
 import { DaemonServer } from "./stdio/daemonServer.js";
 import { createRemoteControlSinkFactory } from "./remote/remoteControlSink.js";
 import { resolveDaemonSocket } from "./daemon/socketPath.js";
 
 export async function startDaemonCli(socketPath: string): Promise<void> {
+  // This process is resident and holds every session a client attached to, so a
+  // REPL script that leaves a promise unread must not take it — and them — down
+  // with it: those rejections are claimed and logged, everything else keeps the
+  // process's previous behavior (Node's default, i.e. exit 1 with the stack on
+  // stderr, which the launcher redirects into daemon.log).
+  installUnhandledRejectionClaim({
+    report: (note) => console.error(`[daemon] ${note}`),
+    crash: rethrowUnhandledRejection,
+  });
+
   // Install the on-demand runtime dependencies (image codec + ripgrep) before
   // serving (see cli.tsx). The daemon serves turns on a remote host, so the
   // install belongs here — and it must land before the first client attaches,

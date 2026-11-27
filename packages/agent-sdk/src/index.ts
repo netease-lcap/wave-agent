@@ -39,7 +39,13 @@ export * from "./constants/telemetry.js";
 export * from "./constants/tools.js";
 
 // 脚本自己留下的 rejection：宿主在当崩溃处理之前，先问 REPL 要不要认领。
-export { claimUnhandledRejection } from "./repl/replRejectionClaim.js";
+// 三个 CLI 进程宿主（--stdio / --daemon / 交互式 TUI）都在各自入口装上它。
+export {
+  claimUnhandledRejection,
+  installUnhandledRejectionClaim,
+  rethrowUnhandledRejection,
+  type RejectionClaimHost,
+} from "./repl/replRejectionClaim.js";
 
 // Export main agent
 export * from "./agent.js";

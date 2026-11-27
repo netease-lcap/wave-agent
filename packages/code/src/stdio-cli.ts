@@ -7,8 +7,8 @@
  */
 
 import {
-  claimUnhandledRejection,
   ensureRuntimeDeps,
+  installUnhandledRejectionClaim,
   setTelemetryStdoutProtected,
 } from "wave-agent-sdk";
 import { StdioServer } from "./stdio/stdioServer.js";
@@ -75,20 +75,16 @@ export async function startStdioCli(): Promise<void> {
   // fires `onStage` when something is actually missing).
   await ensureRuntimeDeps({ onStage: reportStartupStage });
   // Registered here (stdio mode only): the interactive CLI keeps Node's
-  // default behavior so the terminal shows the crash stack directly.
+  // default for an uncaught exception, so the terminal shows the stack itself.
   process.on("uncaughtException", (error) =>
     crashHandler("uncaughtException", error),
   );
   // A REPL script that leaves a promise unread is a script mistake, not a host
   // crash: its rejection is claimed here and logged, and the session survives.
-  // Anything else keeps the crash semantics below.
-  process.on("unhandledRejection", (reason, promise) => {
-    const claimed = claimUnhandledRejection(reason, promise);
-    if (claimed !== null) {
-      logger.warn(`[stdio] ${claimed}`);
-      return;
-    }
-    crashHandler("unhandledRejection", reason);
+  // Anything else keeps the crash semantics above.
+  installUnhandledRejectionClaim({
+    report: (note) => logger.warn(`[stdio] ${note}`),
+    crash: (reason) => crashHandler("unhandledRejection", reason),
   });
 
   const server = new StdioServer({

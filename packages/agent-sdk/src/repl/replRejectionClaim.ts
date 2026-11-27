@@ -14,7 +14,9 @@
  *   by {@link markStoppedError};
  * - any promise created inside a sandbox realm, recognised by its prototype.
  *
- * Same split as Claude Code's claim table and its `markStop` WeakSet.
+ * Same split as Claude Code's claim table and its `markStop` WeakSet. A host
+ * that holds sessions joins in by calling {@link installUnhandledRejectionClaim}
+ * at its own entry point.
  */
 
 /** Logged instead of crashing: a stop that script code threw and never observed. */
@@ -80,4 +82,58 @@ export function claimUnhandledRejection(
     return REPL_UNREAD_REJECTION_NOTE;
   }
   return null;
+}
+
+/**
+ * What a host must supply. Both are the host's own channels on purpose: this
+ * module knows which rejections the REPL owns, not where a line should be
+ * written or how a process should die.
+ */
+export interface RejectionClaimHost {
+  /** Where the "not exiting" note goes — the host's own log channel. */
+  report(note: string): void;
+  /** What the host did before this was installed — its own crash path. */
+  crash(reason: unknown): void;
+}
+
+/**
+ * A `crash` for a host whose own behavior is Node's default.
+ *
+ * Without a listener Node rethrows an unhandled rejection as an uncaught
+ * exception: the stack reaches stderr and the exit code is 1. Thrown from inside
+ * the listener below, it lands in exactly that path — so a host that never had
+ * its own crash handler keeps the one it had.
+ */
+export function rethrowUnhandledRejection(reason: unknown): never {
+  throw reason;
+}
+
+/**
+ * Install "ask the REPL first, crash only if it does not claim" on this
+ * process's `unhandledRejection`, and return the disposer that removes it.
+ *
+ * A listener has to exist for the claim to be consulted at all — and once one
+ * does, Node stops applying its default, so `crash` is the host's own
+ * reproduction of what it did before, never a no-op.
+ *
+ * A function rather than a module side effect: importing this file must not
+ * change any process's crash behavior. Every host opts in at its own entry
+ * point (`--stdio`, `--daemon`, the interactive TUI), and a test can install it
+ * without taking over the worker's semantics.
+ */
+export function installUnhandledRejectionClaim(
+  host: RejectionClaimHost,
+): () => void {
+  const listener: NodeJS.UnhandledRejectionListener = (reason, promise) => {
+    const note = claimUnhandledRejection(reason, promise);
+    if (note !== null) {
+      host.report(note);
+      return;
+    }
+    host.crash(reason);
+  };
+  process.on("unhandledRejection", listener);
+  return () => {
+    process.off("unhandledRejection", listener);
+  };
 }

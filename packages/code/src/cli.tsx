@@ -1,9 +1,13 @@
 import React from "react";
 import { render } from "ink";
-import { ensureRuntimeDeps } from "wave-agent-sdk";
+import {
+  ensureRuntimeDeps,
+  installUnhandledRejectionClaim,
+  rethrowUnhandledRejection,
+} from "wave-agent-sdk";
 import { App } from "./components/App.js";
 import { getPendingAgentDestroy } from "./contexts/useChat.js";
-import { cleanupLogs } from "./utils/logger.js";
+import { cleanupLogs, logger } from "./utils/logger.js";
 import { describeWorktreeSurvival, removeWorktree } from "./utils/worktree.js";
 import { BaseAppProps } from "./types.js";
 
@@ -60,6 +64,16 @@ export interface CliOptions extends BaseAppProps {
 }
 
 export async function startCli(options: CliOptions): Promise<void> {
+  // A REPL script that leaves a promise unread is a script mistake, not a reason
+  // to lose the TUI (and the turn that is still running in it): those
+  // rejections are claimed and logged to cli.log — stdout belongs to Ink — while
+  // anything else keeps the behavior this process had before, Node's default
+  // (the stack on the terminal, exit 1).
+  installUnhandledRejectionClaim({
+    report: (note) => logger.warn(`[cli] ${note}`),
+    crash: rethrowUnhandledRejection,
+  });
+
   // Install the on-demand runtime dependencies (image codec + ripgrep) before
   // the UI comes up. Waiting is the point: pasting an image or running a search
   // a second later must not race a download. Costs ~16ms once they are

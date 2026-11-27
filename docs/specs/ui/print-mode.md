@@ -117,7 +117,7 @@ order: 110
 8. **假设** 任一结构化格式，**当** 进程退出时，**则** stdout 上已排队的 JSON 全部写完（管道消费方不会读到截断的末行）。
 9. **假设** 任一结构化格式，**当** 有代码往 stdout 写了非 JSON 的行（依赖库的 `console.log`、遗漏的调试输出）时，**则** 该行被转到 stderr 并带标记前缀，stdout 上的 NDJSON 流不被打断。
 10. **假设** 不指定 `--output-format`（默认 `text`），**当** 一次运行正常结束时，**则** stdout 上只有**最后一条助手消息的文本**（不以换行结尾时补一个换行），除此之外没有任何字符。运行过程（推理、`💭 Reasoning:` / `📝 Response:` 标题、`🔧` 工具行）在任何一条流上都不打印；诊断（worktree 提示、告警、加载失败的失败原因）写 stderr。空响应时 stdout 上只有一个换行。
-11. **假设** text 模式，**当** 运行被判为失败（`is_error`：运行抛错，或错误块非空且主 agent 一句话正文都没产出）时，**则** stdout 上是 `Execution error`（逐字抄 Claude Code，**不带**结尾换行——它只在成功分支补换行），不输出任何模型文本，退出码 1；**stderr 一个字都不写**——对齐 Claude Code 的运行期失败（它只把 `Execution error` 写到 stdout，失败详情在 result 的 `errors` 里，不往 stderr 打）。
+11. **假设** text 模式，**当** 运行被判为失败（`is_error`：运行抛错，或错误块非空且主 agent 一句话正文都没产出）时，**则** stdout 上是 `Execution error`（逐字抄 Claude Code，**不带**结尾换行——它只在成功分支补换行），不输出任何模型文本，退出码 1；**stderr 一个字都不写**——对齐 Claude Code 的运行期失败（它只把 `Execution error` 写到 stdout，失败详情在 result 的 `errors` 里，不往 stderr 打）。这句管的是**失败本身**不往 stderr 写失败详情：若这次运行在此之前已经发出过「脚本遗留 rejection 被认领」那类告警（`[print] …`，属场景 10 的诊断族），它**不回收、也不因随后判失败再追加**——一次运行里脚本写错与运行失败可以同时发生，各写各的通道。
 12. **假设** text 或 json 模式，**当** 这次运行根本没起来（加载期失败：`-r` 给了非法或不存在的 session、恢复会话抛错、建 agent 抛错）时，**则** stdout 上**一个字节都不写**，stderr 上一行 `Error: <原因>`，退出码 1——对齐 Claude Code 的 `emitLoadError`（它的加载期失败只有 `stream-json` 往 stdout 写 error result，`text` / `json` 都是 stdout 静默 + 单行 stderr）。
 13. **假设** `--output-format stream-json`，**当** 同一条加载期失败发生时，**则** 照旧写一条 `subtype: "error_during_execution"`、`is_error: true` 的 result 事件收尾（stdout 必须保持可解析），stderr 不再重复一行原因。
 14. **假设** 交互模式（没有 `-p`）下给了 `--output-format`，**当** 解析参数时，**则** 报错并以退出码 1 结束（该选项只对打印模式有意义）。
@@ -129,6 +129,7 @@ order: 110
 - **主 agent 的响应为空怎么办？** stdout 上只有一个换行符；结构化模式下 `result` 为空字符串。
 - **打印模式还能看用量和耗时吗？** 能，但只在结构化输出里：`json` 的 `usage` / `model_usage` / `num_turns` / `duration_ms`，`stream-json` 末行的 `result` 同样带这些字段。没有独立的人读统计开关——与 Claude Code 一致，它也没有这个参数。
 - **运行期失败时 stderr 为什么是空的？** 对齐 Claude Code：`claude -p` 在运行起来之后失败只往 stdout 写 `Execution error`，stderr 一个字都不打（失败详情在 result 的 `errors` 里，要看就得用 `stream-json`）。我们的错误块走同一口径，`text` / `json` 的 stdout 与 stderr 都不出现它。
+- **`-p` 里那行 `[print] …` 为什么不干脆静默？** 它报的是「脚本留下的 rejection 被 REPL 认领了、进程没因此退出」，是**脚本自己写错**，不是这次运行失败；CI 里必须看得见，否则一个少写 `await` 的脚本会静默过关，人看到的只是一个看着正常的成功结果。所以 `-p` 允许这一行 stderr，代价是消费方**判成功要看退出码 + stdout，不要以「stderr 为空」为准**（场景 10 本就把「告警」列进 stderr 诊断族；场景 11 的「stderr 一个字都不写」只约束运行期失败本身）。Claude Code 在同一个认领机制里只 `logForDebugging` 写调试文件、stderr 保持静默——我们**有意扩展**到 stderr，而不是偏离它的 stdout / 退出码契约：多出来的只有这一行，结果与退出码一个字没变。认领的完整口径见 `core/repl-tool.md` 场景 19。
 - **text 模式的失败为什么分两种 stdout？** 因为参照物分两种：运行起来之后失败（`error_during_execution`）它写 `Execution error`，运行根本没起来（加载期失败）它一个字节都不写、原因走 stderr。消费方据此能区分「跑过但错了」与「没跑起来」。
 - **text 模式为什么不输出推理与工具行？** 对齐 Claude Code：它的 print 模式既不写 stdout 也不写 stderr，`text` 的语义就是「最终答案本身」。过程信息不是丢了而是**改成按需索取**：`--output-format stream-json` 会给出 `assistant/reasoning_delta`、`tool/start`、`tool/end` 事件，`json` 的 `tool_calls` 给出调用序列。运行期间终端上没有进度显示是这一口径的直接代价。
 - **text 模式也装 stdout 守卫吗？** 不装（与 Claude Code 一致）：最终答案本身就是纯文本，没有「像不像 JSON」可用来区分它与脏行。stdout 的纯净由写点纪律保证——CLI 侧日志写 logger 文件，代码里不往 stdout 打 `console.log`。
