@@ -52,8 +52,18 @@ describe("聚焦视图", () => {
     ];
   }
 
-  async function renderWith(messages: ReturnType<typeof conversation>) {
+  async function renderWith(
+    messages: ReturnType<typeof conversation>,
+    options: { streaming?: boolean } = {},
+  ) {
     const result = renderChatApp();
+    // 进行态由宿主的 startStreaming 说了算（真信号）。必须挂在 mount 之后：
+    // 消息监听是 ChatApp 挂载时装上的，先发就扔了。
+    if (options.streaming) {
+      act(() => {
+        sendCommand("startStreaming");
+      });
+    }
     act(() => {
       sendCommand("updateMessages", { messages });
     });
@@ -222,6 +232,51 @@ describe("聚焦视图", () => {
     );
   });
 
+  it("搜索命中落在轮尾那条消息的思考里时，装思考的那张卡也跟着展开", async () => {
+    // 一条消息可以横跨两行：思考进卡、答复留卡外。搜索命中落在思考上时，
+    // 若 reveal 只展开「消息坐标指向的那一行」（卡外的答复行），用户跳过去
+    // 看到的是答复、思考仍收着 —— 等于没定位到（spec 场景 8）。
+    window.localStorage.setItem(FOCUS_KEY, "1");
+    const tail = MockDataGenerator.createAssistantMessage("这一轮的答复", "a2");
+    tail.blocks = [
+      { type: "reasoning", content: "needle 在思考里", stage: "end" },
+      { type: "text", content: "这一轮的答复", stage: "end" },
+    ];
+    await renderWith([
+      MockDataGenerator.createUserMessage("第一问", "u1"),
+      MockDataGenerator.createAssistantMessageWithTool(
+        "",
+        "Read",
+        "{}",
+        "文件内容",
+      ),
+      tail,
+    ]);
+    await waitFor(() =>
+      expect(screen.getAllByTestId("focus-fold")).toHaveLength(1),
+    );
+    // 起始态：思考收在卡里，卡外只有答复。
+    expect(screen.queryByTestId("focus-fold-body")).toBeNull();
+    expect(transcriptText()).toContain("这一轮的答复");
+
+    act(() => {
+      fireEvent.keyDown(window, { key: "f", ctrlKey: true });
+    });
+    const input = await screen.findByTestId("transcript-find-input");
+    fireEvent.change(input, { target: { value: "needle" } });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("transcript-find-count")).toHaveTextContent(
+        "1/1",
+      ),
+    );
+    // 命中在卡内的思考里：这张卡必须自己展开，否则命中的那段文本根本没渲染。
+    await waitFor(() =>
+      expect(screen.getByTestId("focus-fold-body")).toBeInTheDocument(),
+    );
+    expect(document.querySelectorAll(".reasoning-block")).toHaveLength(1);
+  });
+
   it("进行中的一轮又长出新消息时，用户展开的卡不会被收回去", async () => {
     window.localStorage.setItem(FOCUS_KEY, "1");
     const first = [
@@ -229,7 +284,7 @@ describe("聚焦视图", () => {
       MockDataGenerator.createAssistantMessageWithTool("", "Read", "{}", "ok"),
       MockDataGenerator.createAssistantMessageWithTool("", "Write", "{}"),
     ];
-    await renderWith(first);
+    await renderWith(first, { streaming: true });
     await waitFor(() =>
       expect(screen.getAllByTestId("focus-fold")).toHaveLength(1),
     );
@@ -260,6 +315,49 @@ describe("聚焦视图", () => {
     const text = screen.getByTestId("focus-fold").textContent ?? "";
     expect(text).toMatch(/正在(执行|思考)/);
     expect(text).not.toContain("次工具调用");
+  });
+
+  it("中断的那一轮按已结束处理：宿主说停止后卡头切结算文案", async () => {
+    // 复刻用户按 Esc：宿主推 endStreaming，而 SDK 之后**不再补任何消息** ——
+    // 末条永远是「文本 + 已结束的失败工具块」。这一轮必须算结束（spec
+    // ui/focus-view.md「失败与中断」），卡头从「正在思考…」切回结算文案并补上
+    // 失败计数。#3159 只看末条形状，这一行会永久停在「正在思考…」+ 脉冲点。
+    window.localStorage.setItem(FOCUS_KEY, "1");
+    await renderWith(
+      [
+        MockDataGenerator.createUserMessage("第一问", "u1"),
+        MockDataGenerator.createAssistantMessageWithToolError(
+          "我先跑个命令",
+          "Read",
+          "{}",
+          "Request was aborted",
+        ),
+      ],
+      { streaming: true },
+    );
+
+    await waitFor(() =>
+      expect(screen.getAllByTestId("focus-fold")).toHaveLength(1),
+    );
+    // 跑着的时候是进行态，且不出计数。
+    expect(screen.getByTestId("focus-fold").textContent).toMatch(/正在/);
+    expect(screen.getByTestId("focus-fold").textContent).not.toContain(
+      "次工具调用",
+    );
+
+    act(() => {
+      sendCommand("endStreaming");
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("focus-fold").textContent).toContain(
+        "1 次工具调用",
+      ),
+    );
+    const text = screen.getByTestId("focus-fold").textContent ?? "";
+    expect(text).not.toMatch(/正在/);
+    // 中断时被 finalize 的那次工具调用按失败结算，计数要露出来。
+    expect(text).toContain("1 个失败");
   });
 
   it("设置页改完开关，已挂载的聊天视图立刻跟着折叠（不用刷新）", async () => {

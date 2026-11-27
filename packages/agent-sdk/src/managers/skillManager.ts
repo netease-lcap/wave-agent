@@ -31,9 +31,12 @@ import {
 } from "../utils/markdownParser.js";
 import { createBashCommandGate } from "../utils/bashCommandGate.js";
 import type { PermissionManager } from "./permissionManager.js";
+import type { ToolManager } from "./toolManager.js";
 import type { HookManager } from "./hookManager.js";
 import type { ModManager } from "./modManager.js";
 import { getBuiltinSkillsDir } from "../utils/configPaths.js";
+import { BUILTIN_SKILL_HOOKS } from "../builtin/index.js";
+import type { SkillPromptContext } from "../builtin/skillHooks.js";
 import { isArtifactEnabled } from "../services/artifactAvailability.js";
 
 import { Container } from "../utils/container.js";
@@ -1029,7 +1032,65 @@ export class SkillManager extends EventEmitter {
       pluginRoot: skill.pluginRoot,
     });
 
-    return skillPath + this.skillWarningNotice(skill) + mainContent;
+    // 段落各返回不带首尾空行的整块，这里统一用一个空行隔开——顺序即模型读到的
+    // 顺序：正文 → 参数解释 → 覆盖段（覆盖段最后，它盖的是正文里的做法）。
+    return [
+      skillPath + this.skillWarningNotice(skill) + mainContent,
+      this.renderBuiltinArgumentSummary(skill, argsString),
+      this.renderBuiltinPromptSections(skill, argsString),
+    ]
+      .filter((block) => block.trim())
+      .join("\n\n");
+  }
+
+  /**
+   * 内置技能自带的参数解析结果，接在正文之后交给模型。
+   *
+   * 只查内置来源：文件来源（用户 / 项目 / 插件）拿不到代码钩子，markdown 侧也不留
+   * 字段——见 `builtin/skillHooks.ts`。挂在这里而不是调用点，是为了让
+   * `renderSkillContent`（压缩后的重注入）渲染出与调用时同一份文本。
+   */
+  private renderBuiltinArgumentSummary(
+    skill: Skill,
+    argsString: string,
+  ): string {
+    if (skill.type !== "builtin") return "";
+    const summary = BUILTIN_SKILL_HOOKS[skill.name]?.describeArgs?.(argsString);
+    return summary ? `## Arguments\n\n${summary}` : "";
+  }
+
+  /**
+   * 按参数与运行时事实（这一轮有哪些工具、清单里有哪些技能）追加覆盖段。
+   *
+   * 与 `renderBuiltinArgumentSummary` 同一来源、同一条规矩：只查内置、接在正文之后、
+   * 不替换正文（正文是要给用户看的，见 `builtin/skillHooks.ts`）。放在参数块之后，
+   * 因为它优先级更高——它盖的是基线里已经写好的做法。
+   */
+  private renderBuiltinPromptSections(
+    skill: Skill,
+    argsString: string,
+  ): string {
+    if (skill.type !== "builtin") return "";
+    const buildPrompt = BUILTIN_SKILL_HOOKS[skill.name]?.buildPrompt;
+    if (!buildPrompt) return "";
+    return buildPrompt(argsString, this.skillPromptContext()).trim();
+  }
+
+  /**
+   * 交给技能钩子的运行时事实。
+   *
+   * 「这一轮有哪些工具」查的是当前注册表而不是配置：`enableArtifact` 这类开关就是靠
+   * 少注册一个工具生效的，配置里看不出来。
+   */
+  private skillPromptContext(): SkillPromptContext {
+    const toolManager = this.container.has("ToolManager")
+      ? this.container.get<ToolManager>("ToolManager")
+      : undefined;
+    const toolNames = toolManager?.getTools().map((tool) => tool.name) ?? [];
+    const availableSkills = this.initialized
+      ? this.getAvailableSkills().map((skill) => skill.name)
+      : [];
+    return { toolNames, availableSkills };
   }
 
   /**
