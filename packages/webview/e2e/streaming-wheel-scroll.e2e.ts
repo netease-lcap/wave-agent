@@ -436,6 +436,14 @@ async function setupNestedScroll(page: Page) {
 
   // 折叠态没有正文节点；本用例要的是一个自身可纵向滚动的区域，先手动展开。
   await page.locator(".reasoning-header").first().click();
+  // 展开是「就地长高」，会先解除钉底（ReasoningBlockView → ScrollHoldContext），
+  // 所以展开后列表**不再**贴底，得显式滚回去——本用例要从「跟随中」起手。
+  // 到底会重新钉上（useVirtualRows 的 scroll 分类）。
+  await page.waitForSelector(".reasoning-content");
+  await page.evaluate(() => {
+    const c = document.getElementById("messagesContainer") as HTMLElement;
+    c.scrollTop = c.scrollHeight;
+  });
   await page.waitForFunction(() => {
     const c = document.getElementById("messagesContainer") as HTMLElement;
     return c.scrollHeight - c.scrollTop - c.clientHeight <= 2;
