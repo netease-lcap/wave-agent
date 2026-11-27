@@ -142,6 +142,10 @@ import { requestPreviewSource } from "../utils/previewSourceRequest";
 import { isMacHiddenTitlebar, isRemotePageHost } from "../utils/platform";
 import { useMediaQuery } from "../utils/useMediaQuery";
 import {
+  readFocusViewPreference,
+  subscribeFocusViewPreference,
+} from "../utils/displayPreferences";
+import {
   measureElementCells,
   measureViewportCells,
   modSurfaceMetrics,
@@ -712,6 +716,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const [branchesOverdueFor, setBranchesOverdueFor] = useState<string | null>(
     null,
   );
+  // 聚焦视图开关（spec ui/focus-view.md 场景 1）：纯显示偏好，按端落
+  // localStorage —— 不进 settings，就不用同步四端白名单与内置 settings 技能。
+  // 开关本体在设置页（全局设置 › 聊天显示，2026-11-27 用户拍板）：聊天界面不再
+  // 挂按钮，所以这里只订阅偏好 —— 设置页改完，已挂载的聊天视图立刻跟着折叠。
+  const [focusView, setFocusView] = useState(readFocusViewPreference);
+  useEffect(() => subscribeFocusViewPreference(setFocusView), []);
   // The pane's effective cwd: its own session workdir wins; a new-session pane
   // (state.workdir empty during spawn) falls back to the most recently selected
   // repo root from recents — never to the host-level workdir, which follows the
@@ -6710,6 +6720,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           key={state.currentSession?.id}
           ref={messageListRef}
           messages={state.messages}
+          focusView={focusView}
           queuedMessages={state.queuedMessages}
           isStreaming={state.isStreaming}
           isCompacting={state.isCompacting}

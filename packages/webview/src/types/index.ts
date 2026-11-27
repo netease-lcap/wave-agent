@@ -691,6 +691,9 @@ export interface DesktopWorkdirState {
 export interface MessageListProps {
   messages: Message[];
   queuedMessages?: QueuedMessage[];
+  /** 聚焦视图：把每一轮的工具活动收成一行摘要（spec ui/focus-view.md）。
+   * 纯显示层开关，消息与分页都不受影响。 */
+  focusView?: boolean;
   isStreaming?: boolean;
   isCompacting?: boolean;
   /** Compaction tail, accumulated from the per-frame deltas the host sends

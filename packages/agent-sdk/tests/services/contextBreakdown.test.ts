@@ -143,15 +143,16 @@ describe("buildContextBreakdown", () => {
     expect(breakdown.categories.map((c) => c.id)).toEqual(["buffer", "free"]);
   });
 
-  test("ringPercent 用的是压缩阈值分母（用量环口径），不是窗口", () => {
+  test("只有一个百分比，分母是窗口（输入框旁的环用同一份）", () => {
     const breakdown = buildContextBreakdown({
       ...baseInput,
       measuredTokens: 89_500,
     });
 
-    // 89.5k / 179k ≈ 50%，若按窗口算只有 44.75%。
-    expect(breakdown.ringPercent).toBe(50);
+    // 89.5k / 200k ≈ 44.75% → 45。按压缩阈值（179k）算会得到 50%，环和报告
+    // 各显示一个数正是这次要消掉的（spec ui/context-usage-indicator.md 场景 4）。
     expect(breakdown.usedPercent).toBe(45);
+    expect(breakdown).not.toHaveProperty("ringPercent");
   });
 
   test("窗口未知时百分比归零、buffer 退化为 0，不出现 NaN", () => {
@@ -163,7 +164,6 @@ describe("buildContextBreakdown", () => {
 
     expect(breakdown.contextWindow).toBe(0);
     expect(breakdown.usedPercent).toBe(0);
-    expect(breakdown.ringPercent).toBe(0);
     expect(Number.isNaN(breakdown.usedPercent)).toBe(false);
   });
 

@@ -30,6 +30,8 @@ import {
   FIND_HIT_CURRENT_CLASS,
   wrapTextRange,
 } from "../utils/transcriptFind";
+import { buildFocusItems, type FocusItem } from "../utils/focusItems";
+import { FocusFoldRow } from "./FocusFoldRow";
 import { estimateRowHeight } from "../virtual/estimateRowHeight";
 import { useVirtualRows } from "../virtual/useVirtualRows";
 import type { MessageListProps } from "../types";
@@ -40,6 +42,15 @@ import "../styles/MessageList.css";
 // 从 content box 起算，两者的差就是这一列 10px 的 padding。内核对这个偏移一无所
 // 知，由这里告诉它（与 CSS 里 `.messages-column { padding: 10px }` 同源）。
 const COLUMN_PADDING_PX = 10;
+/**
+ * 聚焦视图折叠行的卡头高度（估高用，实测由 measureRow 校正）。与
+ * `estimateRowHeight` 的 BASE_HEIGHT 同档：一行 22px 文字 + 上下 5px 内边距。
+ */
+const FOCUS_FOLD_HEAD_HEIGHT_PX = 30;
+
+/** 布局项里的消息（折叠行没有单条消息，返回 undefined）。 */
+const messageOfItem = (item: FocusItem | undefined) =>
+  item && item.kind === "message" ? item.message : undefined;
 /**
  * 正文列宽 = 列宽 − 左右内边距（`.messages-column` 的 10px ×2）− 行内正文自己的
  * 横向内边距（共 12px，实测：390px 视口 ⇒ 正文 358px；800px 列 ⇒ 768px）。估算
@@ -101,6 +112,7 @@ export const MessageList = forwardRef<
   {
     messages,
     queuedMessages,
+    focusView,
     isStreaming,
     isCompacting,
     compactionStream,
@@ -213,10 +225,47 @@ export const MessageList = forwardRef<
     return out;
   }, [messages]);
 
-  const keys = useMemo(
-    () => visibleMessages.map((message) => message.id),
-    [visibleMessages],
+  /**
+   * 聚焦视图：可见消息先过一层布局项（spec ui/focus-view.md）。折叠只改这里 ——
+   * 虚拟列表的行、行高、时间线都跟着 items 走，消息本身一个字都不动。
+   */
+  const focusLayout = useMemo(
+    () => buildFocusItems(visibleMessages, !!focusView),
+    [visibleMessages, focusView],
   );
+  const items = focusLayout.items;
+  const itemsRef = useRef<FocusItem[]>(items);
+  itemsRef.current = items;
+  const rowIndexByMessageIndexRef = useRef<number[]>(
+    focusLayout.rowIndexByMessageIndex,
+  );
+  rowIndexByMessageIndexRef.current = focusLayout.rowIndexByMessageIndex;
+
+  /**
+   * 哪些折叠行当前展开着。只活在页面生命周期里：刷新、切会话、切走聚焦视图都
+   * 回到「全部收起」（spec ui/focus-view.md 场景 4）。
+   */
+  const [expandedFolds, setExpandedFolds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const toggleFold = useCallback((key: string) => {
+    setExpandedFolds((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
+  useEffect(() => {
+    if (!focusView) {
+      setExpandedFolds((prev) => (prev.size === 0 ? prev : new Set()));
+    }
+  }, [focusView]);
+
+  const keys = useMemo(() => items.map((item) => item.key), [items]);
 
   /**
    * 正文列的实际宽度。估算必须按它折行——同一个「62 字/行」的常量在手机列上会
@@ -264,8 +313,21 @@ export const MessageList = forwardRef<
   }, []);
 
   const estimate = useCallback(
-    (index: number) => estimateRowHeight(visibleMessages[index], { textWidth }),
-    [visibleMessages, textWidth],
+    (index: number) => {
+      const item = items[index];
+      if (!item) return 0;
+      if (item.kind === "message") {
+        return estimateRowHeight(item.message, { textWidth });
+      }
+      const head = FOCUS_FOLD_HEAD_HEIGHT_PX;
+      if (!expandedFolds.has(item.key)) return head;
+      let total = head;
+      for (const message of item.messages) {
+        total += estimateRowHeight(message, { textWidth });
+      }
+      return total;
+    },
+    [items, expandedFolds, textWidth],
   );
 
   /** 行的定位容器，手势期的视觉补偿写在这上面（见 useVirtualRows）。 */
@@ -296,10 +358,63 @@ export const MessageList = forwardRef<
     unpin,
   } = list;
 
+  /**
+   * 把「消息下标」落成「行下标」并滚到位。目标若在一个折叠行里（搜索命中、大纲
+   * 点到被收起来的一轮），先把那行展开 —— 否则点了一下只看到一张收起的卡
+   * （spec ui/focus-view.md 场景 8）。展开不改变行顶位置，所以同一帧里滚动不会偏。
+   */
+  const revealMessageRow = useCallback(
+    (messageIndex: number) => {
+      const rowIndex = rowIndexByMessageIndexRef.current[messageIndex];
+      if (rowIndex === undefined) return;
+      const item = itemsRef.current[rowIndex];
+      if (item?.kind === "fold") {
+        setExpandedFolds((prev) =>
+          prev.has(item.key) ? prev : new Set(prev).add(item.key),
+        );
+      }
+      scrollToIndex(rowIndex, "center", "auto");
+    },
+    [scrollToIndex],
+  );
+
   // Refs mirroring the current data for stable callbacks (event handlers and
   // the imperative handle must not capture a stale render).
   const visibleMessagesRef = useRef(visibleMessages);
   visibleMessagesRef.current = visibleMessages;
+
+  /** 一行消息的渲染。折叠卡展开时也走这里 —— 卡内不做第二套渲染逻辑。 */
+  const renderMessageNode = useCallback(
+    (message: MessageType, isLastMessage: boolean) => (
+      <Message
+        key={message.id}
+        message={message}
+        vscode={vscode}
+        onRewindToMessage={onRewindToMessage}
+        onBackgroundCurrentTask={onBackgroundCurrentTask}
+        onOpenBackgroundTask={onOpenBackgroundTask}
+        hasBackgroundTask={hasBackgroundTask}
+        isLastMessage={isLastMessage}
+        workdir={workdir}
+        onOpenPreview={onOpenPreview}
+        onOpenFile={onOpenFile}
+        onOpenFileExternal={onOpenFileExternal}
+        modNotices={modNotices}
+      />
+    ),
+    [
+      vscode,
+      onRewindToMessage,
+      onBackgroundCurrentTask,
+      onOpenBackgroundTask,
+      hasBackgroundTask,
+      workdir,
+      onOpenPreview,
+      onOpenFile,
+      onOpenFileExternal,
+      modNotices,
+    ],
+  );
 
   /**
    * 滚动容器的可视高度，只给大纲算刻度间距与垂直居中位置。内核自己有视口
@@ -419,7 +534,7 @@ export const MessageList = forwardRef<
     // 与点吸顶条同一条路：先松开钉底再落位，否则下一个流式 chunk 立刻把视口
     // 拽回底部，命中还没看清就被搬走。
     unpin();
-    scrollToIndex(index, "center", "auto");
+    revealMessageRow(index);
   }, [
     find.open,
     find.query,
@@ -428,7 +543,7 @@ export const MessageList = forwardRef<
     find.regex,
     findCurrentIndex,
     findCurrentHit,
-    scrollToIndex,
+    revealMessageRow,
     unpin,
   ]);
 
@@ -578,19 +693,27 @@ export const MessageList = forwardRef<
       runStart = -1;
       dots = 0;
     };
-    visibleMessages.forEach((m, i) => {
-      if (m.role === "assistant") {
+    items.forEach((item, i) => {
+      if (item.kind === "fold") {
+        // 折叠行本身就是这一轮活动的圆点：它替代了卡内那些块的圆点，所以这里
+        // 固定算一个，展开与否都只算一个。
         if (runStart === -1) runStart = i;
-        dots += timelineDotCount(m);
+        dots += 1;
+        return;
+      }
+      const message = item.message;
+      if (message.role === "assistant") {
+        if (runStart === -1) runStart = i;
+        dots += timelineDotCount(message);
       } else {
         flushRun(i - 1);
         classes[i] = "";
         paddings[i] = 14;
       }
     });
-    flushRun(visibleMessages.length - 1);
+    flushRun(items.length - 1);
     return { classes, paddings };
-  }, [visibleMessages]);
+  }, [items]);
 
   /**
    * 大纲的刻度数据（spec ui/transcript-outline.md）：一条**带文本**的用户消息
@@ -701,7 +824,7 @@ export const MessageList = forwardRef<
     // message at or before the item currently at the top of the viewport (which
     // is itself a candidate only when its top edge is strictly above the fold).
     const at = indexAtOffset(scrollTop);
-    const rows = visibleMessagesRef.current;
+    const rows = itemsRef.current;
 
     // ── 大纲的当前项（spec 场景 4）：视口内**可见**的最靠上的用户消息 ──
     // 从「含视口顶那一行」往下扫，碰到的第一条带文本用户消息就是答案：它的顶部
@@ -723,10 +846,10 @@ export const MessageList = forwardRef<
       if (atBottom > scrollTop) {
         for (let i = at; i < rows.length; i++) {
           if (rowStart(i) >= bottomEdge) break;
-          const row = rows[i];
-          if (row.role !== "user") continue;
-          if (row.id && stickyAnchorText(row)) {
-            visibleQuestionId = row.id;
+          const message = messageOfItem(rows[i]);
+          if (!message || message.role !== "user") continue;
+          if (message.id && stickyAnchorText(message)) {
+            visibleQuestionId = message.id;
             break;
           }
         }
@@ -740,12 +863,12 @@ export const MessageList = forwardRef<
     let candidate = -1;
     let candidateText = "";
     while (idx >= 0) {
-      const row = rows[idx];
-      if (row.role === "user") {
+      const message = messageOfItem(rows[idx]);
+      if (message?.role === "user") {
         // Skip text-less user messages (task notifications): they cannot
         // render a sticky label, so keep scanning upward for an earlier
         // text-bearing user message instead of clearing the bar.
-        const text = stickyAnchorText(row);
+        const text = stickyAnchorText(message);
         if (text) {
           candidate = idx;
           candidateText = text;
@@ -754,7 +877,9 @@ export const MessageList = forwardRef<
       }
       idx--;
     }
-    if (candidate < 0 || !rows[candidate].id) {
+    const candidateMessage =
+      candidate >= 0 ? messageOfItem(rows[candidate]) : undefined;
+    if (!candidateMessage?.id) {
       // 会话最顶上（还没有任何用户消息滚到视口顶之上，如首屏）：没有可兜底的那一条，
       // 大纲仍只认「视口里看得见的那一轮」——两者都没有才不标任何刻度。
       setOutlineActive(visibleQuestionId);
@@ -766,9 +891,9 @@ export const MessageList = forwardRef<
     // 「可见的用户消息在视口下半部、上面还压着上一轮的尾巴」这种位置。回落在这里
     // 一次算完，而不是另开一条判据 —— 1127 之前这里直接给 null，读者一进长回答
     // 整列刻度就失去选中态，而吸顶条明明还写着那一轮的问题。
-    setOutlineActive(visibleQuestionId ?? rows[candidate].id);
+    setOutlineActive(visibleQuestionId ?? candidateMessage.id);
     setSticky({
-      id: rows[candidate].id,
+      id: candidateMessage.id,
       text: candidateText,
       index: candidate,
     });
@@ -793,7 +918,7 @@ export const MessageList = forwardRef<
     // 手势期画布带视觉偏移，屏幕上真正的视口顶是 `scrollTop - 偏移`（同 computeSticky）。
     const top = container.scrollTop - visualOffset();
     const bottom = top + container.clientHeight;
-    const rows = visibleMessagesRef.current;
+    const rows = itemsRef.current;
     const ids: string[] = [];
     // 跨在视口顶上的那一行也要算：`indexAtOffset` 给的是「第一个顶边 >= top 的
     // 行」，它的前一行往往正被从中间切开、有一半露在视口里。
@@ -803,15 +928,15 @@ export const MessageList = forwardRef<
       const start = rowStart(i);
       // 偏移表是单调的：这一行的顶已经落到视口底之下，后面的都不用看了。
       if (start >= bottom) break;
-      const row = rows[i];
-      if (row.role !== "user") continue;
+      const message = messageOfItem(rows[i]);
+      if (!message || message.role !== "user") continue;
       // 行底 = 下一行的起点；末行没有下一行，按「延伸到内容末尾」处理。
       const end =
         i + 1 < rows.length ? rowStart(i + 1) : Number.POSITIVE_INFINITY;
       if (end <= top) continue;
-      if (!row.id) continue;
-      if (!stickyAnchorText(row)) continue;
-      ids.push(row.id);
+      if (!message.id) continue;
+      if (!stickyAnchorText(message)) continue;
+      ids.push(message.id);
     }
     // 值没变就别 setState：本函数挂在滚动与内容增长两处，逐次新建数组会让
     // 整棵树跟着重渲染（流式期尤其贵）。
@@ -852,7 +977,7 @@ export const MessageList = forwardRef<
       // back to the recorded bottom, cancelling the jump (measured: the click
       // moved 71px and then snapped back). An instant jump lands in one write,
       // so there is nothing left to cancel.
-      scrollToIndex(index, "center", "auto");
+      revealMessageRow(index);
       // 点击的刻度必须自己变成高亮（spec 场景 6）：落位在视口中间之后，上一轮的
       // 问题往往仍在视口里，按可见判据算出来的还是上一轮 —— 那正是「点了却亮上
       // 一条」。所以这里临时钉住它，直到用户再次滚动（松开判据在 scroll 监听里）。
@@ -861,7 +986,7 @@ export const MessageList = forwardRef<
       pinnedOutlineRef.current = { id, scrollTop: container.scrollTop };
       setPinnedOutlineId(id);
     },
-    [containerRef, scrollToIndex, unpin, onJumpToMessage],
+    [containerRef, revealMessageRow, unpin, onJumpToMessage],
   );
 
   /**
@@ -1277,14 +1402,16 @@ export const MessageList = forwardRef<
               pointer-events）。 */}
           <div className="virtual-canvas" ref={canvasRef}>
             {rows.map((row) => {
-              const message = visibleMessages[row.index];
+              const item: FocusItem | undefined = items[row.index];
               const runClass = timelineRuns.classes[row.index];
               return (
                 <div
                   key={row.key}
                   data-index={row.index}
                   data-virtual-key={row.key}
-                  data-measured-message-id={message.id}
+                  data-measured-message-id={
+                    item?.kind === "message" ? item.message.id : undefined
+                  }
                   ref={measureRow}
                   className={`virtual-row${runClass ? ` ${runClass}` : ""}`}
                   style={{
@@ -1292,21 +1419,21 @@ export const MessageList = forwardRef<
                     paddingBottom: timelineRuns.paddings[row.index],
                   }}
                 >
-                  <Message
-                    key={message.id}
-                    message={message}
-                    vscode={vscode}
-                    onRewindToMessage={onRewindToMessage}
-                    onBackgroundCurrentTask={onBackgroundCurrentTask}
-                    onOpenBackgroundTask={onOpenBackgroundTask}
-                    hasBackgroundTask={hasBackgroundTask}
-                    isLastMessage={row.index === visibleMessages.length - 1}
-                    workdir={workdir}
-                    onOpenPreview={onOpenPreview}
-                    onOpenFile={onOpenFile}
-                    onOpenFileExternal={onOpenFileExternal}
-                    modNotices={modNotices}
-                  />
+                  {item?.kind === "fold" ? (
+                    <FocusFoldRow
+                      item={item}
+                      expanded={expandedFolds.has(item.key)}
+                      onToggle={() => toggleFold(item.key)}
+                      renderMessage={(foldMessage) =>
+                        renderMessageNode(foldMessage, false)
+                      }
+                    />
+                  ) : item?.kind === "message" ? (
+                    renderMessageNode(
+                      item.message,
+                      item.messageIndex === visibleMessages.length - 1,
+                    )
+                  ) : null}
                 </div>
               );
             })}

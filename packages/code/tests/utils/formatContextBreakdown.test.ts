@@ -20,7 +20,6 @@ function makeBreakdown(
     usedTokens: 60_000,
     measured: true,
     usedPercent: 30,
-    ringPercent: 34,
     categories: [
       {
         id: "systemPrompt",
@@ -168,7 +167,6 @@ describe("formatContextBreakdown", () => {
       makeBreakdown({
         contextWindow: 0,
         usedPercent: 0,
-        ringPercent: 0,
         categories: [
           { id: "free", kind: "free", name: "Free space", tokens: 0 },
         ],

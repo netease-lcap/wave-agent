@@ -1,0 +1,112 @@
+/* Focus 视图：一轮活动收成的那一行（docs/specs/ui/focus-view.md）。
+   视觉与时间线的 .timeline-row 同族：行首一个圆点，收起时只有卡头。 */
+.focus-fold {
+  display: flex;
+  flex-direction: column;
+}
+
+.focus-fold-head {
+  display: flex;
+  align-items: center;
+  /* 与时间线行同一档几何：圆点 6px、圆点与文字间距 6px（.timeline-row 的
+     padding-left: 12px 减去 6px 圆点），两张卡与卡外答复的圆点在一条竖线上。 */
+  gap: 6px;
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 8px 4px 0;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: var(--vscode-foreground);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.focus-fold-head:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.12));
+}
+
+.focus-fold-head:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #1676d2);
+  outline-offset: 1px;
+}
+
+.focus-fold-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  /* 颜色由组件按这一轮的状态给（--dot-color，与 .timeline-row::before 同源）。 */
+  background: var(--dot-color, var(--vscode-descriptionForeground, #8a8a86));
+}
+
+.focus-fold.is-live .focus-fold-dot {
+  animation: focus-fold-pulse 1.6s ease-in-out infinite;
+}
+
+/* 失败过的轮：圆点保持原色，靠文案里的失败计数表达（与时间线圆点语义一致，
+   不给折叠行引入新的颜色档）。 */
+@keyframes focus-fold-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .focus-fold.is-live .focus-fold-dot {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+.focus-fold-label {
+  /* 不撑满整行：次数与箭头紧跟在文案后面，读起来是「一段被收起来的过程」，
+     而不是一行两端对齐的表格。长文案在这条规则下缩成省略号（min-width: 0）。 */
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--vscode-descriptionForeground, #6a6a66);
+}
+
+.focus-fold.is-live .focus-fold-label {
+  color: var(--vscode-foreground);
+}
+
+.focus-fold-meta {
+  flex: none;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #8a8a86);
+  opacity: 0.8;
+}
+
+.focus-fold-chevron {
+  flex: none;
+  width: 0;
+  height: 0;
+  margin: 0 2px 0 4px;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid var(--vscode-descriptionForeground, #8a8a86);
+  transition: transform 120ms ease;
+}
+
+.focus-fold.is-open .focus-fold-chevron {
+  transform: rotate(90deg);
+}
+
+.focus-fold-body {
+  display: flex;
+  flex-direction: column;
+  /* 卡内行左侧留出一点缩进，让「这些是被折叠的细节」看得见。 */
+  padding-left: 15px;
+}

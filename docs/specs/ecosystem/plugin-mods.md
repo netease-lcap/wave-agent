@@ -956,7 +956,7 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 | ---------------------- | ----------------------------------------------------------------- |
 | `context.tokens`       | 上下文占用：最近一次带 usage 的响应报出的总数                     |
 | `context.window`       | 当前模型的上下文窗口                                              |
-| `context.percent`      | 用量环那个百分比（0–100 整数）                                    |
+| `context.percent`      | 压缩压力百分比（0–100 整数；分母是自动压缩阈值，见下）            |
 | `tokens.prompt`        | 整场会话累计的 prompt token（**含**缓存命中的那部分）             |
 | `tokens.completion`    | 累计的 completion token                                           |
 | `tokens.cacheRead`     | 累计的缓存命中 token                                              |
@@ -965,7 +965,7 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 | `rateLimits`           | 额度窗口数组：有企业端额度响应头时是真实窗口，没有时是 `[]`，见下 |
 | `model`                | 当前模型名，没配时字段缺省                                        |
 
-- **`percent` 的分母是自动压缩阈值，不是 `window`**：与输入框旁那个用量环同一条规则（`getAutoCompactThreshold`），环画到 100% 正是压缩要发生的地方；换成 `tokens / window` 会让环永远到不了头，两个数字也会对不上。
+- **`percent` 的分母是自动压缩阈值，不是 `window`**（`getAutoCompactThreshold`，画到 100% 正是压缩要发生的地方）。**它与图形界面输入框旁那个用量环口径不同**：2026-11-26 起环与 `/context` 浮层统一用窗口分母（同一个会话只给用户看一个百分比，见 [message-compact.md](../core/message-compact.md)「用量百分比的分母按端分工」），所以 mod 想把「窗口用了多少」画成进度条时请自己算 `tokens / window`，别把 `percent` 当成环的读数；想报「离压缩还有多远」才用它。CLI 输入框上方那一格是同一分母的**反向**读数（`N% until auto-compact`，`remainingPercentOf`），所以 `100 - percent` 就是那一行此刻的数字。
 - **字段名按我们自己的口径写死**：我们上游的 `prompt_tokens` 已经包含缓存命中，Claude Code 的 `input_tokens` 不包含，两者不能互换，所以这里不叫 `input`/`output`。
 - **现取现算、不订阅**：每次调用返回一份新快照，mod 改它伤不到会话；要看它变化就在 `$.clock` 的节拍里或 `ui.render` 时再问一次。也不产生一次渲染请求——mod 拿到数字后自己决定要不要 `invalidate`。要「变化时被叫醒」用下面的 `session.measure`。
 - **`rateLimits` 是真实读数，没有可报的窗口时才是 `[]`**：形状 `{ kind, percentUsed, resetsAt? }[]`，源是模型响应上的企业端额度头（`x-codechat-quota-*`，成功与错误响应都带）。几点口径写死在这里：
