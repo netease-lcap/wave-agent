@@ -4,6 +4,7 @@ import {
   GLOB_TOOL_NAME,
   GREP_TOOL_NAME,
   READ_TOOL_NAME,
+  REPORT_FINDINGS_TOOL_NAME,
 } from "../../constants/tools.js";
 import { parseCommandArguments } from "../../utils/commandArgumentParser.js";
 import type { BuiltinSkillHook, SkillPromptContext } from "../skillHooks.js";
@@ -47,10 +48,10 @@ this skill instead of re-reading \`$ARGUMENTS\`. If that block carries a
 warning, tell the user in one short line as you begin.
 
 The tiers:
-- **low**: Launch 2 agents, confidence threshold 90 (only near-certain findings)
-- **medium** (default): Launch 3 agents, confidence threshold 80
-- **high**: Launch 4 agents, confidence threshold 70
-- **max**: Launch 5 agents, confidence threshold 60 (broader coverage, more noise)
+- **low**: Launch 2 agents (only near-certain findings)
+- **medium** (default): Launch 3 agents
+- **high**: Launch 4 agents
+- **max**: Launch 5 agents (broader coverage, more noise)
 
 ## Phase 3: Launch Review Agents in Parallel
 
@@ -76,21 +77,25 @@ Search for existing utilities and helpers that could replace newly written code.
 
 Review the changes for efficiency: unnecessary work, missed concurrency, hot-path bloat, recurring no-op updates, unnecessary existence checks, memory leaks, and overly broad operations.
 
-## Phase 4: Confidence Scoring
+## Phase 4: Verify Each Candidate
 
-For each issue found in Phase 3, launch a parallel ${AGENT_TOOL_NAME} to independently score the issue. The scoring agent receives the PR diff, the issue description, and the list of AGENTS.md files (if any). It returns a confidence score from 0-100.
+Dedup candidates that point at the same line or mechanism, keeping the one with
+the most concrete failure scenario. For each remaining candidate, launch one
+${AGENT_TOOL_NAME} as a verifier: give it the diff, the relevant file(s), and the
+candidate, and have it return exactly one of:
 
-Give the scoring agent this rubric verbatim:
+- **CONFIRMED** — can name the inputs/state that trigger it and the wrong
+  output or crash. Quote the line.
+- **PLAUSIBLE** — mechanism is real, trigger is uncertain (timing, env,
+  config). State what would confirm it.
+- **REFUTED** — factually wrong (code doesn't say that) or guarded elsewhere.
+  Quote the line that proves it.
 
-- **0**: Not confident at all. This is a false positive that doesn't stand up to light scrutiny, or is a pre-existing issue.
-- **25**: Somewhat confident. This might be a real issue, but may also be a false positive. The agent wasn't able to verify that it's a real issue. If the issue is stylistic, it is one that was not explicitly called out in the relevant AGENTS.md.
-- **50**: Moderately confident. The agent was able to verify this is a real issue, but it might be a nitpick or not happen very often in practice. Relative to the rest of the PR, it's not very important.
-- **75**: Highly confident. The agent double checked the issue, and verified that it is very likely it is a real issue that will be hit in practice. The existing approach in the PR is insufficient. The issue is very important and will directly impact the code's functionality, or it is an issue that is directly mentioned in the relevant AGENTS.md.
-- **100**: Absolutely certain. The agent double checked the issue, and confirmed that it is definitely a real issue, that will happen frequently in practice. The evidence directly confirms this.
+Keep candidates where the vote is CONFIRMED or PLAUSIBLE.
 
 ## Phase 5: Filter and Deliver
 
-1. Filter out any issues with a score below the effort level's threshold.
+1. Drop the candidates the verifiers refuted. Keep CONFIRMED and PLAUSIBLE.
 2. If no issues remain, say so and stop — do not post anything.
 3. Otherwise, detect the platform and CLI availability:
 
@@ -289,9 +294,19 @@ ignored.
 }
 
 /**
- * `--fix` 段落，逐字取自 CC 2.1.332 的 `wi()`（`--fix` 为真、走 ReportFindings 的分支）。
+ * `--fix` 段落，逐字取自 CC 2.1.332 的 `wi()`（`1091-228433B-Vdr.js:2064`）。
+ *
+ * `wi(e, o)` 的 `e` 是「本次会话有清单工具」：有工具时结尾要求把同一批发现带
+ * `outcome` 重报一遍（界面靠它更新每条的状态），没有工具时只要一段文字小结。
  */
-const FIX_SECTION = `
+function renderFixSection(hasFindingsTool: boolean): string {
+  const closing = hasFindingsTool
+    ? `Then call the ${REPORT_FINDINGS_TOOL_NAME} tool again with the same findings,
+each carrying an \`outcome\`: \`fixed\`, \`no_change_needed\` (the finding was wrong
+or already handled), or \`skipped\` (real but not applied). Do not repeat the
+findings as text; after the call, give one line per skipped finding saying why.`
+    : `Finish with a brief summary of what was fixed and what was skipped.`;
+  return `
 ## Applying fixes (--fix)
 
 The \`--fix\` flag was passed. After producing the findings list, apply the
@@ -299,8 +314,45 @@ findings to the working tree instead of stopping at the report: fix each one
 directly — correctness bugs and reuse/simplification/efficiency cleanups alike.
 Skip any finding whose fix would change intended behavior, require changes well
 outside the reviewed diff, or that you judge to be a false positive — note the
-skip rather than arguing with it. Finish with a brief summary of what was fixed
-and what was skipped.
+skip rather than arguing with it. ${closing}
+`;
+}
+
+/**
+ * 有清单工具时的输出契约，取自 CC 2.1.332 的 `wo()` 与 `pi` / `mi`（`1091-228433B-Vdr.js:1305` / `:1976`）。
+ *
+ * 它覆盖 Phase 5 那段人类可读格式：CC 在这里明说不许再把发现复述成文字，
+ * 并把清单本身当作报告。它依赖 `verdict` 与 `outcome` 两个字段，所以只在会话
+ * 真有清单工具时才加；CC 的 `severity` 变体我方不带，那段没抄。
+ */
+const OUTPUT_CONTRACT_TOOL = `
+## Output
+
+Call the ${REPORT_FINDINGS_TOOL_NAME} tool once to report this review's results
+with \`{level, findings}\`. \`findings\` is every finding that survives, ranked
+most-severe first; each entry has \`file\`, \`line\`, \`summary\`,
+\`short_summary\` — the claim compressed to ≤60 characters, no rationale or
+consequence clause — \`failure_scenario\`, \`category\` — a short kebab-case slug
+for the angle that produced it (\`correctness\`, \`simplification\`,
+\`efficiency\`, \`reuse\`, \`altitude\`, \`conventions\`, or a more specific slug
+like \`test-coverage\` when one fits better) — and \`verdict\`, the vote the
+Phase 4 verifier returned. If nothing survives verification, call it with an
+empty array. Do not also print the findings as text: the tool call is the
+report.
+
+## If findings are fixed later
+
+Whenever reported findings get fixed later in this session — the user asks you
+to fix them, or later work fixes them incidentally — call the
+${REPORT_FINDINGS_TOOL_NAME} tool again with the same findings, each carrying an
+\`outcome\`: \`fixed\`, \`no_change_needed\` (the finding was wrong or already
+handled), or \`skipped\` (real but not applied). Do not repeat the findings as
+text. Make that call immediately after the fixes land, before any prose
+summary: the interface's per-finding status updates only from it, and without
+it the findings stay marked unresolved.
+
+After the call, give one line per finding with its outcome: this session can
+also be read from a client that does not show the tool call.
 `;
 
 /**
@@ -318,8 +370,9 @@ review agents. Do that work yourself, in this same context:
 
 - Walk the angles listed under Phase 3 one after another instead of in parallel.
   Do not skip any angle that applies at your effort level.
-- Do the Phase 4 scoring yourself: re-read the diff for each issue and state the
-  confidence score it would have received, with the evidence that sets it.
+- Do the Phase 4 verification yourself: re-read the diff for each candidate and
+  state the verdict it would have received (CONFIRMED, PLAUSIBLE or REFUTED),
+  with the line that sets it.
 `;
 
 /**
@@ -442,6 +495,8 @@ export function buildCodeReviewPrompt(
 ): string {
   const { args } = parseCodeReviewArgs(raw);
   const target = args.target ? resolveReviewTarget(args.target) : undefined;
+  // 有清单工具就整份清单走工具、正文不再复述；没有就落回正文里那段可读格式。
+  const hasFindingsTool = ctx.toolNames.includes(REPORT_FINDINGS_TOOL_NAME);
   const sections: string[] = [];
   // 顺序按工作流的先后：先锁定评哪个 diff，再讲这一轮怎么做，最后讲做完之后怎么办
   if (target) sections.push(renderTargetSection(target, args.fix));
@@ -455,7 +510,8 @@ export function buildCodeReviewPrompt(
         : GITHUB_COMMENT_SECTION,
     );
   }
-  if (args.fix) sections.push(FIX_SECTION);
+  if (args.fix) sections.push(renderFixSection(hasFindingsTool));
+  if (hasFindingsTool) sections.push(OUTPUT_CONTRACT_TOOL);
   return sections.map((section) => section.trim()).join("\n\n");
 }
 
