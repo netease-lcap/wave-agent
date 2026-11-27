@@ -516,8 +516,10 @@ describe("聚焦视图上翻取更早：折叠卡换了身份也不甩到底", (
     });
 
     // 卡还在视口顶原来那个位置：上面插进来的那一行把内容推下去多少，视口就跟着
-    // 走多少。
-    expect(topOfCard()).toBe(cardTopBefore);
+    // 走多少。容差只为吞掉取整 —— 行高按整数记账（`Math.round(offsetHeight)`），
+    // 布局却是亚像素的，换一台机器（字体、DPR、容器高度）实测差 0–2px。判据本身
+    // 够宽：旧实现（落底）这里的偏差是千像素级。
+    expect(Math.abs(topOfCard() - cardTopBefore)).toBeLessThanOrEqual(4);
     // 也没被甩到底（旧实现就是 0 → 末尾）。
     expect(container.scrollTop + container.clientHeight).toBeLessThan(
       container.scrollHeight - 2,
