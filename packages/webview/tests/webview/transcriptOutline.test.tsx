@@ -278,9 +278,11 @@ describe("transcript outline", () => {
     );
   });
 
-  it("marks no round when no question is on screen", async () => {
+  it("keeps the round marked while the reader is inside its long answer", async () => {
     // 一轮带大段工具输出式的长回答：滚进它的正文中间时，屏里一条用户消息都
-    // 没有，此时不得高亮任何刻度（也不退回吸顶那条）。
+    // 没有 —— 此刻读者读的仍然是「问题 0」那一轮，刻度必须继续标着它。1127
+    // 设计师评论：「如果AI回复过长，现在显示到AI讲话的部分选中态就消失了，
+    // 希望不要消失，不能只有用户讲话的部分才有选中状态」。
     const messages = [
       MockDataGenerator.createUserMessage("问题 0", "u0"),
       MockDataGenerator.createAssistantMessage(
@@ -309,11 +311,14 @@ describe("transcript outline", () => {
       expect(currentTick()?.getAttribute("aria-label")).toBe("问题 0"),
     );
 
+    // a0 高过整个视口 ⇒ 此刻屏里没有任何用户消息，当前项仍是「问题 0」。
     await scrollRowAboveFold(container, "a0", 200);
-    await waitFor(() => expect(currentTick()).toBeNull());
+    await waitFor(() =>
+      expect(currentTick()?.getAttribute("aria-label")).toBe("问题 0"),
+    );
   });
 
-  it("only paints the current tick while the pointer is on the rail", async () => {
+  it("keeps the current tick tinted off-rail, one step below the selected color", async () => {
     renderChatApp();
     act(() => {
       sendCommand("updateMessages", { messages: rounds(6) });
@@ -327,23 +332,27 @@ describe("transcript outline", () => {
     );
     await scrollRowAboveFold(container, "u1");
 
+    // 静止态也画，但只到「次要档」（`--current`）：当前这一轮不会被指针点亮，
+    // 也不会因为指针移开就整个消失（1127 设计师：「鼠标离开还是会有提亮，但是
+    // 比选中态要弱一点」）。
     await waitFor(() => expect(currentTick()).not.toBeNull());
-    // 静止态整列不画那一笔深色：一列短横里单独一条深色会被读成「被选中的东西」。
-    expect(document.querySelector(".outline-tick--active")).toBeNull();
+    expect(currentTick()!.className).toContain("outline-tick--current");
+    expect(currentTick()!.className).not.toContain("outline-tick--active");
 
-    // 指针进到刻度列里才画出来。
+    // 指针进到刻度列里才升到选中态（前景色）。
     fireEvent.mouseEnter(currentTick()!);
     await waitFor(() =>
       expect(currentTick()!.className).toContain("outline-tick--active"),
     );
 
-    // 离开整列（容器的 mouseleave）才收回：指针跨过两条刻度之间的缝不能让它闪。
+    // 离开整列后降回次要档，不回禁用档。
     fireEvent.mouseLeave(
       screen.getByTestId("transcript-outline").querySelector(".outline-ticks")!,
     );
-    await waitFor(() =>
-      expect(document.querySelector(".outline-tick--active")).toBeNull(),
-    );
+    await waitFor(() => {
+      expect(currentTick()!.className).toContain("outline-tick--current");
+      expect(currentTick()!.className).not.toContain("outline-tick--active");
+    });
   });
 });
 

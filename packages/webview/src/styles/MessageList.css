@@ -132,16 +132,28 @@
 
 /* Scrim sits below the card inside the sticky wrapper. Peaks upward (negative
    margin) to cover the rounded-corner gap at the card's bottom, then fades to
-   transparent below. z-index lower than the card so it sits beneath it. */
+   transparent below. z-index lower than the card so it sits beneath it.
+
+   1127 评论：卡下方改成「过渡蒙层」，16 → 40px（她看过 6 档候选后选 E：40px + 缓入）。
+   改前实测：这 16px 里有 6px 压在卡底下（margin-top:-6px 用来盖圆角缺口），真正往卡下
+   延伸的只有 10px，卡下 +10px 就回到原亮度 —— 滚动内容等于被一刀切在卡沿上。
+   改后：前 20%（卡下 0–6.8px）保持全底色，内容完全看不见，之后线性缓到卡底 +34px。
+   实测（1440×900 / dpr 2 / 浅深各一遍）：卡下 +2px 的像素已等于面板底色（浅 254.4 / 255、
+   深 19.8 / #111314），过渡到 +34px 归零；卡片 768×38、`.sticky-user-cap`、wrapper 高度
+   全程逐值不变。
+   为什么不用 box-shadow：阴影会把下方内容整体压暗（同轮实测 0 16px 44px 那档在卡下 +4px
+   暗 20.7 级），而蒙层是把内容「洗」成面板底色，方向一致、没有向上的溢色，也不必受
+   cap 那 10px 封缝的限制。pointer-events 仍为 none，不挡卡片自身的点击回滚。 */
 .sticky-user-scrim {
   position: relative;
   z-index: 19;
   margin-top: -6px;
-  height: 16px;
+  height: 40px;
   background: linear-gradient(
     to bottom,
-    var(--vscode-panel-background),
-    transparent
+    var(--vscode-panel-background) 0%,
+    var(--vscode-panel-background) 20%,
+    transparent 100%
   );
   pointer-events: none;
 }

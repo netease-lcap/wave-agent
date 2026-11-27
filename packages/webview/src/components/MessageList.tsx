@@ -829,9 +829,12 @@ export const MessageList = forwardRef<
     // ── 大纲的当前项（spec 场景 4）：视口内**可见**的最靠上的用户消息 ──
     // 从「含视口顶那一行」往下扫，碰到的第一条带文本用户消息就是答案：它的顶部
     // 可能已经越过视口顶（那更该算作可见），也可能刚进入视口。扫到某一行的起点
-    // 越过视口底就停——后面的行还没露出来。视口里一条用户消息都没有（正在读某
-    // 一轮的长回答、大段工具输出）时给 null：**不亮任何刻度**，也不退回吸顶那条，
-    // 因为高亮只标记屏幕上看得见的那一轮。
+    // 越过视口底就停——后面的行还没露出来。
+    // 视口里一条用户消息都没有（正在读某一轮的长回答、大段工具输出）时这里给
+    // null，**由下面吸顶条的判据兜底**：那一刻读者读的仍是这一轮的提问，
+    // 刻度不该在回答中途失去选中态（1127 设计师评论：「如果AI回复过长，现在
+    // 显示到AI讲话的部分选中态就消失了，希望不要消失，不能只有用户讲话的部分
+    // 才有选中状态」）。
     const viewportPx = container.clientHeight || container.offsetHeight;
     const bottomEdge = scrollTop + viewportPx;
     // 局部名不叫 outlineActive：那是上面 memo 的名字（钉住 + 滚动判据的合成）。
@@ -852,9 +855,9 @@ export const MessageList = forwardRef<
         }
       }
     }
-    setOutlineActive(visibleQuestionId);
 
-    // ── 吸顶条：滚出视口顶的最近一条用户消息（与大纲是两个判据） ──
+    // ── 吸顶条：滚出视口顶的最近一条用户消息（视口里没有用户消息时，大纲的
+    //    当前项也取自这一条，见函数末尾的 setOutlineActive） ──
     let idx = at;
     if (at >= 0 && rowStart(at) >= scrollTop) idx = at - 1;
     let candidate = -1;
@@ -877,9 +880,18 @@ export const MessageList = forwardRef<
     const candidateMessage =
       candidate >= 0 ? messageOfItem(rows[candidate]) : undefined;
     if (!candidateMessage?.id) {
+      // 会话最顶上（还没有任何用户消息滚到视口顶之上，如首屏）：没有可兜底的那一条，
+      // 大纲仍只认「视口里看得见的那一轮」——两者都没有才不标任何刻度。
+      setOutlineActive(visibleQuestionId);
       setSticky(null);
       return;
     }
+    // 大纲的当前项：优先「视口里看得见的那一轮」，看不到时才退回吸顶这一条。
+    // 两者在绝大多数位置是同一条（可见的那条往往就是越顶的那条），分叉只出现在
+    // 「可见的用户消息在视口下半部、上面还压着上一轮的尾巴」这种位置。回落在这里
+    // 一次算完，而不是另开一条判据 —— 1127 之前这里直接给 null，读者一进长回答
+    // 整列刻度就失去选中态，而吸顶条明明还写着那一轮的问题。
+    setOutlineActive(visibleQuestionId ?? candidateMessage.id);
     setSticky({
       id: candidateMessage.id,
       text: candidateText,
