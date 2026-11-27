@@ -4,7 +4,6 @@ export const simplifySkill: Record<string, string> = {
   "skills/simplify/SKILL.md": `---
 name: simplify
 description: Review the changed code for reuse, simplification, efficiency, and altitude cleanups, then apply the fixes. Quality only — it does not hunt for bugs; use /code-review for that.
-disable-model-invocation: true
 ---
 
 # Simplify: Code Review and Cleanup

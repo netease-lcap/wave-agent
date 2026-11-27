@@ -64,5 +64,5 @@ order: 140
 - **如果没有 git 更改且没有文件被最近编辑会怎样？** skill 审查用户提到的或 agent 在对话中较早编辑的最近修改文件。如果无法识别，skill 没有可审查的内容。
 - **如果三个 agent 产生冲突的修复会怎样？** 第 3 阶段汇总发现并直接修复每个问题；冲突由主 agent 按顺序应用修复来解决。
 - **如果修复引入新问题会怎样？** skill 在修复后不重新审查；它应用修复并总结。后续的 `/simplify` 或 `/code-review` 可以捕获回归。
-- **如果 AI 尝试自动触发 skill 会怎样？** frontmatter 中的 `disable-model-invocation: true` 阻止自动调用；它仅通过 `/simplify` 由用户调用。
+- **如果 AI 自己决定运行 skill 会怎样？** 允许——frontmatter 不设 `disable-model-invocation`，与 CC 的同名技能一致（它的注册对象同样没有这个字段）；用户敲 `/simplify` 与模型自动调用两条路都通。修完之后再跑一次 `/code-review` 仍是用户的显式动作。
 - **如果发现是误报会怎样？** skill 记录并继续——它不与发现争论，直接跳过。
