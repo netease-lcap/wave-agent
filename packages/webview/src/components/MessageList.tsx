@@ -676,11 +676,18 @@ export const MessageList = forwardRef<
   // wrapper). Multi-dot runs draw a continuous vertical line: the run's first
   // row starts it at its first dot, the last row ends it at its last dot;
   // single-dot runs hide the line. paddingBottom is the row's bottom spacing:
-  // 0 inside a multi-dot run so the line segments abut (flush), 14 after every
-  // other row (the inter-message spacing, prototype .design-timeline gap).
+  // 0 inside a multi-dot run so the line segments abut (flush), the turn gap
+  // after the last row of a turn.
   const timelineRuns = useMemo(() => {
     const classes: string[] = [];
     const paddings: number[] = [];
+    // 轮与轮之间的留白按「两段文字的墨迹之间 32」定档（2026-11-27 设计师定档），
+    // 不是盒间距，所以两侧要各扣掉自己那段看不见的空隙：
+    //   用户消息之后跟的是折叠卡头，卡头自带 4px 内衬 + 2px 行内空隙 → 26；
+    //   一轮的最后一行是正文，文字墨迹底比内容盒底高 3 → 29。
+    // 轮内的行之间仍是 0，贴着走。
+    const AFTER_USER_GAP = 26;
+    const AFTER_TURN_GAP = 29;
     let runStart = -1;
     let dots = 0;
     const flushRun = (end: number) => {
@@ -688,16 +695,16 @@ export const MessageList = forwardRef<
       if (dots <= 1) {
         for (let i = runStart; i <= end; i++) {
           classes[i] = "timeline-run--single";
-          // 与多点 run 同一档间距：轮内行贴紧、只有轮末留 14。少判这一条，折叠卡
-          // 与它下面那条轮尾答复之间会各留 14 + 14（卡头不再算点后，一轮常常只剩
-          // 答复一个点，正好落到 single 分支）—— 收起态每轮中间就多出 28px 空档。
-          paddings[i] = i === end ? 14 : 0;
+          // 与多点 run 同一档间距：轮内行贴紧、只有轮末留 AFTER_TURN_GAP。少判这一条，
+          // 折叠卡与它下面那条轮尾答复之间会各留一份（卡头不再算点后，一轮常常
+          // 只剩答复一个点，正好落到 single 分支）—— 收起态每轮中间就翻倍。
+          paddings[i] = i === end ? AFTER_TURN_GAP : 0;
         }
       } else {
         classes[runStart] = "timeline-run--start";
         paddings[runStart] = 0;
         classes[end] = "timeline-run--end";
-        paddings[end] = 14;
+        paddings[end] = AFTER_TURN_GAP;
         for (let i = runStart + 1; i < end; i++) {
           paddings[i] = 0;
         }
@@ -724,7 +731,9 @@ export const MessageList = forwardRef<
       } else {
         flushRun(i - 1);
         classes[i] = "";
-        paddings[i] = 14;
+        // 用户消息之后是「换人说话」，留白与轮末同一档（墨迹 32），只是卡头自带
+        // 内衬，所以内衬值小 3。
+        paddings[i] = AFTER_USER_GAP;
       }
     });
     flushRun(items.length - 1);
