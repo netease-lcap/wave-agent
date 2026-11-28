@@ -1597,6 +1597,7 @@ export class DesktopHost {
   private async handleLoadEarlierMessages(
     before: string,
     requestId: string,
+    limit: number | undefined,
     paneId?: string,
   ): Promise<void> {
     const pid = paneId ?? this.focusedPaneId;
@@ -1604,15 +1605,19 @@ export class DesktopHost {
     let messages: Message[] = [];
     let hasMore = false;
     let anchorLost = false;
+    let truncated = false;
     if (agent) {
       try {
         const page = (await agent.getMessages({
           before,
-          limit: MESSAGE_PAGE_SIZE,
+          // 填窗一次要几页的量（800），上翻一页 200：页面给多少就用多少，不给
+          // 按默认页大小。SDK 侧 `normaliseLimit` 会收到 1..1000 之间。
+          limit: limit ?? MESSAGE_PAGE_SIZE,
         })) as MessageWindowResult;
         messages = page.messages;
         hasMore = page.hasMore === true;
         anchorLost = page.anchorLost === true;
+        truncated = page.truncated === true;
       } catch (error) {
         console.warn("[DesktopHost] 取更早的消息失败:", error);
       }
@@ -1626,6 +1631,7 @@ export class DesktopHost {
       messages,
       hasMore,
       ...(anchorLost ? { anchorLost: true } : {}),
+      ...(truncated ? { truncated: true } : {}),
     });
   }
 
@@ -1676,6 +1682,7 @@ export class DesktopHost {
     let hasMore = false;
     let hasLater = false;
     let anchorLost = false;
+    let truncated = false;
     if (agent) {
       try {
         // 不带 `from` = 尾页（「回到最新一页」，场景 18）：它和首屏取的是同一页，
@@ -1688,6 +1695,7 @@ export class DesktopHost {
         hasMore = page.hasMore === true;
         hasLater = page.hasLater === true;
         anchorLost = page.anchorLost === true;
+        truncated = page.truncated === true;
       } catch (error) {
         console.warn("[DesktopHost] 跳转到历史消息失败:", error);
       }
@@ -1702,6 +1710,7 @@ export class DesktopHost {
       hasMore,
       hasLater,
       ...(anchorLost ? { anchorLost: true } : {}),
+      ...(truncated ? { truncated: true } : {}),
     });
   }
 
@@ -4642,6 +4651,9 @@ export class DesktopHost {
     const page = pulled?.page;
     let messages = pullTarget ? page?.messages : pending ? undefined : [];
     let hasEarlier = page?.hasMore === true;
+    // 转录超过上限时更早那段读不出来：界面据此在历史顶端说明一句（见
+    // `MessageWindowResult.truncated`）。
+    let truncated = page?.truncated === true;
     // The pane binding may have changed while the pull was in flight (a restore
     // completed / a new session selected). Re-read everything at send time so
     // the pushed message is self-consistent; the pending entry is also resolved
@@ -4672,6 +4684,7 @@ export class DesktopHost {
     if (pullTarget && current !== pullTarget) {
       messages = undefined;
       hasEarlier = false;
+      truncated = false;
     }
     const keepMessages = messages === undefined;
     const pendingConfirmations = Array.from(this.pendingConfirmations.entries())
@@ -4696,6 +4709,7 @@ export class DesktopHost {
       // flight, or a failed pull). Every other caller sends the real list.
       messages: messages ?? [],
       hasEarlier,
+      truncated,
       ...(keepMessages ? { keepMessages: true } : {}),
       tasks: current?.tasks ?? [],
       backgroundTasks: current?.backgroundTasks ?? [],
@@ -6067,6 +6081,7 @@ export class DesktopHost {
         await this.handleLoadEarlierMessages(
           msg.before as string,
           msg.requestId as string,
+          msg.limit as number | undefined,
           pid,
         );
         break;

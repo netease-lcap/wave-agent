@@ -13,12 +13,13 @@
  * 没有索引，所以「读一页的成本与锚点位置同阶」是这套方案接受的代价。不因此额外
  * 维护索引：转录是 append-only 的，索引的失效判据比它省下的字节更难写对。
  */
-import { open } from "fs/promises";
+import { open, stat } from "fs/promises";
 import type { Message } from "../types/messaging.js";
 import type { MessageWindow } from "../types/messageWindow.js";
 import {
   MESSAGE_PAGE_SIZE,
   MESSAGE_PAGE_SIZE_MAX,
+  TRANSCRIPT_BYTES_MAX,
 } from "../constants/messageWindow.js";
 import { parseTranscriptLine } from "../services/sessionEntries.js";
 
@@ -39,6 +40,12 @@ export interface TranscriptPage {
   reset?: boolean;
   /** 这一页之后还有更新的消息（只有 `from` 取页会给）。 */
   hasLater?: boolean;
+  /**
+   * 转录超过了 `TRANSCRIPT_BYTES_MAX`：这次读到的只是尾部那一段，比它更早的
+   * 消息**读不出来**（不是「没有」）。界面要把这件事说出来，别让用户对着翻不动
+   * 的顶部反复上翻。
+   */
+  truncated?: boolean;
 }
 
 interface CursorHit {
@@ -52,6 +59,8 @@ interface CursorHit {
 export async function* transcriptLinesBackward(
   filePath: string,
   chunkBytes: number = DEFAULT_CHUNK_BYTES,
+  /** 读到这个字节位置就停（不含）：截断窗口的地板，见 `TRANSCRIPT_BYTES_MAX`。 */
+  floorByte = 0,
 ): AsyncGenerator<string> {
   const handle = await open(filePath, "r");
   try {
@@ -59,8 +68,8 @@ export async function* transcriptLinesBackward(
     let position = size;
     /** 已经读到、但还没有遇到换行的那截文件头（属于某一行的一部分）。 */
     let rest = Buffer.alloc(0);
-    while (position > 0) {
-      const length = Math.min(chunkBytes, position);
+    while (position > floorByte) {
+      const length = Math.min(chunkBytes, position - floorByte);
       const start = position - length;
       let chunk = Buffer.alloc(length);
       let filled = 0;
@@ -90,7 +99,9 @@ export async function* transcriptLinesBackward(
       }
       rest = data.subarray(0, end);
     }
-    if (rest.length > 0) yield rest.toString("utf8");
+    // 文件最开头那一行：只有从真正的 0 读起时它才是完整的一行。截断窗口的起点
+    // 落在行中间，那半行属于读不到的历史，丢掉——否则界面上会多出一条残句。
+    if (floorByte === 0 && rest.length > 0) yield rest.toString("utf8");
   } finally {
     await handle.close();
   }
@@ -126,8 +137,9 @@ interface TranscriptCursor {
 async function createCursor(
   filePath: string,
   chunkBytes: number,
+  floorByte: number,
 ): Promise<TranscriptCursor> {
-  const lines = transcriptLinesBackward(filePath, chunkBytes);
+  const lines = transcriptLinesBackward(filePath, chunkBytes, floorByte);
   const iterator = lines[Symbol.asyncIterator]();
   const seen = new Set<string>();
   let atFileEnd = true;
@@ -264,6 +276,12 @@ async function collectForward(
 
 export interface ReadTranscriptPageOptions {
   chunkBytes?: number;
+  /**
+   * 能读的最大字节数（默认 `TRANSCRIPT_BYTES_MAX`）：文件更大时只读尾部这一段，
+   * 更早的部分读不出来，回包里带上 `truncated`。给测试收窄用（与 `chunkBytes`
+   * 同一性质），正常调用一律走默认值。
+   */
+  maxBytes?: number;
 }
 
 /**
@@ -278,33 +296,51 @@ export async function readTranscriptPage(
   const limit = normaliseLimit(window.limit);
   const chunkBytes = options.chunkBytes ?? DEFAULT_CHUNK_BYTES;
 
-  const cursor = await createCursor(filePath, chunkBytes);
   try {
-    if (window.since) {
-      const collected: Message[] = [];
-      for (;;) {
-        const hit = await cursor.nextMessage();
-        // 锚点翻不到了：要么已被 rewind 裁掉，要么落得太远。
-        if (!hit) return { messages: [], hasMore: false, reset: true };
-        if (hit.message.id === window.since) break;
-        collected.push(hit.message);
-        // 落后超过一页：不返回有洞的补差，让调用方整份重取尾页。
-        if (collected.length > limit) {
-          return { messages: [], hasMore: false, reset: true };
+    // 文件超过上限时只读尾部这一段，更早的部分读不出来：地板就是截断点（参考物
+    // 的 floorCursor 是同一语义）。`truncated` 随每一页回给界面，由它明说。
+    const maxBytes = options.maxBytes ?? TRANSCRIPT_BYTES_MAX;
+    const { size } = await stat(filePath);
+    const floorByte = size > maxBytes ? size - maxBytes : 0;
+    const truncated = floorByte > 0 ? { truncated: true as const } : {};
+
+    const cursor = await createCursor(filePath, chunkBytes, floorByte);
+    try {
+      if (window.since) {
+        const collected: Message[] = [];
+        for (;;) {
+          const hit = await cursor.nextMessage();
+          // 锚点翻不到了：要么已被 rewind 裁掉，要么落得太远。
+          if (!hit) {
+            return { messages: [], hasMore: false, reset: true, ...truncated };
+          }
+          if (hit.message.id === window.since) break;
+          collected.push(hit.message);
+          // 落后超过一页：不返回有洞的补差，让调用方整份重取尾页。
+          if (collected.length > limit) {
+            return { messages: [], hasMore: false, reset: true, ...truncated };
+          }
         }
+        return { messages: collected.reverse(), hasMore: false, ...truncated };
       }
-      return { messages: collected.reverse(), hasMore: false };
+
+      // `from` 与 `before` 语义互斥，同时传时以 `from` 为准（见 MessageWindow）。
+      if (window.from) {
+        return {
+          ...(await collectForward(cursor, window.from, limit)),
+          ...truncated,
+        };
+      }
+
+      if (window.before && !(await skipToAnchor(cursor, window.before))) {
+        // 锚点不在了：不判「到底」，让调用方换一个更早的已知 id 重试。
+        return { messages: [], hasMore: false, anchorLost: true, ...truncated };
+      }
+
+      return { ...(await collectBackward(cursor, limit)), ...truncated };
+    } finally {
+      await cursor.close();
     }
-
-    // `from` 与 `before` 语义互斥，同时传时以 `from` 为准（见 MessageWindow）。
-    if (window.from) return await collectForward(cursor, window.from, limit);
-
-    if (window.before && !(await skipToAnchor(cursor, window.before))) {
-      // 锚点不在了：不判「到底」，让调用方换一个更早的已知 id 重试。
-      return { messages: [], hasMore: false, anchorLost: true };
-    }
-
-    return await collectBackward(cursor, limit);
   } catch (error) {
     // 还没有转录（新会话、或会话文件被删）：空页。带 `since` 的调用方按「锚点不
     // 在了」重建，其余按「没有更早的」处理。文件在读到一半时被删也走这里——对调用
@@ -315,7 +351,5 @@ export async function readTranscriptPage(
         : { messages: [], hasMore: false };
     }
     throw error;
-  } finally {
-    await cursor.close();
   }
 }

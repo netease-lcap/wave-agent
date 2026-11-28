@@ -354,7 +354,7 @@ class MessageHandler(
             "loadEarlierMessages" -> {
                 val before = msg["before"]?.jsonPrimitive?.contentOrNull ?: return
                 val requestId = msg["requestId"]?.jsonPrimitive?.contentOrNull ?: return
-                handleLoadEarlierMessages(before, requestId)
+                handleLoadEarlierMessages(before, requestId, msg["limit"]?.jsonPrimitive?.intOrNull)
             }
             // 滚动条刻度的两个数据面（spec ui/transcript-outline.md「刻度覆盖整条
             // 会话」）：索引只有 id + 文本首段；点在还没加载的刻度上时按从锚点往后
@@ -1786,6 +1786,7 @@ class MessageHandler(
         val hasMore = (page?.get("hasMore") as? JsonPrimitive)?.booleanOrNull ?: false
         val hasLater = (page?.get("hasLater") as? JsonPrimitive)?.booleanOrNull ?: false
         val anchorLost = (page?.get("anchorLost") as? JsonPrimitive)?.booleanOrNull ?: false
+        val truncated = (page?.get("truncated") as? JsonPrimitive)?.booleanOrNull ?: false
         postMessage("messagePage", buildJsonObject {
             put("requestId", requestId)
             if (from != null) put("from", from)
@@ -1793,19 +1794,22 @@ class MessageHandler(
             put("hasMore", hasMore)
             put("hasLater", hasLater)
             put("anchorLost", anchorLost)
+            put("truncated", truncated)
         })
     }
 
-    private suspend fun handleLoadEarlierMessages(before: String, requestId: String) {
-        val page = session.fetchEarlierPage(before)
+    private suspend fun handleLoadEarlierMessages(before: String, requestId: String, limit: Int?) {
+        val page = session.fetchEarlierPage(before, limit)
         val messages = page?.get("messages") as? JsonArray
         val hasMore = (page?.get("hasMore") as? JsonPrimitive)?.booleanOrNull ?: false
         val anchorLost = (page?.get("anchorLost") as? JsonPrimitive)?.booleanOrNull ?: false
+        val truncated = (page?.get("truncated") as? JsonPrimitive)?.booleanOrNull ?: false
         postMessage("earlierMessages", buildJsonObject {
             put("requestId", requestId)
             put("messages", messages ?: JsonArray(emptyList()))
             put("hasMore", hasMore)
             put("anchorLost", anchorLost)
+            put("truncated", truncated)
         })
     }
 
@@ -1831,6 +1835,7 @@ class MessageHandler(
         val initialPage = session.fetchInitialPage()
         val messages = initialPage?.get("messages") as? JsonArray
         val hasEarlier = (initialPage?.get("hasMore") as? JsonPrimitive)?.booleanOrNull ?: false
+        val truncated = (initialPage?.get("truncated") as? JsonPrimitive)?.booleanOrNull ?: false
         // Refresh serverUrl + isAuthenticated from auth status before sending initial state.
         // Mirrors VSCE messageHandler.ts:622-633: without isAuthenticated the webview's
         // WelcomeView wrongly shows the login CTA to already-logged-in users (it never
@@ -1859,6 +1864,7 @@ class MessageHandler(
             // keepMessages 让界面保留手里那份。
             put("messages", messages ?: JsonArray(emptyList()))
             put("hasEarlier", hasEarlier)
+            put("truncated", truncated)
             if (messages == null) put("keepMessages", true)
             put("tasks", session.tasks ?: JsonArray(emptyList()))
             put("backgroundTasks", session.backgroundTasks ?: JsonArray(emptyList()))

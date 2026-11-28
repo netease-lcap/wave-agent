@@ -17332,6 +17332,52 @@ describe("宿主不保留消息内容，用的时候现取", () => {
     expect(replies[0].anchorLost).toBe(true);
   });
 
+  it("上翻读到截断点：回包带上 truncated，页面才能说明「更早的读不出来」", async () => {
+    const { host, sent } = await readyHost();
+    const agent = growConversation("sess-1", 25);
+    await host.handleWebviewMessage({ command: "webviewReady" });
+    // SDK 只读了转录尾部那一段：更早的部分读不出来，这一位随回包上到界面。
+    agent.getMessages.mockResolvedValueOnce({
+      messages: [],
+      hasMore: false,
+      truncated: true,
+    } as unknown as Awaited<ReturnType<typeof agent.getMessages>>);
+
+    await host.handleWebviewMessage({
+      command: "loadEarlierMessages",
+      before: "sess-1-m0",
+      requestId: "r3",
+    });
+
+    const replies = sent("earlierMessages");
+    expect(replies).toHaveLength(1);
+    expect(replies[0].hasMore).toBe(false);
+    expect(replies[0].truncated).toBe(true);
+  });
+
+  it("首屏快照也带 truncated：截断不是「上翻之后才知道」的事", async () => {
+    const { host, sent } = await readyHost();
+    const agent = growConversation("sess-1", 25);
+    agent.getMessages.mockResolvedValueOnce({
+      messages: [
+        {
+          id: "sess-1-m24",
+          role: "user",
+          timestamp: "2026-01-01T00:00:00.000Z",
+          blocks: [{ type: "text", content: "tail" }],
+        },
+      ],
+      hasMore: false,
+      truncated: true,
+    } as unknown as Awaited<ReturnType<typeof agent.getMessages>>);
+
+    await host.handleWebviewMessage({ command: "webviewReady" });
+
+    const snapshots = sent("setInitialState");
+    expect(snapshots.at(-1)!.hasEarlier).toBe(false);
+    expect(snapshots.at(-1)!.truncated).toBe(true);
+  });
+
   it("上翻取数失败也回一页空的：页面不能被卡在加载态", async () => {
     const { host, sent } = await readyHost();
     const agent = growConversation("sess-1", 25);

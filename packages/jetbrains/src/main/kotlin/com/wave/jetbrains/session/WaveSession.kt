@@ -567,9 +567,10 @@ class WaveSession(
      * 上翻一页更早的：锚点是当前已加载的第一条。SDK 从转录读（压缩之前的历史也读
      * 得到），宿主一个字段都不留。
      */
-    suspend fun fetchEarlierPage(before: String): JsonObject? = fetchPage(buildJsonObject {
+    suspend fun fetchEarlierPage(before: String, limit: Int? = null): JsonObject? = fetchPage(buildJsonObject {
         put("before", before)
-        put("limit", HISTORY_PAGE_SIZE)
+        // 页面按场景给页大小：上翻一页 200，填窗（内容撑不满视口）800。不给按历史页大小。
+        put("limit", limit ?: HISTORY_PAGE_SIZE)
     })
 
     /**
@@ -617,9 +618,12 @@ class WaveSession(
         val page = fetchInitialPage() ?: return
         val messages = page["messages"] as? JsonArray ?: JsonArray(emptyList())
         val hasEarlier = (page["hasMore"] as? JsonPrimitive)?.booleanOrNull ?: false
+        // 转录超过上限时更早那段读不出来（MessageWindowResult.truncated）。
+        val truncated = (page["truncated"] as? JsonPrimitive)?.booleanOrNull ?: false
         postMessage("updateMessages", buildJsonObject {
             put("messages", messages)
             put("hasEarlier", hasEarlier)
+            put("truncated", truncated)
         })
     }
 

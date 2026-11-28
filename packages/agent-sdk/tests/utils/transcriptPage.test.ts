@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { open } from "fs/promises";
+import { open, stat } from "fs/promises";
 import {
   readTranscriptPage,
   transcriptLinesBackward,
@@ -19,7 +19,9 @@ import { MESSAGE_PAGE_SIZE_MAX } from "../../src/constants/messageWindow.js";
  *   页面上变成乱码或整页解析失败。
  */
 
-vi.mock("fs/promises", () => ({ open: vi.fn() }));
+// `readTranscriptPage` 先用 `stat` 量文件大小定截断地板，再用 `open` 往回读：
+// 两个都 mock，否则读页第一步就拿到 undefined。
+vi.mock("fs/promises", () => ({ open: vi.fn(), stat: vi.fn() }));
 
 const FILE = "/fake/session.jsonl";
 
@@ -32,6 +34,9 @@ interface FakeFile {
 function serve(content: string): FakeFile {
   const buffer = Buffer.from(content, "utf8");
   const stats: FakeFile = { bytesRead: 0, openCalls: 0 };
+  vi.mocked(stat).mockResolvedValue({
+    size: buffer.length,
+  } as unknown as Awaited<ReturnType<typeof stat>>);
   vi.mocked(open).mockImplementation((async () => {
     stats.openCalls += 1;
     return {
@@ -101,6 +106,36 @@ describe("readTranscriptPage", () => {
     expect(page.hasMore).toBe(true);
     // 整份文件 ~40 KB；画一屏只该读到最后那两条附近（几十到几百字节）。
     expect(stats.bytesRead).toBeLessThan(4 * 1024);
+  });
+
+  it("reads only the tail window of a transcript over the byte budget", async () => {
+    const all = Array.from({ length: 400 }, (_, i) => `m${i}`);
+    const stats = serve(transcript(all));
+
+    // 正常调用用的是 `TRANSCRIPT_BYTES_MAX`（50MB）；这里把上限收窄到 1KB，
+    // 走的是同一条分支（文件比上限大 ⇒ 只读尾部那一段）。
+    const page = await readTranscriptPage(
+      FILE,
+      { limit: 500 },
+      { chunkBytes: 256, maxBytes: 1024 },
+    );
+
+    // 真的只读了地板之上那 1KB，没有为了判截断把整份扫一遍。
+    expect(stats.bytesRead).toBeLessThanOrEqual(1024);
+    expect(page.truncated).toBe(true);
+    // 读到截断点就到底了：这一位是「读不出来」，不是「会话开头」。
+    expect(page.hasMore).toBe(false);
+    const pageIds = ids(page.messages);
+    expect(pageIds.length).toBeGreaterThan(0);
+    // 页首必须是**完整一行**：截断点落在行中间时，那半行丢掉（否则界面上多一条
+    // 残句），所以整页是 tail 的连续后缀。
+    expect(pageIds).toEqual(all.slice(all.length - pageIds.length));
+  });
+
+  it("does not flag a transcript that fits in the budget", async () => {
+    serve(transcript(["m0", "m1"]));
+    const page = await readTranscriptPage(FILE, { limit: 20 });
+    expect(page.truncated).toBeUndefined();
   });
 
   it("starts the page on a row that can carry the anchor", async () => {
@@ -273,9 +308,9 @@ describe("readTranscriptPage", () => {
   });
 
   it("answers an empty page when the transcript does not exist yet", async () => {
-    vi.mocked(open).mockRejectedValue(
-      Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
-    );
+    const enoent = Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    vi.mocked(stat).mockRejectedValue(enoent);
+    vi.mocked(open).mockRejectedValue(enoent);
     await expect(readTranscriptPage(FILE, { limit: 20 })).resolves.toEqual({
       messages: [],
       hasMore: false,

@@ -37,6 +37,7 @@ import { estimateRowHeight } from "../virtual/estimateRowHeight";
 import { useVirtualRows } from "../virtual/useVirtualRows";
 import { createPortal } from "react-dom";
 import type { MessageListProps } from "../types";
+import { MESSAGE_PAGE_SIZE } from "wave-agent-sdk/constants";
 import type { Message as MessageType } from "wave-agent-sdk/types";
 import "../styles/MessageList.css";
 
@@ -49,6 +50,11 @@ const COLUMN_PADDING_PX = 10;
  * `estimateRowHeight` 的 BASE_HEIGHT 同档：一行 22px 文字 + 上下 5px 内边距。
  */
 const FOCUS_FOLD_HEAD_HEIGHT_PX = 30;
+/**
+ * 顶部那条「更早的消息无法显示」说明行的高度（估高用，实测由 measureRow 校正）：
+ * 一行 12px 小字 + 上下 8px 内边距。
+ */
+const TRUNCATED_NOTICE_HEIGHT_PX = 30;
 
 /** 布局项里的消息（折叠行没有单条消息，返回 undefined）。 */
 const messageOfItem = (item: FocusItem | undefined) =>
@@ -62,8 +68,9 @@ const TEXT_WIDTH_INSET_PX = 32;
 
 // 滚到离顶这么近就要下一页更早的。留一点余量而不是严格的 0：触摸惯性把
 // scrollTop 拉过顶时浏览器会直接 clamp 到 0，那一刻的位移是 0，判定必须能接受
-// 「已经在顶部」这个状态本身。
-const EARLIER_TRIGGER_PX = 160;
+// 「已经在顶部」这个状态本身。`1200` 与参考物同值——它近顶也用这个余量；折叠态
+// 一页只有几十 px 高，余量给小了要滚好几屏才触发一次。
+const EARLIER_TRIGGER_PX = 1200;
 
 // 已加载的内容撑不满视口时，用户其实已经翻不动了——下方没有东西可看，也就不会
 // 再派发滚动事件去要下一页。所以取更早还有第二个触发点：几何判据（spec
@@ -74,9 +81,12 @@ const FILL_VIEWPORT_MARGIN_PX = 1200;
 // 视口高度量不到时（旁路 pane 未激活，clientHeight / offsetHeight 都是 0）退回
 // 条数判据：拿 0 去比「撑满了」会在每个隐藏 pane 上都要一页。
 const FILL_VIEWPORT_MIN_ROWS = 10;
-// 每触发一次填窗最多连取几页（与参考物同值）。每页只有一两行的会话否则会把请求
-// 打成无底洞；到顶就停在这一页，等用户再上翻或窗口再变高。
-const FILL_VIEWPORT_MAX_PAGES = 3;
+// 一次「取更早」要多少条：上翻（用户滚到近顶）一页 `MESSAGE_PAGE_SIZE`，填窗
+// （内容撑不满视口）一次要 `800`——两个数都与参考物同值（它上翻 `limit: 200`、
+// 首屏补齐一轮 800）。填窗不设「最多连取几页」：判据是「撑满即停」，一页回来还
+// 撑不满就接着要，直到没有更早的（参考物的 auto-drain 也是这样链下去）。
+const EARLIER_PAGE_SIZE = MESSAGE_PAGE_SIZE;
+const FILL_PAGE_SIZE = 800;
 
 // 离内容末尾超过这么远就浮出「回到最新」入口。与参考物（Claude 桌面端的
 // jump-to-latest）同档：比「已离开底部」的个位数阈值宽得多——这里问的是「远到
@@ -143,6 +153,7 @@ export const MessageList = forwardRef<
     onOpenFileExternal,
     hasEarlier,
     isLoadingEarlier,
+    earlierTruncated,
     onLoadEarlier,
     outlineEntries,
     pendingJumpId,
@@ -272,8 +283,20 @@ export const MessageList = forwardRef<
         !!focusView,
         !!isStreaming,
         expandedFolds,
+        // 转录被截断（宿主说更早那段读不出来）且已经没有可翻的页时，列表顶端插
+        // 一行说明。还有 `hasEarlier` 时不插：那说明更早的历史仍能一页页取到。
+        earlierTruncated && !hasEarlier
+          ? "更早的消息无法显示：这条会话太大，不能完整加载。"
+          : undefined,
       ),
-    [visibleMessages, focusView, isStreaming, expandedFolds],
+    [
+      visibleMessages,
+      focusView,
+      isStreaming,
+      expandedFolds,
+      earlierTruncated,
+      hasEarlier,
+    ],
   );
   const items = focusLayout.items;
   const itemsRef = useRef<FocusItem[]>(items);
@@ -343,6 +366,7 @@ export const MessageList = forwardRef<
       if (item.kind === "message") {
         return estimateRowHeight(item.message, { textWidth });
       }
+      if (item.kind === "notice") return TRUNCATED_NOTICE_HEIGHT_PX;
       // 卡头恒为一行：展开态的活动各自是独立的行，高度由各自的消息估算与实测
       // 负责。把整轮的消息高度加起来当一行的估高，既估不准（工具输出差着数量
       // 级），也让整轮只有一行 —— 虚拟列表没得窗口化。
@@ -738,26 +762,18 @@ export const MessageList = forwardRef<
   isLoadingEarlierRef.current = !!isLoadingEarlier;
   const onLoadEarlierRef = useRef(onLoadEarlier);
   onLoadEarlierRef.current = onLoadEarlier;
-  // 本次填窗已经连追了几页。撑满视口、或者用户再次上翻时归零——它是「一段连追」
-  // 的计数器，不是本会话的累计。
-  const fillPagesRef = useRef(0);
-  // 上翻意图把计数归零还不够：判据跑在 effect 里，没有别的依赖变化就不会重跑，
-  // 于是「到上限停下、等用户下一次上翻再接着取」这句话落不了地（实测第 4 页不来）。
-  // 这一个 tick 就是那个触发点。
-  const [fillRetryTick, setFillRetryTick] = useState(0);
-
   // 「要一页更早的」。滚到顶（用户上翻）与填窗（内容撑不满视口）两个触发点共用
   // 这一个入口，返回是否真的发出了请求（没有更早 / 上一页还在飞 / 锚点缺失都返回
   // false）。判据走 ref 而不是 props：滚动 handler 一帧里可能连发多次事件，等
   // setState 生效再拦就已经发了两个请求。
-  const requestEarlierPage = useCallback((): boolean => {
+  const requestEarlierPage = useCallback((limit: number): boolean => {
     const load = onLoadEarlierRef.current;
     const first = visibleMessagesRef.current[0]?.id;
     if (!load || !first) return false;
     if (!hasEarlierRef.current || isLoadingEarlierRef.current) return false;
     if (earlierPendingRef.current) return false;
     earlierPendingRef.current = true;
-    load(first);
+    load(first, limit);
     return true;
   }, []);
   stickyRef.current = stickyMessage;
@@ -840,6 +856,11 @@ export const MessageList = forwardRef<
       dots = 0;
     };
     items.forEach((item, i) => {
+      if (item.kind === "notice") {
+        // 说明行不是一轮的一部分：既不画节点，也不占轮间留白（留白归它下面那
+        // 第一条消息自己）。
+        return;
+      }
       if (item.kind === "fold") {
         // 折叠卡**不**算一个圆点（2026-11-27 设计师定档）：卡头只是这一轮的
         // 目录条，不是一次真实活动，收起态也不画时间线节点。所以一轮若只剩卡
@@ -1357,7 +1378,7 @@ export const MessageList = forwardRef<
     // 回来就是对的。
     const maybeRequestEarlier = () => {
       if (container.scrollTop > EARLIER_TRIGGER_PX) return;
-      requestEarlierPage();
+      requestEarlierPage(EARLIER_PAGE_SIZE);
     };
 
     // 显隐要读 scrollHeight / clientHeight（一次布局读）。滚动一帧可能派发多次
@@ -1434,18 +1455,9 @@ export const MessageList = forwardRef<
     const container = containerRef.current;
     if (!container) return;
 
-    // 上翻意图同时把填窗的连追计数归零并触发一次重判：用户明确在要更早的内容，
-    // 这一轮该接着往下追（spec 场景 6「等用户下一次上翻再接着取」）。只在确实
-    // 有一段连追在进行/刚撞上上限时才动状态，别让每个滚轮刻度都多刷一帧。
-    const resumeFill = () => {
-      if (fillPagesRef.current === 0) return;
-      fillPagesRef.current = 0;
-      setFillRetryTick((n) => n + 1);
-    };
     const handleWheel = (e: WheelEvent) => {
       if (e.ctrlKey || e.deltaY >= 0) return;
       if (ownsVerticalScroll(e.target)) return;
-      resumeFill();
       unpin();
     };
 
@@ -1464,7 +1476,6 @@ export const MessageList = forwardRef<
         y > lastTouchY &&
         !ownsVerticalScroll(e.target)
       ) {
-        resumeFill();
         unpin();
       }
       lastTouchY = y;
@@ -1476,7 +1487,6 @@ export const MessageList = forwardRef<
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const up = e.key === "ArrowUp" || e.key === "PageUp" || e.key === "Home";
       if (!up || ownsVerticalScroll(e.target)) return;
-      resumeFill();
       unpin();
     };
 
@@ -1507,7 +1517,8 @@ export const MessageList = forwardRef<
   // 「内容不足一屏 ⇒ 继续往前取（填窗）」）。三种时刻都会重跑本 effect ——
   // keys 变（消息增减、聚焦视图折叠/展开）、listViewportHeight 变（容器尺寸）、
   // isLoadingEarlier 落回（一页回来了，接着量一次）。链式连追就是这条：
-  // 一页接上来 ⇒ keys 变 ⇒ 再判一次，直到撑满、没有更早、或撞上轮次上限。
+  // 一页接上来 ⇒ keys 变 ⇒ 再判一次，直到撑满或没有更早——没有「最多几页」的
+  // 上限：折叠态下一页可能只值几十 px，设了上限就会停在半屏空白上。
   useEffect(() => {
     const container = containerRef.current;
     if (!container || !hasEarlier || isLoadingEarlier || !onLoadEarlier) return;
@@ -1517,16 +1528,10 @@ export const MessageList = forwardRef<
       viewport > 0
         ? container.scrollHeight - viewport < FILL_VIEWPORT_MARGIN_PX
         : visibleMessagesRef.current.length < FILL_VIEWPORT_MIN_ROWS;
-    if (!unfilled) {
-      // 撑满了：这一段连追到此结束，下次填窗从零开始数。
-      fillPagesRef.current = 0;
-      return;
-    }
-    if (fillPagesRef.current >= FILL_VIEWPORT_MAX_PAGES) return;
-    if (requestEarlierPage()) fillPagesRef.current += 1;
+    if (!unfilled) return;
+    requestEarlierPage(FILL_PAGE_SIZE);
   }, [
     containerRef,
-    fillRetryTick,
     hasEarlier,
     isLoadingEarlier,
     keys,
@@ -1634,7 +1639,14 @@ export const MessageList = forwardRef<
                       paddingBottom: timelineRuns.paddings[row.index],
                     }}
                   >
-                    {item?.kind === "fold" ? (
+                    {item?.kind === "notice" ? (
+                      <div
+                        className="transcript-notice"
+                        data-testid="transcript-notice"
+                      >
+                        {item.text}
+                      </div>
+                    ) : item?.kind === "fold" ? (
                       <FocusFoldRow
                         item={item}
                         expanded={expandedFolds.has(item.key)}

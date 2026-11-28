@@ -329,10 +329,11 @@ export class MessageHandler {
         // 上翻取更早（spec ui/message-rendering-system.md「首屏一页，上翻按需取更
         // 早」）：SDK 从转录读一页，宿主原样转回去，自己一个字段都不留。
         const before = msg.before as string;
+        const limit = msg.limit as number | undefined;
         const requestId = msg.requestId as string;
         const page = await this.context
           .getChatSession(viewType || "tab", windowId)
-          .getEarlierPage(before);
+          .getEarlierPage(before, limit);
         this.context.postMessage(
           {
             command: "earlierMessages",
@@ -340,6 +341,7 @@ export class MessageHandler {
             messages: page.messages,
             hasMore: page.hasMore,
             ...(page.anchorLost ? { anchorLost: true } : {}),
+            ...(page.truncated ? { truncated: true } : {}),
           },
           viewType,
           windowId,
@@ -384,6 +386,7 @@ export class MessageHandler {
             hasMore: page.hasMore,
             hasLater: page.hasLater,
             ...(page.anchorLost ? { anchorLost: true } : {}),
+            ...(page.truncated ? { truncated: true } : {}),
           },
           viewType,
           windowId,
@@ -2379,6 +2382,7 @@ export class MessageHandler {
           command: "updateMessages",
           messages: page.messages,
           hasEarlier: page.hasEarlier,
+          truncated: page.truncated,
         },
         viewType,
         windowId,
@@ -2773,6 +2777,7 @@ export class MessageHandler {
         command: "setInitialState",
         messages,
         hasEarlier: initialPage.hasEarlier,
+        truncated: initialPage.truncated,
         tasks: session.tasks,
         backgroundTasks: session.backgroundTasks,
         workflowRuns: session.workflowRuns,

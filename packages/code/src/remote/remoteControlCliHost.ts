@@ -418,6 +418,8 @@ export class RemoteControlCliHost implements RemoteControlHost {
     reset?: boolean;
     anchorLost?: boolean;
     hasMore?: boolean;
+    /** 转录超过上限，更早那句读不出来（见 MessageWindowResult.truncated）。 */
+    truncated?: boolean;
   }> {
     const contextUsagePercent = this.session.contextUsagePercent();
     const window: MessageWindow = {};

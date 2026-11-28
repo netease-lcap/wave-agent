@@ -476,17 +476,46 @@ describe("MessageHandler MCP handlers", () => {
     const { handler, context } = createReadyHandler(session);
 
     await handler.handleMessage(
-      { command: "loadEarlierMessages", before: "m1", requestId: "r1" },
+      {
+        command: "loadEarlierMessages",
+        before: "m1",
+        requestId: "r1",
+        // 填窗一次要几页的量：页面给多少条就转多少条，宿主不自作主张。
+        limit: 800,
+      },
       "tab",
     );
 
-    expect(session.getEarlierPage).toHaveBeenCalledWith("m1");
+    expect(session.getEarlierPage).toHaveBeenCalledWith("m1", 800);
     const replies = sentPosts(context)("earlierMessages");
     expect(replies).toHaveLength(1);
     expect(replies[0].requestId).toBe("r1");
     expect(replies[0].messages).toEqual(older);
     expect(replies[0].hasMore).toBe(true);
     expect(replies[0].anchorLost).toBeUndefined();
+    expect(replies[0].truncated).toBeUndefined();
+  });
+
+  test("loadEarlierMessages 把「转录被截断」这一位也转给页面", async () => {
+    const session = createReadySession();
+    (session.getEarlierPage as ReturnType<typeof vi.fn>).mockResolvedValue({
+      messages: [],
+      hasMore: false,
+      anchorLost: false,
+      truncated: true,
+    });
+    const { handler, context } = createReadyHandler(session);
+
+    await handler.handleMessage(
+      { command: "loadEarlierMessages", before: "m1", requestId: "r1" },
+      "tab",
+    );
+
+    const replies = sentPosts(context)("earlierMessages");
+    // 没有更早 + 截断：界面据此在顶端说明「更早的消息无法显示」，而不是把它当成
+    // 会话开头。
+    expect(replies[0].hasMore).toBe(false);
+    expect(replies[0].truncated).toBe(true);
   });
 
   test("loadEarlierMessages 的锚点已经不在转录里时回 anchorLost", async () => {

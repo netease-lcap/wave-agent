@@ -1791,6 +1791,7 @@ export class MessageManager {
     return {
       messages: [...older.messages, ...inMemory],
       hasMore: older.hasMore,
+      ...(older.truncated ? { truncated: true } : {}),
     };
   }
 
@@ -1823,6 +1824,7 @@ export class MessageManager {
       hasMore: page.hasMore,
       ...(page.anchorLost ? { anchorLost: true } : {}),
       ...(page.hasLater ? { hasLater: true } : {}),
+      ...(page.truncated ? { truncated: true } : {}),
     };
   }
 
@@ -1883,6 +1885,9 @@ export class MessageManager {
 
     const seen = new Set(page.map((message) => message.id));
     let older: Message[] = [];
+    // 读到截断点之后，「没有更早」只是「读不出来」：把这一位带上，界面才能明说
+    // （见 `MessageWindowResult.truncated`）。
+    let truncated = false;
     let before = earliest;
     for (let round = 0; round < FIRST_PAGE_FILL_ROUNDS; round++) {
       const room = limit - page.length - older.length;
@@ -1896,22 +1901,29 @@ export class MessageManager {
         // 读盘抖动：退回内存这一页，上翻时再试（首屏任何时候都不给空表）。
         return { messages: [...older, ...page], hasMore: true };
       }
+      if (read.truncated) truncated = true;
       if (read.anchorLost) {
         // 锚点在转录里找不到（旧会话、被 rewind 裁掉）：按「可能还有」处理——
         // 判成「到顶」这段历史就再也翻不出来，上翻重试还有机会。
-        return { messages: [...older, ...page], hasMore: true };
+        return {
+          messages: [...older, ...page],
+          hasMore: true,
+          ...(truncated ? { truncated: true } : {}),
+        };
       }
       if (probe) {
         return {
           messages: [...older, ...page],
           hasMore: read.messages.length > 0,
+          ...(truncated ? { truncated: true } : {}),
         };
       }
       if (read.messages.length === 0) {
-        // 转录到头了，这就是这条会话的第一条。
+        // 转录到头了（或读到了截断点），这就是能读到的最早一条。
         return {
           messages: [...older, ...page],
           hasMore: read.hasMore === true,
+          ...(truncated ? { truncated: true } : {}),
         };
       }
       // 压缩保留的轮次在转录里排在摘要块之前，与内存尾部重复：按 id 去掉。
@@ -1933,12 +1945,17 @@ export class MessageManager {
         return {
           messages: [...older, ...page],
           hasMore: read.hasMore === true,
+          ...(truncated ? { truncated: true } : {}),
         };
       }
       before = next;
     }
     // 轮次上限兜底（正常一两轮就填满）：剩下的留给上翻。
-    return { messages: [...older, ...page], hasMore: true };
+    return {
+      messages: [...older, ...page],
+      hasMore: true,
+      ...(truncated ? { truncated: true } : {}),
+    };
   }
 
   /**

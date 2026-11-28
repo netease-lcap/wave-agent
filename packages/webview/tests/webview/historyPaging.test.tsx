@@ -286,9 +286,10 @@ describe("上翻取更早", () => {
 /**
  * 填窗（spec ui/message-rendering-system.md「内容不足一屏 ⇒ 继续往前取」）：
  * 内容撑不满视口时用户根本翻不动——下方没东西可看，也就不会再派发 scroll 事件
- * 去要下一页。所以除了「滚到顶」，还要按几何判据自己补页，并且一页接上来撑不满
- * 就接着追，最多追 3 页。jsdom 里几何量恒为 0，所以把容器读数钉成给定值，再用
- * 一次列表变化（对象全换新 ⇒ keys 变）把判据重新跑起来。
+ * 去要下一页。所以除了「滚到顶」，还要按几何判据自己补页：一页接上来撑不满就接着
+ * 追，**没有页数上限**（判据是「撑满即停」，与参考物的 auto-drain 同一条链）。
+ * jsdom 里几何量恒为 0，所以把容器读数钉成给定值，再用一次列表变化（对象全换新
+ * ⇒ keys 变）把判据重新跑起来。
  */
 describe("填窗：内容撑不满视口时继续往前取", () => {
   beforeEach(() => {
@@ -347,7 +348,7 @@ describe("填窗：内容撑不满视口时继续往前取", () => {
     expect(earlierRequests(vscode)).toHaveLength(1);
   });
 
-  it("每页都很短时最多连追 3 页，到顶就停、再变也不追", async () => {
+  it("每页都很短时一直连追到撑满视口，没有页数上限", async () => {
     const { vscode } = mountWithFirstPage();
     await waitFor(() => {
       expect(renderedIds()).toContain("p-0");
@@ -358,25 +359,43 @@ describe("填窗：内容撑不满视口时继续往前取", () => {
       expect(earlierRequests(vscode)).toHaveLength(1);
     });
 
-    // 一页回来仍然撑不满 ⇒ 自己接着追，不用等用户滚（他也滚不动）。
-    replyEarlier(vscode, ["o-1"], true);
-    await waitFor(() => {
-      expect(earlierRequests(vscode)).toHaveLength(2);
-    });
-    replyEarlier(vscode, ["o-2"], true);
-    await waitFor(() => {
-      expect(earlierRequests(vscode)).toHaveLength(3);
-    });
+    // 一页回来仍然撑不满 ⇒ 自己接着追，不用等用户滚（他也滚不动）。这里连追 4 页
+    // 仍然很短就继续追：判据是「撑满即停」，不是「最多几页」。
+    for (const id of ["o-1", "o-2", "o-3", "o-4"]) {
+      const before = earlierRequests(vscode).length;
+      replyEarlier(vscode, [id], true);
+      await waitFor(() => {
+        expect(earlierRequests(vscode)).toHaveLength(before + 1);
+      });
+    }
 
-    // 第 3 页回来：到顶了，不追第 4 页。
-    replyEarlier(vscode, ["o-3"], true);
+    // 这一页回来之后内容已经远超视口：撑满了就不再追。
+    pinViewport(800, 6000);
+    replyEarlier(vscode, ["o-5"], true);
+    await waitFor(() => {
+      expect(renderedIds()).toContain("o-5");
+    });
     await act(async () => {});
-    expect(earlierRequests(vscode)).toHaveLength(3);
+    expect(earlierRequests(vscode)).toHaveLength(5);
+  });
 
-    // 到顶之后列表再变（对象换新）也不追。
+  it("到顶（hasMore=false）之后不再追，哪怕内容还是撑不满", async () => {
+    const { vscode } = mountWithFirstPage();
+    await waitFor(() => {
+      expect(renderedIds()).toContain("p-0");
+    });
+    pinViewport(800, 900);
     pokeList();
+    await waitFor(() => {
+      expect(earlierRequests(vscode)).toHaveLength(1);
+    });
+
+    replyEarlier(vscode, ["o-1"], false);
+    await waitFor(() => {
+      expect(renderedIds()).toContain("o-1");
+    });
     await act(async () => {});
-    expect(earlierRequests(vscode)).toHaveLength(3);
+    expect(earlierRequests(vscode)).toHaveLength(1);
   });
 
   it("内容足够长（离底还有余量）时一条也不发", async () => {
@@ -524,5 +543,78 @@ describe("聚焦视图上翻取更早：折叠卡换了身份也不甩到底", (
     expect(container.scrollTop + container.clientHeight).toBeLessThan(
       container.scrollHeight - 2,
     );
+  });
+});
+
+/**
+ * 转录被截断（宿主回包带 `truncated`）：能读到的最早一条之前还有内容，但宿主读
+ * 不出来（SDK 的 `TRANSCRIPT_BYTES_MAX`）。列表顶端要说明一句 —— 否则
+ * `hasMore: false` 会安静地冒充「这是会话开头」，用户以为是自己滚错了。
+ */
+describe("转录被截断", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const notice = () => screen.queryByTestId("transcript-notice");
+
+  it("首屏就带 truncated 时，顶端给出「更早的消息无法显示」", async () => {
+    renderChatApp();
+    act(() => {
+      sendHostMessage(
+        fixtures.setInitialState({
+          messages: page("p", 20),
+          hasEarlier: false,
+          truncated: true,
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(notice()?.textContent).toContain("更早的消息无法显示");
+    });
+  });
+
+  it("还有更早可翻时不出这行说明", async () => {
+    renderChatApp();
+    act(() => {
+      sendHostMessage(
+        fixtures.setInitialState({
+          messages: page("p", 20),
+          hasEarlier: true,
+          truncated: true,
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("messages-container")).toBeTruthy();
+    });
+    await act(async () => {});
+    expect(notice()).toBeNull();
+  });
+
+  it("翻到截断点（earlierMessages 带 truncated、同时没有更早）时补上这行", async () => {
+    const { vscode } = mountWithFirstPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("messages-container")).toBeTruthy();
+    });
+    // 先落地一页「还有更早」，说明为此不出现。
+    expect(notice()).toBeNull();
+
+    scrollTo(0);
+    await waitFor(() => {
+      expect(earlierRequests(vscode)).toHaveLength(1);
+    });
+    const [request] = earlierRequests(vscode);
+    act(() => {
+      sendHostMessage(
+        fixtures.earlierMessages(page("o", 3), request.requestId, {
+          hasMore: false,
+          truncated: true,
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(notice()?.textContent).toContain("更早的消息无法显示");
+    });
   });
 });
