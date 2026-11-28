@@ -9,29 +9,40 @@
   justify-content: center;
 }
 
-/* 滚动区外面包一层定位容器：桌面端的渐变蒙层与箭头键叠在滚动区两端，内容从
-   它们下面穿过（定位不能挂在 `.quick-start-row` 上——那是被裁剪的滚动区）。 */
+/* 滚动区外面包一层定位容器：渐变蒙层与箭头键叠在滚动区两端，内容从它们下面
+   穿过（定位不能挂在 `.quick-start-row` 上——那是被裁剪的滚动区）。 */
 .quick-start-scroller {
   position: relative;
   width: 100%;
   max-width: 800px;
 }
 
+/* 各端一律单行、不换行：装得下就居中，装不下就横向滚动 —— 滚轮 / 触控板横扫
+   （见组件里的 wheel 监听）或两端的箭头键。这套排布原本只给桌面端（设计师
+   2026-11-16「单行显示，左右通过箭头按钮滚动，也支持滚轮横滚，滚动过程中左右
+   两侧出现渐变蒙层」），插件端与远控页照搬：12 个分类在 800px 列里本来就要换
+   两行，箭头与蒙层才给出「右边还有」的暗示。
+   `safe center` —— 内容比行窄（二级）时照旧居中；溢出时退化为 start，否则居中
+   对齐会把左侧那截顶到滚动区外，再也滚不回来。
+   `min-height` 跟胶囊同高：一级、二级都是单行，切层时行高不变（页面不位移）。 */
 .quick-start-row {
   width: 100%;
   max-width: 800px;
-  /* 一级恒为两行高：切到二级（子项更少）时整行高度不变，页面不位移。 */
-  min-height: 64px;
+  min-height: 28px;
   display: flex;
-  flex-wrap: wrap;
-  align-content: center;
+  flex-wrap: nowrap;
+  align-items: center;
   justify-content: center;
+  justify-content: safe center;
   gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
 
-/* 蒙层与箭头只服务桌面端的单行横滚，插件端保持两行换行、两者都不渲染。 */
-.quick-start-fade,
-.quick-start-arrow {
+/* 横向滚动条不要：这一行只有一颗胶囊高，条子会压掉胶囊；可滚性由蒙层与箭头
+   表达。 */
+.quick-start-row::-webkit-scrollbar {
   display: none;
 }
 
@@ -53,6 +64,9 @@
   font-weight: 500;
   line-height: 1;
   white-space: nowrap;
+  /* 单行不换行 ⇒ 溢出时胶囊默认允许被压缩（flex-shrink: 1），字会被挤扁，
+     一律不许缩，让它们撑开滚动区。 */
+  flex: none;
   cursor: pointer;
 }
 
@@ -129,9 +143,9 @@
 
 /* 分类与其子分类之间的分隔竖线。
    `flex: none` 不能省（设计师 2026-11-16 评论：「界面过窄时，返回与选项之间的分割线
-   就不见了」）：桌面端是 `nowrap` 行，三颗胶囊都已 `flex: none`，只剩这条线还带默认
+   就不见了」）：各端都是 `nowrap` 行，三颗胶囊都已 `flex: none`，只剩这条线还带默认
    `flex-shrink: 1` —— 行一溢出，1px 就被压成 0px（实测视口 ≤768 时 computed width
-   为 `0px`，线整个消失）。插件端是换行布局、本来不缩，加上也无副作用。 */
+   为 `0px`，线整个消失）。现在各端都是 nowrap 行，这条更省不得。 */
 .quick-start-divider {
   flex: none;
   width: 1px;
@@ -155,46 +169,26 @@
   height: 32px;
 }
 
-/* 桌面端改为单行横滚（设计师 2026-11-16 评论：「单行显示，左右通过箭头按钮滚动，
-   也支持滚轮横滚，滚动过程中左右两侧出现渐变蒙层」）。
-   高度随之从两行 72 落到一行 32 —— 一级、二级都是单行，那条「切层时高度不变、
-   页面不位移」的不变量由「同为一行」接手，不再靠 min-height 撑两条行高。 */
+/* 桌面端列宽 768（base 是插件端的 800），与上方输入卡同档。 */
 [data-host="desktop"] .quick-start-scroller,
 [data-host="desktop"] .quick-start-row {
   max-width: 768px;
 }
 
+/* 桌面端胶囊 32px 高（见下一条），行高跟着它走；排布与滚动行为两端同一套。 */
 [data-host="desktop"] .quick-start-row {
   min-height: 32px;
-  flex-wrap: nowrap;
-  align-items: center;
-  /* 内容比行窄（二级）时照旧居中；溢出时 `safe` 回落到 start —— 否则居中对齐
-     会把左侧那截顶到滚动区外，再也滚不回来。 */
-  justify-content: center;
-  justify-content: safe center;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-}
-
-[data-host="desktop"] .quick-start-row::-webkit-scrollbar {
-  display: none;
-}
-
-/* nowrap 之后胶囊默认允许被压缩（flex-shrink: 1），字会被挤扁，一律不许缩。 */
-[data-host="desktop"] .quick-start-cat,
-[data-host="desktop"] .quick-start-sub,
-[data-host="desktop"] .quick-start-back {
-  flex: none;
 }
 
 /* 边缘蒙层：**先纯色、再渐变**（设计师 2026-11-16 第二轮：「现在有滚动按钮和选项重叠的
    感觉，不行可以加一块纯色再按钮下面，然后再加渐变」）。只留一条渐变时，箭头身下仍会
    露出被裁掉半颗胶囊的边与描边，读起来像「按钮压在选项上」；所以前 32px 铺满画布底
    （28px 箭头 + 4px 余量，把箭头整个托住），32 → 80px 才是渐隐。
-   底色取对话画布（浅 #ffffff / 深 #111314，与空态页同色），只在那一侧还有内容可滚时
-   显形（`.is-visible`），指针穿透，不挡胶囊点击。 */
-[data-host="desktop"] .quick-start-fade {
+   底色取聊天列底色 `--vscode-panel-background`（桌面端它就是对话画布
+   `--cc-bg-conversation`，浅 #ffffff / 深 #111314，见 host-desktop.css 的桥接），
+   所以两端同一个值；只在那一侧还有内容可滚时显形（`.is-visible`），指针穿透，
+   不挡胶囊点击。 */
+.quick-start-fade {
   display: block;
   position: absolute;
   top: 0;
@@ -206,31 +200,31 @@
   z-index: 1;
 }
 
-[data-host="desktop"] .quick-start-fade--start {
+.quick-start-fade--start {
   left: 0;
   background-image: linear-gradient(
     to right,
-    var(--cc-bg-conversation, #ffffff) 32px,
+    var(--vscode-panel-background) 32px,
     transparent 80px
   );
 }
 
-[data-host="desktop"] .quick-start-fade--end {
+.quick-start-fade--end {
   right: 0;
   background-image: linear-gradient(
     to left,
-    var(--cc-bg-conversation, #ffffff) 32px,
+    var(--vscode-panel-background) 32px,
     transparent 80px
   );
 }
 
-[data-host="desktop"] .quick-start-fade.is-visible {
+.quick-start-fade.is-visible {
   opacity: 1;
 }
 
 /* 箭头键：与同排胶囊同一族（1px widget-border + r8 + 14px 字档的墨色）。
    叠在蒙层之上、滚动区两端，那一侧滚到头就整颗消失，不挡内容也不留死键。 */
-[data-host="desktop"] .quick-start-arrow {
+.quick-start-arrow {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -243,21 +237,38 @@
   padding: 0;
   border: 1px solid var(--vscode-widget-border);
   border-radius: 8px;
-  background: var(--cc-bg-conversation, #ffffff);
-  color: #565a60;
+  background: var(--vscode-panel-background);
+  color: var(--vscode-descriptionForeground);
   cursor: pointer;
 }
 
-[data-host="desktop"] .quick-start-arrow svg {
+.quick-start-arrow svg {
   display: block;
 }
 
-[data-host="desktop"] .quick-start-arrow--start {
+.quick-start-arrow--start {
   left: 0;
 }
 
-[data-host="desktop"] .quick-start-arrow--end {
+.quick-start-arrow--end {
   right: 0;
+}
+
+.quick-start-arrow:hover {
+  background: var(--vscode-list-hoverBackground);
+  color: var(--vscode-foreground);
+}
+
+.quick-start-arrow:active {
+  background: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-foreground);
+}
+
+/* 桌面端箭头与胶囊共用同一套交互底与墨色（见上方
+   `[data-host="desktop"] .quick-start-cat:hover` 那段）。 */
+[data-host="desktop"] .quick-start-arrow {
+  background: var(--cc-bg-conversation, #ffffff);
+  color: #565a60;
 }
 
 [data-host="desktop"] .quick-start-arrow:hover {
