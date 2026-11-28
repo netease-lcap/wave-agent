@@ -310,15 +310,26 @@
 }
 
 /* ---------- 「回到最新」入口 ---------- */
-/* 视口离内容末尾超过 200px 时浮在消息区底部居中（spec: 离开底部时的「回到最
-   新」入口）。这一层挂在内层正文列的末尾，必须是 sticky（不是 absolute）才贴
-   视口底而不是跟着内容走；高度 0 让它不占布局——出现/收回都不挪动任何一行。 */
-.jump-to-bottom-layer {
-  position: sticky;
-  bottom: 0;
+/* 视口离内容末尾超过 200px 时浮在输入框上方居中（spec: 离开底部时的「回到最
+   新」入口）。这一层不属于消息流：它的位置只跟「输入框上方」这条线有关，所以
+   **不渲染在滚动内容里**，而是由 MessageList portal 到 `.jump-to-bottom-anchor`
+   （见 ChatApp）。住在内容里时它的位置随内容高度走 —— 聚焦视图收起一轮折叠卡，
+   内容一矮它就落到折叠卡上，随后才淡出，用户看到的就是那半秒残影。
+   `bottom: 100%` = 贴在锚点那条线上往上长；不能用 sticky：sticky 只在元素要被
+   推出视口底时才粘，元素本来就在视口内时仍停在静态位置，位置照样跟着内容走。
+   高度 0 让它不占布局 —— 出现/收回都不挪动任何一行。 */
+.jump-to-bottom-anchor {
+  position: relative;
+  flex: none;
   height: 0;
-  width: 100%;
-  align-self: stretch;
+}
+
+.jump-to-bottom-layer {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  height: 0;
   z-index: 25;
   /* 整层不接事件（滚动、点击都交给内容），只有显示中的按钮自己收。 */
   pointer-events: none;
@@ -330,12 +341,13 @@
   opacity: 1;
 }
 
-/* 底部渐隐：下方还有内容时正文在视口底淡出，按钮才浮得起来。左右各外扩
-   10px 抵消列的 padding，渐变与列同宽而不是嵌在里面。 */
+/* 底部渐隐：下方还有内容时正文在视口底淡出，按钮才浮得起来。整条滚动面宽
+   （列外那段留白本来就是面板底色，渐变到同一个底色 ⇒ 看不出边界，也就不会再
+   随着列的 padding 变化而错位）。 */
 .jump-to-bottom-fade {
   position: absolute;
-  left: -10px;
-  right: -10px;
+  left: 0;
+  right: 0;
   bottom: 0;
   height: 56px;
   background: linear-gradient(
@@ -463,11 +475,15 @@
    圆心只偏 0.1px；三点盒 `21.5×4.5`，仍在 34px 圆钮内居中、零位移。
    不再往回调到 4px（8 个设备像素）——她要的是「比 5 小一点」，而 4px 正是她上一轮
    嫌小的那一档。 */
-[data-host="desktop"] .jump-to-bottom-button[data-streaming="true"] .jump-to-bottom-icon {
+[data-host="desktop"]
+  .jump-to-bottom-button[data-streaming="true"]
+  .jump-to-bottom-icon {
   display: none;
 }
 
-[data-host="desktop"] .jump-to-bottom-button[data-streaming="true"] .jump-to-bottom-dots {
+[data-host="desktop"]
+  .jump-to-bottom-button[data-streaming="true"]
+  .jump-to-bottom-dots {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -503,13 +519,21 @@
 }
 
 /* hover / 键盘聚焦 ⇒ 切回下箭头（键盘用户没有 hover，只能靠 focus-visible）。 */
-[data-host="desktop"] .jump-to-bottom-button[data-streaming="true"]:hover .jump-to-bottom-icon,
-[data-host="desktop"] .jump-to-bottom-button[data-streaming="true"]:focus-visible .jump-to-bottom-icon {
+[data-host="desktop"]
+  .jump-to-bottom-button[data-streaming="true"]:hover
+  .jump-to-bottom-icon,
+[data-host="desktop"]
+  .jump-to-bottom-button[data-streaming="true"]:focus-visible
+  .jump-to-bottom-icon {
   display: block;
 }
 
-[data-host="desktop"] .jump-to-bottom-button[data-streaming="true"]:hover .jump-to-bottom-dots,
-[data-host="desktop"] .jump-to-bottom-button[data-streaming="true"]:focus-visible .jump-to-bottom-dots {
+[data-host="desktop"]
+  .jump-to-bottom-button[data-streaming="true"]:hover
+  .jump-to-bottom-dots,
+[data-host="desktop"]
+  .jump-to-bottom-button[data-streaming="true"]:focus-visible
+  .jump-to-bottom-dots {
   display: none;
 }
 

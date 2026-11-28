@@ -1456,6 +1456,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     /** 取回一页之后落位（大纲点到还没加载的刻度，spec 场景 17）。 */
     jumpToMessage: (id: string) => void;
   }>(null);
+  // 「回到最新」入口的定位锚（portal 宿主）：零高度、紧贴输入区上沿的一格。
+  // 那颗按钮属于「输入框上方」这一层，不进消息流的布局（缘由见 MessageList 里
+  // `jumpToBottomHost` 的注释）；用 state 而不是 ref，是为了节点挂上后能重渲染
+  // 一次，把 portal 的目标交给 MessageList。
+  const [jumpToBottomAnchor, setJumpToBottomAnchor] =
+    useState<HTMLDivElement | null>(null);
   const stateRef = useRef(state);
   // 「最近目录」那条请求的 requestId：回执只认最后一次问出去的那条。远控页每开
   // 一次弹窗问一次，两次点击挨得近时先后两条回执会乱序到达，陈旧的那条会把整份
@@ -6745,6 +6751,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           key={state.currentSession?.id}
           ref={messageListRef}
           messages={state.messages}
+          jumpToBottomHost={jumpToBottomAnchor}
           focusView={focusView}
           queuedMessages={state.queuedMessages}
           isStreaming={state.isStreaming}
@@ -6794,6 +6801,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           modNotices={modNotices}
         />
       )}
+
+      {/* 「回到最新」入口的定位锚：零高度、紧贴输入区上沿，MessageList 把那一层
+          portal 到这里（`jumpToBottomHost`）。不挂在 `.input-area-container` 里面
+          —— 那个容器在确认卡模式下是 `overflow: hidden`，会把这一层裁掉。 */}
+      <div
+        className="jump-to-bottom-anchor"
+        ref={setJumpToBottomAnchor}
+        aria-hidden="true"
+      />
 
       {/* 插件端的「快捷方式」仍在输入卡上方（与桌面端分叉排布，原因见下方
           桌面端那处的注释）。 */}

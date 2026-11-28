@@ -35,6 +35,7 @@ import { FocusFoldRow } from "./FocusFoldRow";
 import { ScrollHoldProvider } from "./ScrollHoldContext";
 import { estimateRowHeight } from "../virtual/estimateRowHeight";
 import { useVirtualRows } from "../virtual/useVirtualRows";
+import { createPortal } from "react-dom";
 import type { MessageListProps } from "../types";
 import type { Message as MessageType } from "wave-agent-sdk/types";
 import "../styles/MessageList.css";
@@ -125,6 +126,7 @@ export const MessageList = forwardRef<
 >(function MessageList(
   {
     messages,
+    jumpToBottomHost,
     queuedMessages,
     focusView,
     isStreaming,
@@ -1665,33 +1667,41 @@ export const MessageList = forwardRef<
               )}
             </div>
           )}
-          {/* 「回到最新」入口（spec: 离开底部时的「回到最新」入口）。挂在内层正文
-            列的末尾：这一层是 sticky 且零高度，所以它贴的是滚动的视口底而不是内
-            容底，也不给任何一行加高度——出现/收回都不会让列表跳动一下。 */}
-          <div
-            className="jump-to-bottom-layer"
-            data-visible={showJumpToBottom}
-            data-testid="jump-to-bottom-layer"
-          >
-            <div className="jump-to-bottom-fade" aria-hidden="true" />
-            <button
-              type="button"
-              className="jump-to-bottom-button"
-              data-testid="jump-to-bottom"
-              aria-label="回到最新"
-              title="回到最新"
-              // 收回时既不接点击也不占 Tab 序列，但节点留着做淡出（display: none
-              // 会把过渡吃掉）。
-              aria-hidden={!showJumpToBottom}
-              tabIndex={showJumpToBottom ? 0 : -1}
-              // 流式中（AI 还在输出）箭头让位给三个点的 loading；取值交给 CSS。
-              data-streaming={isStreaming ? "true" : "false"}
-              // 窗口停在历史里时这颗按钮是「回到最新**一页**」——外观与位置不变，
-              // 语义换成重新取尾页（spec 场景 18）。
-              data-historical={hasLater ? "true" : "false"}
-              onClick={jumpToBottom}
+        </div>
+        {/* 「回到最新」入口（spec: 离开底部时的「回到最新」入口）。它不属于消息
+          流：位置只跟「输入框上方」这一条有关，所以不参与本文列的布局 —— 用
+          portal 渲染到 `jumpToBottomHost`（ChatApp 里紧贴输入区上沿的零高度锚点
+          `.jump-to-bottom-anchor`），由 CSS 的 `bottom: 100%` 贴在它上沿（参考
+          实现同款：那边是 `absolute bottom-full` 挂在 composer 容器里）。待在滚动
+          内容里时它的位置随内容高度走 —— 聚焦视图收起一轮折叠卡，内容一矮它就落
+          到折叠卡上，随后才淡出，用户看到的就是那半秒残影。零高度，出现/收回都
+          不挪任何一行。 */}
+        {jumpToBottomHost &&
+          createPortal(
+            <div
+              className="jump-to-bottom-layer"
+              data-visible={showJumpToBottom}
+              data-testid="jump-to-bottom-layer"
             >
-              {/* 桌面端用与 composer 发送箭头同几何的下箭头（设计师 2026-11-10：
+              <div className="jump-to-bottom-fade" aria-hidden="true" />
+              <button
+                type="button"
+                className="jump-to-bottom-button"
+                data-testid="jump-to-bottom"
+                aria-label="回到最新"
+                title="回到最新"
+                // 收回时既不接点击也不占 Tab 序列，但节点留着做淡出（display: none
+                // 会把过渡吃掉）。
+                aria-hidden={!showJumpToBottom}
+                tabIndex={showJumpToBottom ? 0 : -1}
+                // 流式中（AI 还在输出）箭头让位给三个点的 loading；取值交给 CSS。
+                data-streaming={isStreaming ? "true" : "false"}
+                // 窗口停在历史里时这颗按钮是「回到最新**一页**」——外观与位置不变，
+                // 语义换成重新取尾页（spec 场景 18）。
+                data-historical={hasLater ? "true" : "false"}
+                onClick={jumpToBottom}
+              >
+                {/* 桌面端用与 composer 发送箭头同几何的下箭头（设计师 2026-11-10：
                 「图标的大小粗细可以参考」`svg.ai-send-icon`）；插件端保留原
                 codicon 字形，与本轮其它改动一样不动宿主端。
 
@@ -1700,24 +1710,25 @@ export const MessageList = forwardRef<
                 把「点了会回到最新」这个动作露出来（设计师 2026-11-10：「箭头显示
                 为三个点的 loading 动效，鼠标 hover 上去变成箭头」）。三点只在这个
                 桌面分支里渲染，插件端仍是上面那颗 codicon，DOM 与样式都不受影响。 */}
-              {isDesktopHost() ? (
-                <>
-                  <span className="jump-to-bottom-dots" aria-hidden="true">
-                    <i />
-                    <i />
-                    <i />
-                  </span>
-                  <ScrollToBottomArrowIcon />
-                </>
-              ) : (
-                <span
-                  className="codicon codicon-arrow-down"
-                  aria-hidden="true"
-                />
-              )}
-            </button>
-          </div>
-        </div>
+                {isDesktopHost() ? (
+                  <>
+                    <span className="jump-to-bottom-dots" aria-hidden="true">
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                    <ScrollToBottomArrowIcon />
+                  </>
+                ) : (
+                  <span
+                    className="codicon codicon-arrow-down"
+                    aria-hidden="true"
+                  />
+                )}
+              </button>
+            </div>,
+            jumpToBottomHost,
+          )}
         {/* 正文里 `dangerouslySetInnerHTML` 生成的那几颗图标按钮（代码块右上角
           「复制代码」）挂不上 React 的 `<Tooltip>`，提示走这份委托版；它自己
           portal 到 body，放在列表根节点下只为「一个聊天窗一份」。 */}
