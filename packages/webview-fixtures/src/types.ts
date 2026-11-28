@@ -385,6 +385,12 @@ export interface UpdateMessagesMessage extends HostToWebviewMessageBase {
   messages: Message[];
   /** 这一页之前还有更早的消息（上翻的开关）。缺席按 false 处理。 */
   hasEarlier?: boolean;
+  /**
+   * 转录超过上限（SDK 的 `TRANSCRIPT_BYTES_MAX`），首屏这段之前的部分读不出来。
+   * 与 `earlierMessages.truncated` 同一个事实：界面据此在历史顶端明说「更早的
+   * 消息无法显示」，而不是让 `hasEarlier: false` 安静地冒充「这是会话开头」。
+   */
+  truncated?: boolean;
 }
 
 /**
@@ -406,6 +412,12 @@ export interface EarlierMessagesMessage extends HostToWebviewMessageBase {
    * 重试，**不要**当成「到底」——判错这段历史就再也翻不出来。
    */
   anchorLost?: boolean;
+  /**
+   * 转录超过上限，读到截断点就到底了：这一次 `hasMore: false` 不是「会话开头」，
+   * 而是「更早那份读不出来」。界面据此在顶部说明一次（参考物的
+   * `transcriptTruncated` 同一语义）。
+   */
+  truncated?: boolean;
 }
 
 /**
@@ -449,6 +461,8 @@ export interface MessagePageMessage extends HostToWebviewMessageBase {
    * **不要**当成「这条会话到底了」，也不许静默清空列表（场景 17）。
    */
   anchorLost?: boolean;
+  /** 同 `EarlierMessagesMessage.truncated`：这一页之前的历史读不出来。 */
+  truncated?: boolean;
 }
 
 export interface UpdateTasksMessage extends HostToWebviewMessageBase {
@@ -1031,6 +1045,8 @@ export interface SetInitialStateMessage extends HostToWebviewMessageBase {
    *  上翻按需取更早」）。缺席按 false 处理：老宿主没有这个字段，页面就不提供上翻，
    *  行为与加分页之前一致。 */
   hasEarlier?: boolean;
+  /** 同 `UpdateMessagesMessage.truncated`：转录超过上限，更早那段读不出来。 */
+  truncated?: boolean;
   /** 只允许 rewind 路径置真：宿主已按同一条规则本地切完自己的缓存，因此这一份
    *  快照只更新其余字段，让 webview 保留它刚切好的列表，省掉整份列表的重传。
    *  切会话 / 新建会话 / 恢复完成**不得**使用 —— 那些场景 webview 的列表本来

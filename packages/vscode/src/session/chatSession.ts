@@ -591,6 +591,8 @@ export class ChatSession {
   public async getInitialPage(): Promise<{
     messages: Message[];
     hasEarlier: boolean;
+    /** 转录超过上限、更早那段读不出来（`TRANSCRIPT_BYTES_MAX`）。 */
+    truncated: boolean;
   }> {
     const page = (await this.getMessagePage({
       limit: MESSAGE_PAGE_SIZE,
@@ -598,6 +600,7 @@ export class ChatSession {
     return {
       messages: page?.messages ?? [],
       hasEarlier: page?.hasMore === true,
+      truncated: page?.truncated === true,
     };
   }
 
@@ -605,19 +608,25 @@ export class ChatSession {
    * 上翻一页更早的：SDK 从转录读（压缩之前的历史也读得到），回包直接转给界面，
    * 宿主一个字段都不存。
    */
-  public async getEarlierPage(before: string): Promise<{
+  public async getEarlierPage(
+    before: string,
+    limit?: number,
+  ): Promise<{
     messages: Message[];
     hasMore: boolean;
     anchorLost: boolean;
+    /** 转录超过上限，读到截断点就到底了（见 `MessageWindowResult.truncated`）。 */
+    truncated: boolean;
   }> {
     const page = (await this.getMessagePage({
       before,
-      limit: MESSAGE_PAGE_SIZE,
+      limit: limit ?? MESSAGE_PAGE_SIZE,
     })) as MessageWindowResult | undefined;
     return {
       messages: page?.messages ?? [],
       hasMore: page?.hasMore === true,
       anchorLost: page?.anchorLost === true,
+      truncated: page?.truncated === true,
     };
   }
 
@@ -640,6 +649,7 @@ export class ChatSession {
     hasMore: boolean;
     hasLater: boolean;
     anchorLost: boolean;
+    truncated: boolean;
   }> {
     const page = (await this.getMessagePage({
       ...(from === undefined ? {} : { from }),
@@ -650,6 +660,7 @@ export class ChatSession {
       hasMore: page?.hasMore === true,
       hasLater: page?.hasLater === true,
       anchorLost: page?.anchorLost === true,
+      truncated: page?.truncated === true,
     };
   }
 

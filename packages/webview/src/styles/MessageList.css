@@ -209,6 +209,17 @@
   pointer-events: auto;
 }
 
+/* 转录被截断时列表顶端那一行说明（「更早的消息无法显示」）。它是一行普通正文行
+   （跟在虚拟列表里一起滚），不是浮层 —— 浮层会盖住第一条消息，而这里要说的正是
+   「上面没有更多了」。 */
+.transcript-notice {
+  padding: 8px 0;
+  font-size: 12px;
+  line-height: 14px;
+  color: var(--vscode-descriptionForeground);
+  overflow-wrap: break-word;
+}
+
 /* User messages span the full column (prototype quiet bar); the previous
    shrink-to-fit override was removed with the visual refresh. */
 

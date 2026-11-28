@@ -298,6 +298,42 @@ describe("MessageManager reading a page while the session moves", () => {
     expect(read.mock.calls[1][0]).not.toBe(stalePath);
   });
 
+  it("passes the transcript's truncation flag through to the caller", async () => {
+    // 转录超过上限时，读页那侧只能说「读到截断点就到底了」。这个信号必须原样
+    // 上到回包，界面才能明说「更早的消息无法显示」，而不是当成会话开头。
+    const read = await stub();
+    const manager = createManager();
+    add(manager, 3);
+    read.mockImplementationOnce(async () => ({
+      messages: [{ id: "older" } as Message],
+      hasMore: false,
+      truncated: true,
+    }));
+
+    const page = await manager.getMessagePage({ before: "ghost", limit: 10 });
+
+    expect(ids(page.messages)).toEqual(["older"]);
+    expect(page.truncated).toBe(true);
+  });
+
+  it("carries the truncation flag on the first screen too", async () => {
+    const read = await stub();
+    const manager = createManager();
+    add(manager, 3);
+    read.mockImplementationOnce(async () => ({
+      messages: [],
+      hasMore: false,
+      truncated: true,
+    }));
+
+    const page = await manager.getMessagePage({ limit: 10 });
+
+    // 首屏补齐时读到截断点：这一页就是能读到的最早那段，同样要带这一位。
+    expect(ids(page.messages)).toHaveLength(3);
+    expect(page.hasMore).toBe(false);
+    expect(page.truncated).toBe(true);
+  });
+
   it("calls the anchor lost when the session keeps moving under it", async () => {
     const read = await stub();
     const manager = createManager();

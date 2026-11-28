@@ -733,8 +733,18 @@ export interface MessageListProps {
   hasEarlier?: boolean;
   /** 上一页还没回来：顶部触发不再叠加请求。 */
   isLoadingEarlier?: boolean;
-  /** 要一页更早的，锚点是当前已加载的第一条；调用方负责发请求与去重。 */
-  onLoadEarlier?: (before: string) => void;
+  /**
+   * 会话转录超过宿主能读的上限（SDK 的 `TRANSCRIPT_BYTES_MAX`）：已经取到的这一
+   * 段之前的历史读不出来。到顶时不再有「取更早」可发，列表顶端改为说明一句
+   * 「更早的消息无法显示」，别让用户以为是自己滚错了。
+   */
+  earlierTruncated?: boolean;
+  /**
+   * 要一页更早的，锚点是当前已加载的第一条；调用方负责发请求与去重。
+   * `limit` 是这一页要多少条：上翻一页用 `MESSAGE_PAGE_SIZE`，填窗（内容撑不满
+   * 视口、要一次多取几页的量）传 `FILL_PAGE_SIZE`。不传 = 宿主按默认页大小给。
+   */
+  onLoadEarlier?: (before: string, limit?: number) => void;
   /**
    * 整条会话的用户消息索引（宿主 `getTranscriptOutline` 的回包）：大纲用它把刻度
    * 铺满整份转录，而不是只画已加载的那一页（spec ui/transcript-outline.md 场景 9 /

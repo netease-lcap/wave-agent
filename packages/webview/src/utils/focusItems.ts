@@ -50,7 +50,21 @@ export interface FocusMessageItem {
   foldKey?: string;
 }
 
-export type FocusItem = FocusFoldItem | FocusMessageItem;
+/**
+ * 转录被截断时列表顶端那一行说明（「更早的消息无法显示」）。
+ *
+ * 它是一行**布局项**而不是列表外的一张浮层：只有落进虚拟列表，它才跟正文一起
+ * 滚动、一起参与填窗测量，也不会盖住第一条消息（行的绝对定位决定任何流内的
+ * 兄弟节点都会被压在同一处）。
+ */
+export interface FocusNoticeItem {
+  kind: "notice";
+  /** 虚拟列表的行 key：全局只有一个这条说明。 */
+  key: string;
+  text: string;
+}
+
+export type FocusItem = FocusFoldItem | FocusMessageItem | FocusNoticeItem;
 
 export interface FocusItems {
   items: FocusItem[];
@@ -323,12 +337,20 @@ export function buildFocusItems(
    * 消息行交给虚拟列表，收起态仍是「卡头一行」。
    */
   expandedFolds?: ReadonlySet<string>,
+  /**
+   * 有值时在最前面插一行说明（转录被截断，「更早的消息无法显示」）。行号在
+   * push 时按 `items.length` 现算，所以插在最前面不会让消息坐标错位。
+   */
+  notice?: string,
 ): FocusItems {
   const items: FocusItem[] = [];
   const rowIndexByMessageIndex: number[] = new Array(messages.length).fill(0);
   const processRowByMessageIndex: number[] = new Array(messages.length).fill(
     -1,
   );
+
+  if (notice)
+    items.push({ kind: "notice", key: "transcript-notice", text: notice });
 
   const pushMessage = (message: Message, messageIndex: number) => {
     rowIndexByMessageIndex[messageIndex] = items.length;

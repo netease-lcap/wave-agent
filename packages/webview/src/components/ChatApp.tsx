@@ -1875,6 +1875,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // 「还有没有更早」由宿主的回包决定，页面只负责在滚到顶时开口要、把回来的一页接在
   // 列表前面。归属键是 requestId——用户在顶部停留会连续翻页，晚到的旧页必须丢弃。
   const [hasEarlier, setHasEarlier] = useState(false);
+  /**
+   * 会话转录超过宿主能读的上限（SDK 的 `TRANSCRIPT_BYTES_MAX`）：更早那段取不
+   * 出来。跟着每次取页回包走——截断是**这条会话**的属性，换会话时按新回包重置。
+   */
+  const [earlierTruncated, setEarlierTruncated] = useState(false);
   const [isLoadingEarlier, setIsLoadingEarlier] = useState(false);
   const earlierRequestRef = useRef<string | undefined>(undefined);
   const earlierSeqRef = useRef(0);
@@ -1883,12 +1888,19 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const messagesRef = useRef(state.messages);
   messagesRef.current = state.messages;
 
-  const sendLoadEarlier = (before: string) => {
+  const sendLoadEarlier = (before: string, limit?: number) => {
     const requestId = `earlier-${++earlierSeqRef.current}`;
     earlierRequestRef.current = requestId;
     setIsLoadingEarlier(true);
     const pid = paneIdRef.current;
-    const payload = { command: "loadEarlierMessages", before, requestId };
+    const payload = {
+      command: "loadEarlierMessages",
+      before,
+      requestId,
+      // 填窗一次多要几页的量（800），上翻一页 200（MessageList 的 EARLIER/FILL_PAGE_SIZE）。
+      // 不带 = 宿主按默认页大小给，老宿主不看这个字段。
+      ...(limit === undefined ? {} : { limit }),
+    };
     vscode.postMessage(
       pid === undefined ? payload : { ...payload, paneId: pid },
     );
@@ -2039,6 +2051,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         dispatch({ type: "SET_MESSAGES", payload: message.messages });
         // 整表替换之后，上翻的开关回到宿主说的那一份（缺省 = 老宿主，不提供上翻）。
         setHasEarlier(message.hasEarlier === true);
+        // 截断是**这条会话的转录**属性，不是这一份列表的属性：压缩兜底那条
+        // `updateMessages` 只带列表、不带这个字段，缺席就保持原状（与
+        // `hasEarlier` 缺省按 false 不同——那里缺席确实意味着「不支持上翻」）。
+        if (message.truncated !== undefined) {
+          setEarlierTruncated(message.truncated);
+        }
         setIsLoadingEarlier(false);
         earlierAnchorAttemptsRef.current = 0;
         // 换会话 / 回滚 / 清理之后窗口就是整份会话，不再是历史里的那一页。
@@ -2068,6 +2086,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         dispatch({ type: "SET_MESSAGES", payload: message.messages });
         setHasEarlier(message.hasMore === true);
         setHasLater(message.hasLater === true);
+        setEarlierTruncated(message.truncated === true);
         pageLandedRef.current = true;
         break;
       case "earlierMessages":
@@ -2089,6 +2108,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           break;
         }
         earlierAnchorAttemptsRef.current = 0;
+        if (message.truncated) setEarlierTruncated(true);
         dispatch({ type: "PREPEND_MESSAGES", payload: message.messages });
         setHasEarlier(message.hasMore);
         setIsLoadingEarlier(false);
@@ -3087,6 +3107,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         }
         if (replayedPlan !== null) routeReplayPlan(replayedPlan);
         setHasEarlier(message.hasEarlier === true);
+        setEarlierTruncated(message.truncated === true);
         setIsLoadingEarlier(false);
         earlierAnchorAttemptsRef.current = 0;
         // 快照就是「这一页的历史窗口」：首屏（或换会话）都从最新一页开始，
@@ -6769,6 +6790,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           // 已加载的第一条（spec ui/message-rendering-system.md「首屏一页，上翻按需
           // 取更早」）。
           hasEarlier={hasEarlier}
+          earlierTruncated={earlierTruncated}
           isLoadingEarlier={isLoadingEarlier}
           onLoadEarlier={sendLoadEarlier}
           // 大纲的刻度覆盖整条会话（spec ui/transcript-outline.md 场景 9）：索引
