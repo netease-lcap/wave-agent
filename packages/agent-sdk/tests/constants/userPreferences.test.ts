@@ -53,7 +53,7 @@ describe("describeUserPreferencePatch", () => {
       completionEnabled: "代码补全",
       nextEditEnabled: "下一步编辑建议",
       enableKnowledgeBase: "企业知识库",
-      enableReplCoreTools: "核心工具收进 Code Mode",
+      enableReplCoreTools: "核心工具收进 REPL（Code Mode）",
     });
   });
 });

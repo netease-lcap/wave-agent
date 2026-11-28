@@ -75,7 +75,6 @@ import { FileToolHeader } from "./FileToolHeader";
 import { MessageActionButton } from "./MessageActionButton";
 import { JumpToBackgroundIcon, RewindIcon } from "./HeaderIcons";
 import { getStageColor, getToolStatusColor } from "../utils/statusColors";
-import { displayToolName } from "../utils/toolDisplayName";
 import { timelineBlockBounds } from "../utils/timelineBlocks";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { isDesktopHost, isRemotePageHost } from "../utils/platform";
@@ -1778,7 +1777,7 @@ export const Message: React.FC<MessageProps> = React.memo(
             >
               ●
             </span>{" "}
-            {displayToolName(toolBlock.name) || "Tool"}
+            {toolBlock.name || "Tool"}
             {compactInfo ? (
               <span className="compact-params"> {compactInfo}</span>
             ) : (

@@ -743,7 +743,7 @@ describe("userSettings", () => {
     });
   });
 
-  describe("核心工具收进 Code Mode（顶层 enableReplCoreTools）", () => {
+  describe("核心工具收进 REPL（Code Mode）（顶层 enableReplCoreTools）", () => {
     it("回读顶层键；非布尔值按未设置处理（不把写坏的配置读成「开」）", () => {
       seedFile({ enableReplCoreTools: true });
       expect(readUserPreferenceSettings(FILE).enableReplCoreTools).toBe(true);
