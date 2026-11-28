@@ -87,6 +87,19 @@ export interface UseVirtualRowsOptions {
    * 新闭包，账本随之重算未挂载行；若每次渲染都给新闭包，账本会整表重算。
    */
   estimate: (index: number) => number;
+  /**
+   * 行与行之间的额外间距（px，长度与 `keys` 对齐，缺省 0）。调用方自己把它写成
+   * 行的 `padding-bottom`（时间线连线的行距、轮与轮之间的留白都是它），但**账本
+   * 只记内容高度**：量到的盒高减掉这里给出的间距，账本算行坐标时再加回来。
+   *
+   * 为什么要拆开记账：间距是渲染期就算得准的量，盒高不是。两者混在一个数里时，
+   * 间距一变（收起折叠卡：卡头从 run 中间变成 run 末尾，`padding-bottom` 0 → 29）
+   * 已挂载那行的实测值就成了旧值，而 ResizeObserver 的回调要等下一帧才来 —— 中间
+   * 那一帧 spacer 比真实内容少 29px，浏览器先把 `scrollTop` 夹到这个偏小的 max 上
+   * 并画出去，下一帧贴底再拉回来：手机上看到的就是「收起时上下抖一下」。
+   * 拆开之后 spacer 在同一帧就是对的，根本不存在这个中间态。
+   */
+  pads?: readonly number[];
   overscanTop?: number;
   overscanBottom?: number;
   nearTailScreens?: number;
@@ -137,6 +150,7 @@ export function useVirtualRows(options: UseVirtualRowsOptions): VirtualRows {
   const {
     keys,
     estimate,
+    pads,
     overscanTop = DEFAULT_OVERSCAN_PX,
     overscanBottom = DEFAULT_OVERSCAN_PX,
     nearTailScreens = DEFAULT_NEAR_TAIL_SCREENS,
@@ -167,16 +181,28 @@ export function useVirtualRows(options: UseVirtualRowsOptions): VirtualRows {
    * 重算的三个触发点都在函数体里读得到：`keys`（换了一批行）、`sizes`（量出新
    * 高度）、`estimate`（估算所依赖的列宽变了，调用方会换一个新闭包）。
    */
+  /** key → 行间距。`applyHeight` 是稳定闭包，量的时候从这个 ref 里扣。 */
+  const padByKey = useMemo(() => {
+    if (pads === undefined) return undefined;
+    const map = new Map<string, number>();
+    keys.forEach((key, index) => map.set(key, pads[index] ?? 0));
+    return map;
+  }, [keys, pads]);
+  const padByKeyRef = useRef(padByKey);
+  padByKeyRef.current = padByKey;
+
   const { metrics, measured } = useMemo(() => {
     const measuredKeys = new Set<string>();
     const next = buildRowMetrics(keys, (key, index) => {
+      // 实测的是纯内容高度（`applyHeight` 已经把间距扣掉了），间距在这里加回来。
+      const pad = padByKey?.get(key) ?? 0;
       const size = sizes.get(key);
-      if (size === undefined) return estimate(index);
+      if (size === undefined) return estimate(index) + pad;
       measuredKeys.add(key);
-      return size;
+      return size + pad;
     });
     return { metrics: next, measured: measuredKeys };
-  }, [keys, sizes, estimate]);
+  }, [keys, sizes, estimate, padByKey]);
 
   // 首屏窗口：挂载后两帧内只按 initialWindowBottomPx 往下缓冲，之后放开。
   const [initialPhase, setInitialPhase] = useState(true);
@@ -195,6 +221,13 @@ export function useVirtualRows(options: UseVirtualRowsOptions): VirtualRows {
   const ownScrollRef = useRef<{ top: number; at: number } | undefined>(
     undefined,
   );
+  /**
+   * 我们自己写过 scrollTop 的次数，以及上一次布局效应收尾时读到的那个值。
+   * 两者不一致 = 这两个布局之间发生过一次程序性滚动（跳转、落位、贴底）——
+   * 那之后的 scrollTop 位移是我们写的，不能当浏览器夹取。
+   */
+  const ownScrollSeqRef = useRef(0);
+  const seqSeenRef = useRef(0);
   /** 没能落地的补偿量（撞顶被夹负、钉底被夹正）。 */
   const creditRef = useRef(0);
   const prevScrollTopRef = useRef<number | undefined>(undefined);
@@ -349,6 +382,9 @@ export function useVirtualRows(options: UseVirtualRowsOptions): VirtualRows {
       commitVisualOffset();
       const target = Math.max(0, top);
       ownScrollRef.current = { top: target, at: performance.now() };
+      // 记一笔「我们自己写过 scrollTop」：浏览器夹取与我们的程序性跳转都会在两次
+      // 布局之间留下 scrollTop 位移，只看位移分不出是哪一种（见下面 clamp 的判据）。
+      ownScrollSeqRef.current += 1;
       container.scrollTo({ top: target, behavior });
       // 撞到上下界的部分记成欠账：撞顶时后续的向下补偿先还这笔，钉底被夹住的
       // 那一截也不必再来一次（浏览器已经在下界了）。平滑滚动还没走完，读到的
@@ -456,6 +492,8 @@ export function useVirtualRows(options: UseVirtualRowsOptions): VirtualRows {
     const container = containerRef.current;
     const previous = metricsRef.current;
     const next = metrics;
+    // 上一次布局之后我们自己动过 scrollTop 吗？（跳转 / 落位 / 贴底）
+    const wroteSinceLastLayout = ownScrollSeqRef.current !== seqSeenRef.current;
     const changed =
       previous !== next &&
       (previous.sizes.length !== next.sizes.length ||
@@ -489,8 +527,27 @@ export function useVirtualRows(options: UseVirtualRowsOptions): VirtualRows {
             // 抬到画布的视觉偏移上，手势（含惯性尾巴）停稳后再折算回去。
             applyVisualOffset(visualOffsetRef.current - delta);
           } else {
+            // `delta` 是按**变矮之前**的位置算的，可浏览器在给我们这次机会之前
+            // 可能已经把 `scrollTop` 夹到新的 max 上了（内容一矮就越界；容器是
+            // `overflow-anchor: none`，这个落差只可能来自夹取）。夹掉的这一截不
+            // 补回来，同一段位移就被扣了两遍：实测开启聚焦视图时 `st` 从 16681
+            // 被夹到 7927、`delta` -8898，写进 -971 → 夹到 0，整段对话跳回开头。
+            const clampedBy =
+              !wroteSinceLastLayout &&
+              // 只有「这段位移不是我们写的」才可能是夹取：我们自己的落位也会让
+              // scrollTop 一次跳几千像素，把它当成夹取补回来就是反方向再跳一次
+              // （实测：取回一页 → 钉底写 713 → 落位写 0 → 下一帧把 713 当夹取
+              // 补回来，落进 621 被夹到 345，读者被从刚跳到的那一条甩到底部）。
+              prevScrollHeightRef.current !== undefined &&
+              container.scrollHeight < prevScrollHeightRef.current
+                ? Math.max(
+                    0,
+                    (prevScrollTopRef.current ?? container.scrollTop) -
+                      container.scrollTop,
+                  )
+                : 0;
             writeScroll(
-              container.scrollTop + delta + creditRef.current,
+              container.scrollTop + clampedBy + delta + creditRef.current,
               "auto",
             );
           }
@@ -501,6 +558,8 @@ export function useVirtualRows(options: UseVirtualRowsOptions): VirtualRows {
     prevScrollHeightRef.current = container.scrollHeight;
     prevClientHeightRef.current = viewportHeight(container);
     anchorRef.current = captureAnchor();
+    // 与 ownScrollSeqRef 对齐：本效应内写过的那些算「已经消化」。
+    seqSeenRef.current = ownScrollSeqRef.current;
     flushRange();
   }, [
     metrics,
@@ -661,11 +720,12 @@ export function useVirtualRows(options: UseVirtualRowsOptions): VirtualRows {
             const element = entry.target as HTMLElement;
             const entryKey = element.dataset.virtualKey;
             if (!entryKey) continue;
+            // 减掉行间距：账本只记内容高度，间距由 `pads` 单独记账（见钩子选项）。
             applyHeight(
               entryKey,
               Math.round(
                 entry.borderBoxSize?.[0]?.blockSize ?? element.offsetHeight,
-              ),
+              ) - (padByKeyRef.current?.get(entryKey) ?? 0),
             );
           }
         });
@@ -682,7 +742,10 @@ export function useVirtualRows(options: UseVirtualRowsOptions): VirtualRows {
       // **构造参数里的 box 被 Chromium 忽略**（只有初次回调，改 padding 后不回调），
       // 而 `observe(node, { box })` 的按调用参数才生效。
       observerRef.current.observe(node, { box: "border-box" });
-      applyHeight(key, Math.round(node.offsetHeight));
+      applyHeight(
+        key,
+        Math.round(node.offsetHeight) - (padByKeyRef.current?.get(key) ?? 0),
+      );
     },
     [applyHeight],
   );
