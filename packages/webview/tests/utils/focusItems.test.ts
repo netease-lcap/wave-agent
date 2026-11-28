@@ -1,9 +1,6 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import {
-  REPL_TOOL_NAME,
-  SEND_USER_FILE_TOOL_NAME,
-} from "wave-agent-sdk/constants";
+import { SEND_USER_FILE_TOOL_NAME } from "wave-agent-sdk/constants";
 import type { Message, MessageBlock } from "wave-agent-sdk/types";
 import { buildFocusItems } from "../../src/utils/focusItems";
 
@@ -363,18 +360,6 @@ describe("buildFocusItems", () => {
     expect(fold.live).toBe(true);
     expect(fold.runningToolName).toBe("Bash");
     expect(fold.callCount).toBe(2);
-  });
-
-  it("运行中的工具名用用户可见名（REPL 在界面上叫 Code Mode）", () => {
-    const messages = [
-      user("u1"),
-      assistant("a1", [tool("t1", "running", { name: REPL_TOOL_NAME })]),
-    ];
-    const { items } = buildFocusItems(messages, true, true);
-    const fold = items[1];
-
-    if (fold.kind !== "fold") throw new Error("expected fold");
-    expect(fold.runningToolName).toBe("Code Mode");
   });
 
   it("轮尾文本还在流式输出时也整轮进卡（没有落定的答复可留在卡外）", () => {

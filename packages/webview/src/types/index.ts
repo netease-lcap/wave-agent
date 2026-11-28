@@ -1391,7 +1391,7 @@ export interface ConfigurationData {
   enableKnowledgeBase?: boolean;
   /**
    * 是否把七个核心工具（`Read` / `Glob` / `Grep` / `Bash` / `PowerShell` /
-   * `Write` / `Edit`）收进 Code Mode 的脚本（settings.json 顶层
+   * `Write` / `Edit`）收进 REPL（Code Mode）的脚本（settings.json 顶层
    * `enableReplCoreTools`，缺省为**关**）。总开关 `enableRepl` 不进设置页
    * （spec core/repl-tool.md 边界说明「设置页只露二级开关」）。
    */

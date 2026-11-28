@@ -354,7 +354,7 @@ export function readUserPreferenceView(
     sources.enableKnowledgeBase = enableKnowledgeBase.source;
   }
 
-  // 核心工具收进 Code Mode：托管层优先于用户级文件，与 `isReplCoreToolsEnabled`
+  // 核心工具收进 REPL（Code Mode）：托管层优先于用户级文件，与 `isReplCoreToolsEnabled`
   // 的判定顺序一致（remote → 本地合并 → 默认关；该键没有 env 落点）。
   const enableReplCoreTools = selectPreference<boolean>([
     ["remote", remote?.enableReplCoreTools],
@@ -433,9 +433,8 @@ export async function updateUserPreferenceSettings(
   // 企业知识库开关落顶层键（与 `enableArtifact` / `enableExec` 同一层，
   // 设置页的「企业知识库」行，spec core/agent-config.md「企业知识库开关」）。
   if (hasKnowledgeBase) data.enableKnowledgeBase = patch.enableKnowledgeBase;
-  // 核心工具收进 REPL 的开关同样落顶层键（与 `enableRepl` 同层，设置页的
-  // 「核心工具收进 Code Mode」行；spec core/repl-tool.md「设置页里的核心工具
-  // 收进 Code Mode」）。
+  // 核心工具收进 REPL（Code Mode）的开关同样落顶层键（与 `enableRepl` 同层，
+  // 设置页那一行；spec core/repl-tool.md「设置页里的核心工具收进 REPL（Code Mode）」）。
   if (hasReplCoreTools) data.enableReplCoreTools = patch.enableReplCoreTools;
 
   // 首次保存时 `~/.wave` 可能尚不存在（会话启动时文件不存在，场景 7），

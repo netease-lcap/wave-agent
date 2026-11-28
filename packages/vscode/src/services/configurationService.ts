@@ -26,7 +26,7 @@ export interface ConfigurationData {
   /** 是否启用企业知识库（顶层 `enableKnowledgeBase`，缺省为关）。 */
   enableKnowledgeBase?: boolean;
   /**
-   * 是否把七个核心工具收进 Code Mode（顶层 `enableReplCoreTools`，缺省为关；
+   * 是否把七个核心工具收进 REPL（Code Mode）（顶层 `enableReplCoreTools`，缺省为关；
    * spec core/repl-tool.md 边界说明「设置页只露二级开关」）。
    */
   enableReplCoreTools?: boolean;
@@ -134,7 +134,7 @@ function pickUserPreferences(
   // 企业知识库开关：三端设置页都渲染该行（知识库不是编辑器专属能力）。
   if (configData.enableKnowledgeBase !== undefined)
     patch.enableKnowledgeBase = configData.enableKnowledgeBase;
-  // 核心工具收进 Code Mode：总开关 enableRepl 不在设置页，故只透传二级开关。
+  // 核心工具收进 REPL（Code Mode）：总开关 enableRepl 不在设置页，故只透传二级开关。
   if (configData.enableReplCoreTools !== undefined)
     patch.enableReplCoreTools = configData.enableReplCoreTools;
   return patch;

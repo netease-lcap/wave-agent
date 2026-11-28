@@ -883,13 +883,13 @@ describe("SettingsPage「企业知识库」行（顶层 enableKnowledgeBase，�
 });
 
 /**
- * 核心工具收进 Code Mode（spec core/repl-tool.md「设置页里的核心工具收进
- * Code Mode」）：键 `enableReplCoreTools`，缺省关、不做未设置占位态、组织托管
+ * 核心工具收进 REPL（Code Mode）（spec core/repl-tool.md「设置页里的核心工具收进
+ * REPL（Code Mode）」）：键 `enableReplCoreTools`，缺省关、不做未设置占位态、组织托管
  * 时置灰。总开关 `enableRepl` 不进设置页——它不在本页的 `ConfigurationData`
  * 里，所以这一行没有「因总开关关闭而置灰」的形态可断言，也不该有：本页没有
  * 解除该禁用态的入口。
  */
-describe("SettingsPage「核心工具收进 Code Mode」行（顶层 enableReplCoreTools，缺省关）", () => {
+describe("SettingsPage「核心工具收进 REPL（Code Mode）」行（顶层 enableReplCoreTools，缺省关）", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -899,7 +899,9 @@ describe("SettingsPage「核心工具收进 Code Mode」行（顶层 enableReplC
   });
 
   function replSwitch(): HTMLInputElement {
-    return screen.getByLabelText("核心工具收进 Code Mode") as HTMLInputElement;
+    return screen.getByLabelText(
+      "核心工具收进 REPL（Code Mode）",
+    ) as HTMLInputElement;
   }
 
   function rowFor(headingName: string): HTMLElement {
@@ -951,7 +953,9 @@ describe("SettingsPage「核心工具收进 Code Mode」行（顶层 enableReplC
     expect(replSwitch().checked).toBe(true);
     expect(replSwitch().disabled).toBe(true);
     expect(
-      within(rowFor("核心工具收进 Code Mode")).getByText("由组织配置管理"),
+      within(rowFor("核心工具收进 REPL（Code Mode）")).getByText(
+        "由组织配置管理",
+      ),
     ).toBeInTheDocument();
   });
 

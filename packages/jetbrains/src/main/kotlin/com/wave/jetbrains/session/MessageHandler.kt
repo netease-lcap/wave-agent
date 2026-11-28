@@ -1711,7 +1711,7 @@ class MessageHandler(
             // 企业知识库开关（顶层 enableKnowledgeBase，缺省为关，spec
             // core/agent-config.md「企业知识库开关」）。
             prefs["enableKnowledgeBase"]?.let { put("enableKnowledgeBase", it) }
-            // 核心工具收进 Code Mode（顶层 enableReplCoreTools，缺省为关，spec
+            // 核心工具收进 REPL（Code Mode）（顶层 enableReplCoreTools，缺省为关，spec
             // core/repl-tool.md 边界说明「设置页只露二级开关」）。
             prefs["enableReplCoreTools"]?.let { put("enableReplCoreTools", it) }
             prefs["preferenceSources"]?.let { put("preferenceSources", it) }

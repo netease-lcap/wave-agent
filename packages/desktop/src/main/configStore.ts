@@ -54,7 +54,7 @@ export interface DesktopConfigData {
   /** 用户偏好：是否启用企业知识库（顶层 `enableKnowledgeBase`，缺省为关）。 */
   enableKnowledgeBase?: boolean;
   /**
-   * 用户偏好：是否把七个核心工具收进 Code Mode（顶层 `enableReplCoreTools`，
+   * 用户偏好：是否把七个核心工具收进 REPL（Code Mode）（顶层 `enableReplCoreTools`，
    * 缺省为关；spec core/repl-tool.md 边界说明「设置页只露二级开关」）。
    */
   enableReplCoreTools?: boolean;
