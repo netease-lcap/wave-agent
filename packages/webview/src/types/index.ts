@@ -690,6 +690,15 @@ export interface DesktopWorkdirState {
 
 export interface MessageListProps {
   messages: Message[];
+  /**
+   * 「回到最新」入口要渲染到哪里：ChatApp 里那个紧贴输入区上沿的零高度锚点
+   * `.jump-to-bottom-anchor`。那颗按钮属于「输入框上方」这一层，不参与消息流的
+   * 布局 —— 住在滚动内容里时它的位置会随内容高度走（聚焦视图收起一轮折叠卡就
+   * 压到折叠卡上）。portal 到锚点后，CSS 用 `bottom: 100%` 贴在它上沿。
+   * 不挂 `.input-area-container` 内部：那个容器在确认卡模式下带
+   * `overflow: hidden`，会把这一层裁掉。缺席 = 不渲染（锚点还没挂载）。
+   */
+  jumpToBottomHost?: HTMLElement | null;
   queuedMessages?: QueuedMessage[];
   /** 聚焦视图：把每一轮的工具活动收成一行摘要（spec ui/focus-view.md）。
    * 纯显示层开关，消息与分页都不受影响。 */

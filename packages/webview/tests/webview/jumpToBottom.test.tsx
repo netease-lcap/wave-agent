@@ -222,6 +222,13 @@ describe("回到最新入口", () => {
       act(() => {
         fireEvent.click(screen.getByTestId("focus-fold-head"));
       });
+      // 位置断言：这颗入口挂的是「输入框上方」那一条，不是内容末尾。收起把内容
+      // 压回一屏内之后，按钮必须仍然贴在滚动面底部 —— 旧实现住在正文列里，这一下
+      // 会跟着内容末尾落到折叠卡上（400px 视口实测：按钮底从 384 掉到 205）。
+      const viewportBottom = container().getBoundingClientRect().bottom;
+      const settled = jumpButton().getBoundingClientRect();
+      expect(settled.bottom).toBeLessThanOrEqual(viewportBottom);
+      expect(settled.bottom).toBeGreaterThan(viewportBottom - 60);
       await waitFor(() =>
         expect(
           container().scrollHeight - container().clientHeight,
