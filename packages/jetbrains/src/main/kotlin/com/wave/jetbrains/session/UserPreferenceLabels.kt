@@ -24,6 +24,7 @@ private val USER_PREFERENCE_LABELS = mapOf(
     "completionEnabled" to "代码补全",
     "nextEditEnabled" to "下一步编辑建议",
     "enableKnowledgeBase" to "企业知识库",
+    "enableReplCoreTools" to "核心工具收进 Code Mode",
 )
 
 /**

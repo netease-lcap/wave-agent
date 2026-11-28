@@ -883,6 +883,87 @@ describe("SettingsPage「企业知识库」行（顶层 enableKnowledgeBase，�
 });
 
 /**
+ * 核心工具收进 Code Mode（spec core/repl-tool.md「设置页里的核心工具收进
+ * Code Mode」）：键 `enableReplCoreTools`，缺省关、不做未设置占位态、组织托管
+ * 时置灰。总开关 `enableRepl` 不进设置页——它不在本页的 `ConfigurationData`
+ * 里，所以这一行没有「因总开关关闭而置灰」的形态可断言，也不该有：本页没有
+ * 解除该禁用态的入口。
+ */
+describe("SettingsPage「核心工具收进 Code Mode」行（顶层 enableReplCoreTools，缺省关）", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    delete window.waveHostType;
+  });
+
+  function replSwitch(): HTMLInputElement {
+    return screen.getByLabelText("核心工具收进 Code Mode") as HTMLInputElement;
+  }
+
+  function rowFor(headingName: string): HTMLElement {
+    const heading = screen.getByRole("heading", { name: headingName });
+    const row = heading.closest(".settings-row");
+    if (!row) throw new Error(`找不到行：${headingName}`);
+    return row as HTMLElement;
+  }
+
+  it("未设置该键时显示为关（真实默认就是关，不做未设置占位态）", () => {
+    renderGlobalView({ configurationData: {} });
+
+    expect(replSwitch().checked).toBe(false);
+    expect(replSwitch().disabled).toBe(false);
+  });
+
+  it("文件里已是开时回填为开", () => {
+    renderGlobalView({ configurationData: { enableReplCoreTools: true } });
+
+    expect(replSwitch().checked).toBe(true);
+  });
+
+  it("拨到开 → 立刻只写该键", () => {
+    const { onSave } = renderGlobalView({ configurationData: {} });
+
+    fireEvent.click(replSwitch());
+
+    expect(onSave).toHaveBeenCalledWith({ enableReplCoreTools: true });
+  });
+
+  it("关掉 → 立刻写显式 false（不删键）", () => {
+    const { onSave } = renderGlobalView({
+      configurationData: { enableReplCoreTools: true },
+    });
+
+    fireEvent.click(replSwitch());
+
+    expect(onSave).toHaveBeenCalledWith({ enableReplCoreTools: false });
+  });
+
+  it("组织托管（来源 remote）：显示生效值 + 置灰 + 「由组织配置管理」", () => {
+    renderGlobalView({
+      configurationData: {
+        enableReplCoreTools: true,
+        preferenceSources: { enableReplCoreTools: "remote" },
+      },
+    });
+
+    expect(replSwitch().checked).toBe(true);
+    expect(replSwitch().disabled).toBe(true);
+    expect(
+      within(rowFor("核心工具收进 Code Mode")).getByText("由组织配置管理"),
+    ).toBeInTheDocument();
+  });
+
+  it("桌面端宿主同样渲染该行", () => {
+    window.waveHostType = "desktop";
+    renderGlobalView({ configurationData: {} });
+
+    expect(replSwitch()).toBeInTheDocument();
+  });
+});
+
+/**
  * 聚焦视图（spec ui/focus-view.md 场景 1）：开关只在这一处 —— 聊天界面上没有按钮。
  * 纯显示偏好按端落 localStorage，不走 updateConfiguration，所以断言落在
  * localStorage 与 onSave 没被调用上（后者防止有人把它误接进 settings.json）。

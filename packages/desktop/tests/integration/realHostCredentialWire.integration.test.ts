@@ -331,6 +331,7 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
         completionEnabled: "default",
         nextEditEnabled: "default",
         enableKnowledgeBase: "default",
+        enableReplCoreTools: "default",
       });
 
       // 「一个字都没改就点保存」在真机上就是空载荷（webview 的 diff 载荷语义）：

@@ -468,6 +468,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   // 企业知识库开关：缺省**关**（开启后企业文档会进入每次对话的上下文），不做
   // 未设置占位态——真实默认就是关（spec core/agent-config.md「企业知识库开关」）。
   const [enableKnowledgeBase, setEnableKnowledgeBase] = useState(false);
+  // 核心工具收进 Code Mode（`enableReplCoreTools`）：缺省**关**（把最高频的调用
+  // 从「一次工具调用」变成「一层脚本包裹」，值不值得取决于工作形态）。总开关
+  // `enableRepl` 不进设置页，因此这一行不因它为 false 置灰（spec
+  // core/repl-tool.md 边界说明「设置页只露二级开关」）。
+  const [enableReplCoreTools, setEnableReplCoreTools] = useState(false);
   // 聚焦视图（spec ui/focus-view.md 场景 1）：纯显示偏好，按端落 localStorage，
   // 不进 settings.json —— 所以不走 commitToggle（那套是 updateConfiguration 的
   // 乐观提交 + 失败回滚），写完自己就生效。订阅是为了和已挂载的聊天视图对齐：
@@ -668,6 +673,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
       }
       if (canWrite("enableKnowledgeBase")) {
         setEnableKnowledgeBase(data.enableKnowledgeBase ?? false);
+      }
+      if (canWrite("enableReplCoreTools")) {
+        setEnableReplCoreTools(data.enableReplCoreTools ?? false);
       }
     },
     [],
@@ -1277,6 +1285,44 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                               "enableKnowledgeBase",
                               next,
                               configurationData?.enableKnowledgeBase ?? false,
+                            );
+                          }}
+                        />
+                        <span className="settings-switch-slider"></span>
+                      </label>
+                    </div>
+                  </div>
+                  {/* 核心工具收进 Code Mode（spec core/repl-tool.md「设置页里的核心
+                      工具收进 Code Mode」）：键 enableReplCoreTools，默认关、不做未设置
+                      占位态。总开关 enableRepl 不进设置页，因此这一行不因它为 false
+                      置灰——那会给出一个本页解除不了的禁用态。 */}
+                  <div className="settings-row">
+                    <div className="settings-row-copy">
+                      <h3>核心工具收进 Code Mode</h3>
+                      <p>
+                        把读写与命令工具收进 Code Mode（REPL），由脚本统一调用
+                      </p>
+                      {orgManaged("enableReplCoreTools") && (
+                        <p className="settings-row-hint">由组织配置管理</p>
+                      )}
+                    </div>
+                    <div className="settings-control">
+                      <label className="settings-switch">
+                        <input
+                          type="checkbox"
+                          aria-label="核心工具收进 Code Mode"
+                          checked={enableReplCoreTools}
+                          disabled={
+                            !configurationData ||
+                            orgManaged("enableReplCoreTools")
+                          }
+                          onChange={(e) => {
+                            const next = e.target.checked;
+                            setEnableReplCoreTools(next);
+                            commitToggle(
+                              "enableReplCoreTools",
+                              next,
+                              configurationData?.enableReplCoreTools ?? false,
                             );
                           }}
                         />

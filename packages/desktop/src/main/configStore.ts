@@ -54,6 +54,11 @@ export interface DesktopConfigData {
   /** 用户偏好：是否启用企业知识库（顶层 `enableKnowledgeBase`，缺省为关）。 */
   enableKnowledgeBase?: boolean;
   /**
+   * 用户偏好：是否把七个核心工具收进 Code Mode（顶层 `enableReplCoreTools`，
+   * 缺省为关；spec core/repl-tool.md 边界说明「设置页只露二级开关」）。
+   */
+  enableReplCoreTools?: boolean;
+  /**
    * 用户偏好每个键的**来源层**（`remote` / `user` / `env` / `default`）：回包
    * 里带上它，设置页才能把被组织配置（Remote）覆盖的键显示为「生效值 + 置灰」
    * 而不是回退成用户文件里的值（spec core/agent-config.md 边界说明

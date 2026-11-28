@@ -1390,6 +1390,13 @@ export interface ConfigurationData {
    */
   enableKnowledgeBase?: boolean;
   /**
+   * 是否把七个核心工具（`Read` / `Glob` / `Grep` / `Bash` / `PowerShell` /
+   * `Write` / `Edit`）收进 Code Mode 的脚本（settings.json 顶层
+   * `enableReplCoreTools`，缺省为**关**）。总开关 `enableRepl` 不进设置页
+   * （spec core/repl-tool.md 边界说明「设置页只露二级开关」）。
+   */
+  enableReplCoreTools?: boolean;
+  /**
    * 每个用户偏好键的来源层：用户级 `~/.wave/settings.json` 是用户偏好的**落点**，
    * 但生效值可能来自更高层（`remote` = 企业下发的组织配置，`env` = 机器环境变量）。
    * 设置为 `remote` 的键，设置页显示生效值 + 置灰 + 「由组织配置管理」；`env` 与

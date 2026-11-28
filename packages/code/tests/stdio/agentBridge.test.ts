@@ -3215,6 +3215,7 @@ test("getUserSettings 回包 = 生效值 + 每键来源层", async () => {
       completionEnabled: "default",
       nextEditEnabled: "default",
       enableKnowledgeBase: "default",
+      enableReplCoreTools: "default",
     },
   });
   const { bridge } = createBridge();
@@ -3235,6 +3236,7 @@ test("getUserSettings 回包 = 生效值 + 每键来源层", async () => {
       completionEnabled: "default",
       nextEditEnabled: "default",
       enableKnowledgeBase: "default",
+      enableReplCoreTools: "default",
     },
   });
 });
@@ -3258,6 +3260,7 @@ test("updateUserSettings writes the patch and returns the read-back values", asy
       completionEnabled: "default",
       nextEditEnabled: "default",
       enableKnowledgeBase: "default",
+      enableReplCoreTools: "default",
     },
   });
   const { bridge } = createBridge();
@@ -3285,6 +3288,7 @@ test("updateUserSettings writes the patch and returns the read-back values", asy
       completionEnabled: "default",
       nextEditEnabled: "default",
       enableKnowledgeBase: "default",
+      enableReplCoreTools: "default",
     },
   });
 });
@@ -3304,6 +3308,7 @@ test("updateUserSettings 写完后显式重载本进程内全部会话（不依�
       completionEnabled: "default",
       nextEditEnabled: "default",
       enableKnowledgeBase: "default",
+      enableReplCoreTools: "default",
     },
   });
   const { bridge } = createBridge();
@@ -3336,6 +3341,7 @@ test("空载荷（无差异保存）既不落盘也不重载", async () => {
       completionEnabled: "default",
       nextEditEnabled: "default",
       enableKnowledgeBase: "default",
+      enableReplCoreTools: "default",
     },
   });
   const { bridge } = createBridge();
@@ -3375,6 +3381,7 @@ test("并发写入串行执行：后一笔等前一笔落盘完成（读-改-写
       completionEnabled: "default",
       nextEditEnabled: "default",
       enableKnowledgeBase: "default",
+      enableReplCoreTools: "default",
     },
   });
   const { bridge } = createBridge();
@@ -3408,6 +3415,7 @@ test("某一笔写盘失败不会让后续写入永久挂住（队列不断链�
       completionEnabled: "default",
       nextEditEnabled: "default",
       enableKnowledgeBase: "default",
+      enableReplCoreTools: "default",
     },
   });
   const { bridge } = createBridge();

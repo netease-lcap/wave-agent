@@ -9116,6 +9116,11 @@ export class DesktopHost {
     if (configData.enableKnowledgeBase !== undefined) {
       patch.enableKnowledgeBase = configData.enableKnowledgeBase;
     }
+    // 核心工具收进 Code Mode（顶层 `enableReplCoreTools`，缺省为关）。总开关
+    // `enableRepl` 不在本载荷里，设置页也没有它的入口。
+    if (configData.enableReplCoreTools !== undefined) {
+      patch.enableReplCoreTools = configData.enableReplCoreTools;
+    }
     const settings = (await this.utilityClientFor(host).request(
       "updateUserSettings",
       patch,
