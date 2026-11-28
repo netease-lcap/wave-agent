@@ -489,8 +489,22 @@ export function useVirtualRows(options: UseVirtualRowsOptions): VirtualRows {
             // 抬到画布的视觉偏移上，手势（含惯性尾巴）停稳后再折算回去。
             applyVisualOffset(visualOffsetRef.current - delta);
           } else {
+            // `delta` 是按**变矮之前**的位置算的，可浏览器在给我们这次机会之前
+            // 可能已经把 `scrollTop` 夹到新的 max 上了（内容一矮就越界；容器是
+            // `overflow-anchor: none`，这个落差只可能来自夹取）。夹掉的这一截不
+            // 补回来，同一段位移就被扣了两遍：实测开启聚焦视图时 `st` 从 16681
+            // 被夹到 7927、`delta` -8898，写进 -971 → 夹到 0，整段对话跳回开头。
+            const clampedBy =
+              prevScrollHeightRef.current !== undefined &&
+              container.scrollHeight < prevScrollHeightRef.current
+                ? Math.max(
+                    0,
+                    (prevScrollTopRef.current ?? container.scrollTop) -
+                      container.scrollTop,
+                  )
+                : 0;
             writeScroll(
-              container.scrollTop + delta + creditRef.current,
+              container.scrollTop + clampedBy + delta + creditRef.current,
               "auto",
             );
           }
