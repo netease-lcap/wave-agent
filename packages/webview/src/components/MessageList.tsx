@@ -359,10 +359,123 @@ export const MessageList = forwardRef<
     return () => observer.disconnect();
   }, []);
 
+  // 定义位置必须早于 `useVirtualRows`：行间距 `paddings` 是账本的输入（见下面
+  // `pads` 选项），在 hook 调用里求值，晚了就是 TDZ。
+  //
+  // Per-message timeline run data. A run is a maximal sequence of consecutive
+  // assistant messages (the virtualized analogue of the old .assistant-group
+  // wrapper). Multi-dot runs draw a continuous vertical line: the run's first
+  // row starts it at its first dot, the last row ends it at its last dot;
+  // single-dot runs hide the line. paddingBottom is the row's bottom spacing:
+  // 0 inside a multi-dot run so the line segments abut (flush), the turn gap
+  // after the last row of a turn.
+  const timelineRuns = useMemo(() => {
+    const classes: string[] = [];
+    const paddings: number[] = [];
+    // 轮与轮之间的留白按「两段文字的墨迹之间 32」定档（2026-11-27 设计师定档），
+    // 不是盒间距，所以两侧要各扣掉自己那段看不见的空隙：
+    //   用户消息之后跟的是折叠卡头，卡头自带 4px 内衬 + 2px 行内空隙 → 26；
+    //   一轮的最后一行是正文，文字墨迹底比内容盒底高 3 → 29。
+    // 轮内的行之间仍是 0，贴着走。
+    const AFTER_USER_GAP = 26;
+    const AFTER_TURN_GAP = 29;
+    let runStart = -1;
+    let dots = 0;
+    const flushRun = (end: number) => {
+      if (runStart === -1) return;
+      if (dots <= 1) {
+        for (let i = runStart; i <= end; i++) {
+          // single 的标记只给真实活动行：卡头没有 `.timeline-row`，给它也没用；
+          // 而展开卡里那唯一一条活动（独立虚拟行）必须自己拿到这个 class，才关
+          // 得掉自己那段两头都空的竖线。
+          if (items[i].kind === "message") {
+            classes[i] = "timeline-run--single";
+          }
+          // 间距仍按整段 run 算（卡头也算一行）：整轮进卡时卡头就是 run 的末行，
+          // 少了它这一份，轮间留白会塌成一半。
+          paddings[i] = i === end ? AFTER_TURN_GAP : 0;
+        }
+      } else {
+        classes[runStart] = "timeline-run--start";
+        paddings[runStart] = 0;
+        classes[end] = "timeline-run--end";
+        paddings[end] = AFTER_TURN_GAP;
+        for (let i = runStart + 1; i < end; i++) {
+          paddings[i] = 0;
+        }
+        if (runStart === end) {
+          classes[runStart] = "timeline-run--start timeline-run--end";
+        }
+        // 展开卡里，run 的两端与卡的两端并不重合：卡头不算圆点、卡外的轮尾
+        // 答复行也不画节点。竖线只能落在**卡内**的真实活动上 ——
+        //   · 第一条卡内行前面是卡头：它的 `--first` 命中不到「从节点中心
+        //     起笔」，线会从行顶开始、比节点高 18/21px → `--lead`；
+        //   · 最后一条卡内行后面是卡外答复（无节点）：线若一路拉到行底就是一条
+        //     通向空处的线 → `--tail` 在它身上收口；
+        //   · 卡内只有一条活动时，两头都没有可连的对象，整段关掉（同 `--single`
+        //     的语义：宁可什么都不画，也不留一段孤立短线）。
+        // 普通视图没有卡，卡内行数为 0，三个分支都不触发、行为不变。
+        const cardRows: number[] = [];
+        for (let i = runStart; i <= end; i++) {
+          const item = items[i];
+          if (item.kind === "message" && item.foldKey) cardRows.push(i);
+        }
+        const addClass = (row: number, name: string) => {
+          classes[row] = classes[row] ? classes[row] + " " + name : name;
+        };
+        if (cardRows.length === 1) {
+          addClass(cardRows[0], "timeline-run--single");
+        } else if (cardRows.length > 1) {
+          const firstCardRow = cardRows[0];
+          const lastCardRow = cardRows[cardRows.length - 1];
+          if (firstCardRow !== runStart) {
+            addClass(firstCardRow, "timeline-run--lead");
+          }
+          if (lastCardRow !== end) {
+            addClass(lastCardRow, "timeline-run--tail");
+          }
+        }
+      }
+      runStart = -1;
+      dots = 0;
+    };
+    items.forEach((item, i) => {
+      if (item.kind === "notice") {
+        // 说明行不是一轮的一部分：既不画节点，也不占轮间留白（留白归它下面那
+        // 第一条消息自己）。
+        return;
+      }
+      if (item.kind === "fold") {
+        // 折叠卡**不**算一个圆点（2026-11-27 设计师定档）：卡头只是这一轮的
+        // 目录条，不是一次真实活动，收起态也不画时间线节点。所以一轮若只剩卡
+        // 外那条轮尾答复，「点」就只有它一个，run 落到 single、竖线自然不画；
+        // 反过来若这里仍记一个点，卡外答复就成了一颗孤点。
+        if (runStart === -1) runStart = i;
+        return;
+      }
+      const message = item.message;
+      if (message.role === "assistant") {
+        if (runStart === -1) runStart = i;
+        dots += timelineDotCount(message);
+      } else {
+        flushRun(i - 1);
+        classes[i] = "";
+        // 用户消息之后是「换人说话」，留白与轮末同一档（墨迹 32），只是卡头自带
+        // 内衬，所以内衬值小 3。
+        paddings[i] = AFTER_USER_GAP;
+      }
+    });
+    flushRun(items.length - 1);
+    return { classes, paddings };
+  }, [items]);
+
   const estimate = useCallback(
     (index: number) => {
       const item = items[index];
       if (!item) return 0;
+      // 只估**内容**高度：行间距由 `pads` 单独记账（见 `useVirtualRows` 的同名
+      // 选项），账本会把两者相加。别在这里再加 `padding-bottom`，否则会和账本
+      // 里加回来的那一份重复。
       if (item.kind === "message") {
         return estimateRowHeight(item.message, { textWidth });
       }
@@ -385,6 +498,12 @@ export const MessageList = forwardRef<
     // 估算闭包依赖正文列宽：列宽一变它就是个新闭包，账本里那批「按旧列宽估算」的
     // 未挂载行跟着重算（见 `estimate` 选项的注释）。
     estimate,
+    // 行的 `padding-bottom`（时间线行距 / 轮间留白）单独记账：账本只记内容高度，
+    // 这个数组负责行间距。做成单独一项是因为收起折叠卡时 **已挂载** 那行的间距
+    // 会变（卡头从 run 中间变成 run 末尾），混在盒高里要靠 ResizeObserver 下一帧
+    // 才追得上，中间那一帧 spacer 少 29px → 浏览器夹 `scrollTop` 并画出去 →
+    // 收起时上下抖一下。拆开之后同一帧就是对的。
+    pads: timelineRuns.paddings,
     originOffsetPx: COLUMN_PADDING_PX,
     canvasRef,
   });
@@ -777,113 +896,6 @@ export const MessageList = forwardRef<
     return true;
   }, []);
   stickyRef.current = stickyMessage;
-
-  // Per-message timeline run data. A run is a maximal sequence of consecutive
-  // assistant messages (the virtualized analogue of the old .assistant-group
-  // wrapper). Multi-dot runs draw a continuous vertical line: the run's first
-  // row starts it at its first dot, the last row ends it at its last dot;
-  // single-dot runs hide the line. paddingBottom is the row's bottom spacing:
-  // 0 inside a multi-dot run so the line segments abut (flush), the turn gap
-  // after the last row of a turn.
-  const timelineRuns = useMemo(() => {
-    const classes: string[] = [];
-    const paddings: number[] = [];
-    // 轮与轮之间的留白按「两段文字的墨迹之间 32」定档（2026-11-27 设计师定档），
-    // 不是盒间距，所以两侧要各扣掉自己那段看不见的空隙：
-    //   用户消息之后跟的是折叠卡头，卡头自带 4px 内衬 + 2px 行内空隙 → 26；
-    //   一轮的最后一行是正文，文字墨迹底比内容盒底高 3 → 29。
-    // 轮内的行之间仍是 0，贴着走。
-    const AFTER_USER_GAP = 26;
-    const AFTER_TURN_GAP = 29;
-    let runStart = -1;
-    let dots = 0;
-    const flushRun = (end: number) => {
-      if (runStart === -1) return;
-      if (dots <= 1) {
-        for (let i = runStart; i <= end; i++) {
-          // single 的标记只给真实活动行：卡头没有 `.timeline-row`，给它也没用；
-          // 而展开卡里那唯一一条活动（独立虚拟行）必须自己拿到这个 class，才关
-          // 得掉自己那段两头都空的竖线。
-          if (items[i].kind === "message") {
-            classes[i] = "timeline-run--single";
-          }
-          // 间距仍按整段 run 算（卡头也算一行）：整轮进卡时卡头就是 run 的末行，
-          // 少了它这一份，轮间留白会塌成一半。
-          paddings[i] = i === end ? AFTER_TURN_GAP : 0;
-        }
-      } else {
-        classes[runStart] = "timeline-run--start";
-        paddings[runStart] = 0;
-        classes[end] = "timeline-run--end";
-        paddings[end] = AFTER_TURN_GAP;
-        for (let i = runStart + 1; i < end; i++) {
-          paddings[i] = 0;
-        }
-        if (runStart === end) {
-          classes[runStart] = "timeline-run--start timeline-run--end";
-        }
-        // 展开卡里，run 的两端与卡的两端并不重合：卡头不算圆点、卡外的轮尾
-        // 答复行也不画节点。竖线只能落在**卡内**的真实活动上 ——
-        //   · 第一条卡内行前面是卡头：它的 `--first` 命中不到「从节点中心
-        //     起笔」，线会从行顶开始、比节点高 18/21px → `--lead`；
-        //   · 最后一条卡内行后面是卡外答复（无节点）：线若一路拉到行底就是一条
-        //     通向空处的线 → `--tail` 在它身上收口；
-        //   · 卡内只有一条活动时，两头都没有可连的对象，整段关掉（同 `--single`
-        //     的语义：宁可什么都不画，也不留一段孤立短线）。
-        // 普通视图没有卡，卡内行数为 0，三个分支都不触发、行为不变。
-        const cardRows: number[] = [];
-        for (let i = runStart; i <= end; i++) {
-          const item = items[i];
-          if (item.kind === "message" && item.foldKey) cardRows.push(i);
-        }
-        const addClass = (row: number, name: string) => {
-          classes[row] = classes[row] ? classes[row] + " " + name : name;
-        };
-        if (cardRows.length === 1) {
-          addClass(cardRows[0], "timeline-run--single");
-        } else if (cardRows.length > 1) {
-          const firstCardRow = cardRows[0];
-          const lastCardRow = cardRows[cardRows.length - 1];
-          if (firstCardRow !== runStart) {
-            addClass(firstCardRow, "timeline-run--lead");
-          }
-          if (lastCardRow !== end) {
-            addClass(lastCardRow, "timeline-run--tail");
-          }
-        }
-      }
-      runStart = -1;
-      dots = 0;
-    };
-    items.forEach((item, i) => {
-      if (item.kind === "notice") {
-        // 说明行不是一轮的一部分：既不画节点，也不占轮间留白（留白归它下面那
-        // 第一条消息自己）。
-        return;
-      }
-      if (item.kind === "fold") {
-        // 折叠卡**不**算一个圆点（2026-11-27 设计师定档）：卡头只是这一轮的
-        // 目录条，不是一次真实活动，收起态也不画时间线节点。所以一轮若只剩卡
-        // 外那条轮尾答复，「点」就只有它一个，run 落到 single、竖线自然不画；
-        // 反过来若这里仍记一个点，卡外答复就成了一颗孤点。
-        if (runStart === -1) runStart = i;
-        return;
-      }
-      const message = item.message;
-      if (message.role === "assistant") {
-        if (runStart === -1) runStart = i;
-        dots += timelineDotCount(message);
-      } else {
-        flushRun(i - 1);
-        classes[i] = "";
-        // 用户消息之后是「换人说话」，留白与轮末同一档（墨迹 32），只是卡头自带
-        // 内衬，所以内衬值小 3。
-        paddings[i] = AFTER_USER_GAP;
-      }
-    });
-    flushRun(items.length - 1);
-    return { classes, paddings };
-  }, [items]);
 
   /**
    * 大纲的刻度数据（spec ui/transcript-outline.md）：一条**带文本**的用户消息
