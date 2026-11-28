@@ -1,6 +1,7 @@
 import { SEND_USER_FILE_TOOL_NAME } from "wave-agent-sdk/constants";
 import type { Message, MessageBlock } from "../types";
 import { readDeliveredFiles } from "./deliveredFiles";
+import { displayToolName } from "./toolDisplayName";
 
 /**
  * Focus 视图的布局项。
@@ -117,7 +118,7 @@ function openToolName(message: Message): string | undefined {
   for (const block of message.blocks ?? []) {
     if (block.type !== "tool") continue;
     if (block.stage === "end") continue;
-    if (block.name) name = block.name;
+    if (block.name) name = displayToolName(block.name);
   }
   return name;
 }

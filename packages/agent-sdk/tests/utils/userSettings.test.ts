@@ -153,6 +153,7 @@ describe("userSettings", () => {
             completionEnabled: "default",
             nextEditEnabled: "default",
             enableKnowledgeBase: "default",
+            enableReplCoreTools: "default",
             language: "remote",
             contextLength: "default",
             autoMemoryEnabled: "default",
@@ -173,6 +174,7 @@ describe("userSettings", () => {
           completionEnabled: "default",
           nextEditEnabled: "default",
           enableKnowledgeBase: "default",
+          enableReplCoreTools: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "default",
@@ -200,6 +202,7 @@ describe("userSettings", () => {
           completionEnabled: "default",
           nextEditEnabled: "default",
           enableKnowledgeBase: "default",
+          enableReplCoreTools: "default",
           language: "user",
           contextLength: "user",
           autoMemoryEnabled: "user",
@@ -218,6 +221,7 @@ describe("userSettings", () => {
           completionEnabled: "default",
           nextEditEnabled: "default",
           enableKnowledgeBase: "default",
+          enableReplCoreTools: "default",
           language: "default",
           contextLength: "remote",
           autoMemoryEnabled: "default",
@@ -233,6 +237,7 @@ describe("userSettings", () => {
           completionEnabled: "default",
           nextEditEnabled: "default",
           enableKnowledgeBase: "default",
+          enableReplCoreTools: "default",
           language: "default",
           contextLength: "user",
           autoMemoryEnabled: "default",
@@ -249,6 +254,7 @@ describe("userSettings", () => {
           completionEnabled: "default",
           nextEditEnabled: "default",
           enableKnowledgeBase: "default",
+          enableReplCoreTools: "default",
           language: "default",
           contextLength: "env",
           autoMemoryEnabled: "default",
@@ -268,6 +274,7 @@ describe("userSettings", () => {
           completionEnabled: "default",
           nextEditEnabled: "default",
           enableKnowledgeBase: "default",
+          enableReplCoreTools: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "remote",
@@ -290,6 +297,7 @@ describe("userSettings", () => {
           completionEnabled: "default",
           nextEditEnabled: "default",
           enableKnowledgeBase: "default",
+          enableReplCoreTools: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "remote",
@@ -318,6 +326,7 @@ describe("userSettings", () => {
           completionEnabled: "default",
           nextEditEnabled: "default",
           enableKnowledgeBase: "default",
+          enableReplCoreTools: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "user",
@@ -339,6 +348,7 @@ describe("userSettings", () => {
           completionEnabled: "default",
           nextEditEnabled: "default",
           enableKnowledgeBase: "default",
+          enableReplCoreTools: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "user",
@@ -357,6 +367,7 @@ describe("userSettings", () => {
           completionEnabled: "default",
           nextEditEnabled: "default",
           enableKnowledgeBase: "default",
+          enableReplCoreTools: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "env",
@@ -372,6 +383,7 @@ describe("userSettings", () => {
           completionEnabled: "default",
           nextEditEnabled: "default",
           enableKnowledgeBase: "default",
+          enableReplCoreTools: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "default",
@@ -391,6 +403,7 @@ describe("userSettings", () => {
           completionEnabled: "default",
           nextEditEnabled: "default",
           enableKnowledgeBase: "default",
+          enableReplCoreTools: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "default",
@@ -412,6 +425,7 @@ describe("userSettings", () => {
           completionEnabled: "default",
           nextEditEnabled: "default",
           enableKnowledgeBase: "default",
+          enableReplCoreTools: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "default",
@@ -427,6 +441,7 @@ describe("userSettings", () => {
           completionEnabled: "default",
           nextEditEnabled: "default",
           enableKnowledgeBase: "default",
+          enableReplCoreTools: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "default",
@@ -451,6 +466,7 @@ describe("userSettings", () => {
           completionEnabled: "default",
           nextEditEnabled: "default",
           enableKnowledgeBase: "default",
+          enableReplCoreTools: "default",
           language: "remote",
           contextLength: "env",
           autoMemoryEnabled: "default",
@@ -724,6 +740,64 @@ describe("userSettings", () => {
       await updateUserPreferenceSettings({ enableKnowledgeBase: false }, FILE);
 
       expect(writtenJson()).toEqual({ enableKnowledgeBase: false });
+    });
+  });
+
+  describe("核心工具收进 Code Mode（顶层 enableReplCoreTools）", () => {
+    it("回读顶层键；非布尔值按未设置处理（不把写坏的配置读成「开」）", () => {
+      seedFile({ enableReplCoreTools: true });
+      expect(readUserPreferenceSettings(FILE).enableReplCoreTools).toBe(true);
+
+      seedFile({ enableReplCoreTools: "true" });
+      expect(readUserPreferenceSettings(FILE).enableReplCoreTools).toBe(
+        undefined,
+      );
+    });
+
+    it("归因与 isReplCoreToolsEnabled 一致：Remote 顶层键赢用户文件", () => {
+      seedFile({ enableReplCoreTools: false });
+
+      const view = readUserPreferenceView(
+        { enableReplCoreTools: true },
+        FILE,
+        {},
+      );
+
+      expect(view.values.enableReplCoreTools).toBe(true);
+      expect(view.sources.enableReplCoreTools).toBe("remote");
+    });
+
+    it("用户文件提供时来源是 user", () => {
+      seedFile({ enableReplCoreTools: true });
+
+      const view = readUserPreferenceView(null, FILE, {});
+
+      expect(view.values.enableReplCoreTools).toBe(true);
+      expect(view.sources.enableReplCoreTools).toBe("user");
+    });
+
+    it("写在顶层，与其余偏好键和 env 块共存", async () => {
+      seedFile({ language: "Chinese", env: { KEEP: "1" } });
+
+      const result = await updateUserPreferenceSettings(
+        { enableReplCoreTools: true },
+        FILE,
+      );
+
+      expect(writtenJson()).toEqual({
+        language: "Chinese",
+        env: { KEEP: "1" },
+        enableReplCoreTools: true,
+      });
+      expect(result.enableReplCoreTools).toBe(true);
+    });
+
+    it("显式关闭写入 false（不删键：载荷没有删键语义）", async () => {
+      seedFile({ enableReplCoreTools: true });
+
+      await updateUserPreferenceSettings({ enableReplCoreTools: false }, FILE);
+
+      expect(writtenJson()).toEqual({ enableReplCoreTools: false });
     });
   });
 });

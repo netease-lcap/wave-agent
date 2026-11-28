@@ -187,6 +187,14 @@ describe("REPL tool block", () => {
     expect(getComputedStyle(output as HTMLElement).whiteSpace).toBe("pre-wrap");
   });
 
+  it("工具行标题显示用户可见名 Code Mode（工具名仍是 REPL）", () => {
+    const { container } = renderRepl({ code: "return 1;" });
+    const header = container.querySelector(".tool-block-text");
+
+    expect(header?.textContent).toContain("Code Mode");
+    expect(header?.textContent).not.toContain(REPL_TOOL_NAME);
+  });
+
   it("linkifies urls in the output but never in the script", () => {
     const { code, output } = renderRepl({
       code: "const r = await fetch('http://localhost:3000/x');",

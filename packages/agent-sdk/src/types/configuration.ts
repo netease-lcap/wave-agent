@@ -301,6 +301,14 @@ export interface UserPreferenceSettings {
    * 下发同名键时以托管层为准（spec core/agent-config.md「企业知识库开关」）。
    */
   enableKnowledgeBase?: boolean;
+  /**
+   * 是否把七个核心工具（`Read` / `Glob` / `Grep` / `Bash` / `PowerShell` /
+   * `Write` / `Edit`）收进 REPL（settings.json 顶层 `enableReplCoreTools`，
+   * 缺省为**关**）。总开关 `enableRepl` 不进设置页——它默认开、回退只走服务端
+   * 下发或手改配置，所以这一行不因 `enableRepl: false` 置灰（spec
+   * core/repl-tool.md 边界说明「设置页只露二级开关」）。
+   */
+  enableReplCoreTools?: boolean;
 }
 
 /** 用户偏好键（设置页控件）。 */
